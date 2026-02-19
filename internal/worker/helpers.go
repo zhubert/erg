@@ -1,4 +1,4 @@
-package agent
+package worker
 
 import (
 	"fmt"
@@ -9,8 +9,8 @@ import (
 	"github.com/zhubert/plural-core/issues"
 )
 
-// trimURL extracts a URL from output text.
-func trimURL(output string) string {
+// TrimURL extracts a URL from output text.
+func TrimURL(output string) string {
 	trimmed := strings.TrimSpace(output)
 	if strings.HasPrefix(trimmed, "https://") {
 		return trimmed
@@ -18,8 +18,8 @@ func trimURL(output string) string {
 	return ""
 }
 
-// formatPRCommentsPrompt formats PR review comments as a prompt string.
-func formatPRCommentsPrompt(comments []git.PRReviewComment) string {
+// FormatPRCommentsPrompt formats PR review comments as a prompt string.
+func FormatPRCommentsPrompt(comments []git.PRReviewComment) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("New PR review comments need to be addressed (%d comment(s)):\n\n", len(comments)))
 
@@ -44,8 +44,8 @@ func formatPRCommentsPrompt(comments []git.PRReviewComment) string {
 	return sb.String()
 }
 
-// formatInitialMessage formats the initial message for a coding session based on the issue provider.
-func formatInitialMessage(ref config.IssueRef) string {
+// FormatInitialMessage formats the initial message for a coding session based on the issue provider.
+func FormatInitialMessage(ref config.IssueRef) string {
 	provider := issues.Source(ref.Source)
 
 	switch provider {

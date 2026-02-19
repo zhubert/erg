@@ -1,7 +1,6 @@
-package agent
+package daemonstate
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -75,21 +74,10 @@ type DaemonState struct {
 	filePath string
 }
 
-const daemonStateVersion = 2
+const stateVersion = 2
 
-// NewDaemonState creates a new empty daemon state for the given repo.
-func NewDaemonState(repoPath string) *DaemonState {
-	return &DaemonState{
-		Version:   daemonStateVersion,
-		RepoPath:  repoPath,
-		WorkItems: make(map[string]*WorkItem),
-		StartedAt: time.Now(),
-		filePath:  daemonStateFilePath(),
-	}
-}
-
-// daemonStateFilePath returns the path to the daemon state file.
-func daemonStateFilePath() string {
+// StateFilePath returns the path to the daemon state file.
+func StateFilePath() string {
 	dir, err := paths.DataDir()
 	if err != nil {
 		// Fall back to home dir
@@ -99,21 +87,21 @@ func daemonStateFilePath() string {
 	return filepath.Join(dir, "daemon-state.json")
 }
 
-// lockFilePath returns the path to the lock file for the given repo path.
-func lockFilePath(repoPath string) string {
-	dir, err := paths.StateDir()
-	if err != nil {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".plural")
+// NewDaemonState creates a new empty daemon state for the given repo.
+func NewDaemonState(repoPath string) *DaemonState {
+	return &DaemonState{
+		Version:   stateVersion,
+		RepoPath:  repoPath,
+		WorkItems: make(map[string]*WorkItem),
+		StartedAt: time.Now(),
+		filePath:  StateFilePath(),
 	}
-	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(repoPath)))
-	return filepath.Join(dir, fmt.Sprintf("daemon-%s.lock", hash[:12]))
 }
 
 // LoadDaemonState loads daemon state from disk.
 // Returns a new empty state if the file doesn't exist.
 func LoadDaemonState(repoPath string) (*DaemonState, error) {
-	fp := daemonStateFilePath()
+	fp := StateFilePath()
 
 	data, err := os.ReadFile(fp)
 	if err != nil {
@@ -321,6 +309,17 @@ func (s *DaemonState) HasWorkItemForIssue(issueSource, issueID string) bool {
 	return false
 }
 
+// UpdateWorkItem applies a mutation function to a work item under the state lock.
+// This is useful for recovery and other cases that need to modify multiple fields atomically.
+func (s *DaemonState) UpdateWorkItem(id string, fn func(*WorkItem)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if item, ok := s.WorkItems[id]; ok {
+		fn(item)
+	}
+}
+
 // SetErrorMessage sets the error message on a work item and increments the error count.
 func (s *DaemonState) SetErrorMessage(id, msg string) {
 	s.mu.Lock()
@@ -333,100 +332,19 @@ func (s *DaemonState) SetErrorMessage(id, msg string) {
 	}
 }
 
-// ClearDaemonState removes the daemon state file from disk.
-// Returns nil if the file doesn't exist.
-func ClearDaemonState() error {
-	fp := daemonStateFilePath()
-	if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove daemon state: %w", err)
-	}
-	return nil
-}
-
-// ClearDaemonLocks finds and removes all daemon lock files.
-// Returns the number of lock files removed.
-func ClearDaemonLocks() (int, error) {
-	dir, err := paths.StateDir()
-	if err != nil {
-		return 0, fmt.Errorf("failed to resolve state dir: %w", err)
-	}
-
-	matches, err := filepath.Glob(filepath.Join(dir, "daemon-*.lock"))
-	if err != nil {
-		return 0, fmt.Errorf("failed to glob lock files: %w", err)
-	}
-
-	removed := 0
-	for _, match := range matches {
-		if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
-			return removed, fmt.Errorf("failed to remove lock file %s: %w", match, err)
-		}
-		removed++
-	}
-	return removed, nil
-}
-
-// DaemonStateExists returns true if the daemon state file exists on disk.
-func DaemonStateExists() bool {
-	fp := daemonStateFilePath()
+// StateExists returns true if the daemon state file exists on disk.
+func StateExists() bool {
+	fp := StateFilePath()
 	_, err := os.Stat(fp)
 	return err == nil
 }
 
-// FindDaemonLocks returns the paths of all daemon lock files.
-func FindDaemonLocks() ([]string, error) {
-	dir, err := paths.StateDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve state dir: %w", err)
+// ClearState removes the daemon state file from disk.
+// Returns nil if the file doesn't exist.
+func ClearState() error {
+	fp := StateFilePath()
+	if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove daemon state: %w", err)
 	}
-
-	matches, err := filepath.Glob(filepath.Join(dir, "daemon-*.lock"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to glob lock files: %w", err)
-	}
-	return matches, nil
-}
-
-// DaemonLock manages the lock file to prevent multiple daemons for the same repo.
-type DaemonLock struct {
-	path string
-	file *os.File
-}
-
-// AcquireLock attempts to acquire the daemon lock for the given repo path.
-// Returns an error if the lock is already held.
-func AcquireLock(repoPath string) (*DaemonLock, error) {
-	fp := lockFilePath(repoPath)
-
-	dir := filepath.Dir(fp)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create lock directory: %w", err)
-	}
-
-	// Try to create the lock file exclusively
-	f, err := os.OpenFile(fp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if err != nil {
-		if os.IsExist(err) {
-			// Check if the lock file is stale (process that created it is gone)
-			data, readErr := os.ReadFile(fp)
-			if readErr == nil {
-				return nil, fmt.Errorf("daemon lock already held (PID: %s). Remove %s if the process is not running", string(data), fp)
-			}
-			return nil, fmt.Errorf("daemon lock already held at %s", fp)
-		}
-		return nil, fmt.Errorf("failed to create lock file: %w", err)
-	}
-
-	// Write our PID
-	fmt.Fprintf(f, "%d", os.Getpid())
-
-	return &DaemonLock{path: fp, file: f}, nil
-}
-
-// Release releases the daemon lock.
-func (l *DaemonLock) Release() error {
-	if l.file != nil {
-		l.file.Close()
-	}
-	return os.Remove(l.path)
+	return nil
 }

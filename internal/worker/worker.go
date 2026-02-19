@@ -1,4 +1,4 @@
-package agent
+package worker
 
 import (
 	"context"
@@ -12,18 +12,18 @@ import (
 	"github.com/zhubert/plural-core/mcp"
 )
 
-// autoMergeWorkerPollInterval is how often the worker checks for pending
+// AutoMergeWorkerPollInterval is how often the worker checks for pending
 // messages or merge completion while waiting for auto-merge. The actual
 // auto-merge goroutine polls at 60s intervals — the worker's 15s check
 // just needs to detect pending messages or merge completion promptly.
 // This is a var (not const) so tests can override it.
-var autoMergeWorkerPollInterval = 15 * time.Second
+var AutoMergeWorkerPollInterval = 15 * time.Second
 
 // SessionWorker manages a single autonomous session's lifecycle.
 // It runs a goroutine with a select loop over all runner channels,
 // replacing the TUI's Bubble Tea listener pattern.
 type SessionWorker struct {
-	agent      *Agent
+	host       Host
 	sessionID  string
 	session    *config.Session
 	runner     claude.RunnerInterface
@@ -38,9 +38,9 @@ type SessionWorker struct {
 }
 
 // NewSessionWorker creates a new session worker.
-func NewSessionWorker(agent *Agent, sess *config.Session, runner claude.RunnerInterface, initialMsg string) *SessionWorker {
+func NewSessionWorker(host Host, sess *config.Session, runner claude.RunnerInterface, initialMsg string) *SessionWorker {
 	return &SessionWorker{
-		agent:      agent,
+		host:       host,
 		sessionID:  sess.ID,
 		session:    sess,
 		runner:     runner,
@@ -48,6 +48,51 @@ func NewSessionWorker(agent *Agent, sess *config.Session, runner claude.RunnerIn
 		startTime:  time.Now(),
 		done:       make(chan struct{}),
 	}
+}
+
+// NewDoneWorker creates a SessionWorker that is already done.
+// Useful for tests that need a completed worker.
+func NewDoneWorker() *SessionWorker {
+	w := &SessionWorker{
+		done: make(chan struct{}),
+	}
+	close(w.done)
+	return w
+}
+
+// Turns returns the number of completed turns.
+func (w *SessionWorker) Turns() int {
+	return w.turns
+}
+
+// SessionID returns the worker's session ID.
+func (w *SessionWorker) SessionID() string {
+	return w.sessionID
+}
+
+// InitialMsg returns the initial message.
+func (w *SessionWorker) InitialMsg() string {
+	return w.initialMsg
+}
+
+// SetTurns sets the number of completed turns (for testing).
+func (w *SessionWorker) SetTurns(n int) {
+	w.turns = n
+}
+
+// SetStartTime sets the worker start time (for testing).
+func (w *SessionWorker) SetStartTime(t time.Time) {
+	w.startTime = t
+}
+
+// CheckLimits returns true if the session has hit its turn or duration limit.
+func (w *SessionWorker) CheckLimits() bool {
+	return w.checkLimits()
+}
+
+// HasActiveChildren checks if any child sessions are still running.
+func (w *SessionWorker) HasActiveChildren() bool {
+	return w.hasActiveChildren()
 }
 
 // Start begins the worker's goroutine.
@@ -82,7 +127,7 @@ func (w *SessionWorker) Done() bool {
 func (w *SessionWorker) run() {
 	defer w.once.Do(func() { close(w.done) })
 
-	log := w.agent.logger.With("sessionID", w.sessionID, "branch", w.session.Branch)
+	log := w.host.Logger().With("sessionID", w.sessionID, "branch", w.session.Branch)
 	log.Info("worker started")
 
 	// Send initial message
@@ -97,7 +142,7 @@ func (w *SessionWorker) run() {
 		// Claude response to process, so reading the closed channel would
 		// just increment w.turns on every cycle.
 		if autoMergeActive {
-			sess := w.agent.config.GetSession(w.sessionID)
+			sess := w.host.Config().GetSession(w.sessionID)
 			if sess == nil {
 				log.Warn("session disappeared during auto-merge")
 				return
@@ -114,7 +159,7 @@ func (w *SessionWorker) run() {
 			}
 
 			// Check for pending messages (e.g., review comments from auto-merge)
-			pendingMsg := w.agent.sessionMgr.StateManager().GetPendingMessage(w.sessionID)
+			pendingMsg := w.host.SessionManager().StateManager().GetPendingMessage(w.sessionID)
 			if pendingMsg != "" {
 				log.Debug("sending pending message during auto-merge")
 				content := []claude.ContentBlock{{Type: claude.ContentTypeText, Text: pendingMsg}}
@@ -127,7 +172,7 @@ func (w *SessionWorker) run() {
 				select {
 				case <-w.ctx.Done():
 					return
-				case <-time.After(autoMergeWorkerPollInterval):
+				case <-time.After(AutoMergeWorkerPollInterval):
 					continue
 				}
 			}
@@ -145,7 +190,7 @@ func (w *SessionWorker) run() {
 		}
 
 		// Check for pending messages (e.g., child completion notifications, auto-merge review comments)
-		pendingMsg := w.agent.sessionMgr.StateManager().GetPendingMessage(w.sessionID)
+		pendingMsg := w.host.SessionManager().StateManager().GetPendingMessage(w.sessionID)
 		if pendingMsg != "" {
 			log.Debug("sending pending message")
 			content := []claude.ContentBlock{{Type: claude.ContentTypeText, Text: pendingMsg}}
@@ -182,7 +227,7 @@ func (w *SessionWorker) run() {
 // It blocks until the response is done or an error occurs.
 // Returns nil when the response completes normally, or an error to stop the worker.
 func (w *SessionWorker) processOneResponse(responseChan <-chan claude.ResponseChunk) error {
-	log := w.agent.logger.With("sessionID", w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
 
 	for {
 		select {
@@ -332,33 +377,33 @@ func (w *SessionWorker) handleStreaming(chunk claude.ResponseChunk) {
 		if len(preview) > 100 {
 			preview = preview[:100] + "..."
 		}
-		w.agent.logger.Debug("streaming", "sessionID", w.sessionID, "content", preview)
+		w.host.Logger().Debug("streaming", "sessionID", w.sessionID, "content", preview)
 	}
 }
 
 // handleDone handles completion of a streaming response.
 func (w *SessionWorker) handleDone() {
-	log := w.agent.logger.With("sessionID", w.sessionID, "turn", w.turns)
+	log := w.host.Logger().With("sessionID", w.sessionID, "turn", w.turns)
 	log.Debug("response completed")
 
 	// Mark session as started if needed
-	sess := w.agent.config.GetSession(w.sessionID)
+	sess := w.host.Config().GetSession(w.sessionID)
 	if sess != nil && w.runner.SessionStarted() && !sess.Started {
-		w.agent.config.MarkSessionStarted(w.sessionID)
-		if err := w.agent.config.Save(); err != nil {
+		w.host.Config().MarkSessionStarted(w.sessionID)
+		if err := w.host.Config().Save(); err != nil {
 			log.Error("failed to save config after marking started", "error", err)
 		}
 	}
 
 	// Save messages
-	w.agent.saveRunnerMessages(w.sessionID, w.runner)
+	w.host.SaveRunnerMessages(w.sessionID, w.runner)
 }
 
 // handleCompletion handles full session completion (all turns done, no pending work).
 // Returns true if auto-merge was started and the worker should keep running.
 func (w *SessionWorker) handleCompletion() bool {
-	log := w.agent.logger.With("sessionID", w.sessionID, "branch", w.session.Branch)
-	sess := w.agent.config.GetSession(w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID, "branch", w.session.Branch)
+	sess := w.host.Config().GetSession(w.sessionID)
 	if sess == nil {
 		return false
 	}
@@ -371,7 +416,7 @@ func (w *SessionWorker) handleCompletion() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
-		prURL, err := w.agent.autoCreatePR(ctx, w.sessionID)
+		prURL, err := w.host.AutoCreatePR(ctx, w.sessionID)
 		if err != nil {
 			log.Error("failed to create PR", "error", err)
 			return false
@@ -379,7 +424,7 @@ func (w *SessionWorker) handleCompletion() bool {
 		log.Info("PR created", "url", prURL)
 
 		// Start auto-merge if enabled (skip when daemon manages lifecycle)
-		if w.agent.getAutoMerge() && !w.agent.daemonManaged {
+		if w.host.AutoMerge() && !w.host.DaemonManaged() {
 			go w.runAutoMerge()
 			autoMergeStarted = true
 		}
@@ -388,7 +433,7 @@ func (w *SessionWorker) handleCompletion() bool {
 	// For supervisor sessions, the PR was created via MCP tools.
 	// Check if auto-merge is needed (skip when daemon manages lifecycle).
 	if sess.PRCreated && !sess.PRMerged && !sess.PRClosed &&
-		w.agent.getAutoMerge() && !w.agent.daemonManaged {
+		w.host.AutoMerge() && !w.host.DaemonManaged() {
 		go w.runAutoMerge()
 		autoMergeStarted = true
 	}
@@ -403,11 +448,11 @@ func (w *SessionWorker) handleCompletion() bool {
 
 // checkLimits returns true if the session has hit its turn or duration limit.
 func (w *SessionWorker) checkLimits() bool {
-	maxTurns := w.agent.getMaxTurns()
-	maxDuration := time.Duration(w.agent.getMaxDuration()) * time.Minute
+	maxTurns := w.host.MaxTurns()
+	maxDuration := time.Duration(w.host.MaxDuration()) * time.Minute
 
 	if w.turns >= maxTurns {
-		w.agent.logger.Warn("turn limit reached",
+		w.host.Logger().Warn("turn limit reached",
 			"sessionID", w.sessionID,
 			"turns", w.turns,
 			"max", maxTurns,
@@ -416,7 +461,7 @@ func (w *SessionWorker) checkLimits() bool {
 	}
 
 	if time.Since(w.startTime) >= maxDuration {
-		w.agent.logger.Warn("duration limit reached",
+		w.host.Logger().Warn("duration limit reached",
 			"sessionID", w.sessionID,
 			"elapsed", time.Since(w.startTime),
 			"max", maxDuration,
@@ -429,7 +474,7 @@ func (w *SessionWorker) checkLimits() bool {
 
 // autoRespondQuestion automatically responds to questions by selecting the first option.
 func (w *SessionWorker) autoRespondQuestion(req mcp.QuestionRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
 	log.Info("auto-responding to question")
 
 	answers := make(map[string]string)
@@ -449,7 +494,7 @@ func (w *SessionWorker) autoRespondQuestion(req mcp.QuestionRequest) {
 
 // autoApprovePlan automatically approves plans.
 func (w *SessionWorker) autoApprovePlan(req mcp.PlanApprovalRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
 	log.Info("auto-approving plan")
 
 	w.runner.SendPlanApprovalResponse(mcp.PlanApprovalResponse{
@@ -460,9 +505,9 @@ func (w *SessionWorker) autoApprovePlan(req mcp.PlanApprovalRequest) {
 
 // handleCreateChild handles a create_child_session MCP tool call.
 func (w *SessionWorker) handleCreateChild(req mcp.CreateChildRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
 
-	childSess, err := w.agent.createChildSession(w.ctx, w.sessionID, req.Task)
+	childInfo, err := w.host.CreateChildSession(w.ctx, w.sessionID, req.Task)
 	if err != nil {
 		log.Error("failed to create child session", "error", err)
 		w.runner.SendCreateChildResponse(mcp.CreateChildResponse{
@@ -475,22 +520,18 @@ func (w *SessionWorker) handleCreateChild(req mcp.CreateChildRequest) {
 	w.runner.SendCreateChildResponse(mcp.CreateChildResponse{
 		ID:      req.ID,
 		Success: true,
-		ChildID: childSess.ID,
-		Branch:  childSess.Branch,
+		ChildID: childInfo.ID,
+		Branch:  childInfo.Branch,
 	})
 }
 
 // handleListChildren handles a list_child_sessions MCP tool call.
 func (w *SessionWorker) handleListChildren(req mcp.ListChildrenRequest) {
-	children := w.agent.config.GetChildSessions(w.sessionID)
+	children := w.host.Config().GetChildSessions(w.sessionID)
 	var childInfos []mcp.ChildSessionInfo
 	for _, child := range children {
 		status := "idle"
-		w.agent.mu.Lock()
-		childWorker, exists := w.agent.workers[child.ID]
-		w.agent.mu.Unlock()
-
-		if exists && !childWorker.Done() {
+		if w.host.IsWorkerRunning(child.ID) {
 			status = "running"
 		} else if child.MergedToParent {
 			status = "merged"
@@ -513,9 +554,9 @@ func (w *SessionWorker) handleListChildren(req mcp.ListChildrenRequest) {
 
 // handleMergeChild handles a merge_child_to_parent MCP tool call.
 func (w *SessionWorker) handleMergeChild(req mcp.MergeChildRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
 
-	sess := w.agent.config.GetSession(w.sessionID)
+	sess := w.host.Config().GetSession(w.sessionID)
 	if sess == nil {
 		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
 			ID:    req.ID,
@@ -524,7 +565,7 @@ func (w *SessionWorker) handleMergeChild(req mcp.MergeChildRequest) {
 		return
 	}
 
-	childSess := w.agent.config.GetSession(req.ChildSessionID)
+	childSess := w.host.Config().GetSession(req.ChildSessionID)
 	if childSess == nil {
 		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
 			ID:    req.ID,
@@ -554,7 +595,7 @@ func (w *SessionWorker) handleMergeChild(req mcp.MergeChildRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	resultCh := w.agent.gitService.MergeToParent(ctx, childSess.WorkTree, childSess.Branch, sess.WorkTree, sess.Branch, "")
+	resultCh := w.host.GitService().MergeToParent(ctx, childSess.WorkTree, childSess.Branch, sess.WorkTree, sess.Branch, "")
 
 	var lastErr error
 	for result := range resultCh {
@@ -573,8 +614,8 @@ func (w *SessionWorker) handleMergeChild(req mcp.MergeChildRequest) {
 	}
 
 	// Mark child as merged
-	w.agent.config.MarkSessionMergedToParent(childSess.ID)
-	if err := w.agent.config.Save(); err != nil {
+	w.host.Config().MarkSessionMergedToParent(childSess.ID)
+	if err := w.host.Config().Save(); err != nil {
 		log.Error("failed to save config after merge", "error", err)
 	}
 
@@ -587,8 +628,8 @@ func (w *SessionWorker) handleMergeChild(req mcp.MergeChildRequest) {
 
 // handleCreatePR handles a create_pr MCP tool call.
 func (w *SessionWorker) handleCreatePR(req mcp.CreatePRRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
-	sess := w.agent.config.GetSession(w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
+	sess := w.host.Config().GetSession(w.sessionID)
 	if sess == nil {
 		w.runner.SendCreatePRResponse(mcp.CreatePRResponse{
 			ID:    req.ID,
@@ -600,10 +641,7 @@ func (w *SessionWorker) handleCreatePR(req mcp.CreatePRRequest) {
 	log.Info("creating PR via MCP tool", "branch", sess.Branch, "title", req.Title)
 
 	// Save messages to disk before creating PR so the transcript upload
-	// (which reads from disk via loadTranscript) can find them. We use
-	// GetMessagesWithStreaming() instead of GetMessages() to include the
-	// current turn's in-progress assistant response, which hasn't been
-	// finalized into the message list yet.
+	// (which reads from disk via loadTranscript) can find them.
 	msgs := w.runner.GetMessagesWithStreaming()
 	var configMsgs []config.Message
 	for _, msg := range msgs {
@@ -619,7 +657,7 @@ func (w *SessionWorker) handleCreatePR(req mcp.CreatePRRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	resultCh := w.agent.gitService.CreatePR(ctx, sess.RepoPath, sess.WorkTree, sess.Branch, sess.BaseBranch, req.Title, sess.GetIssueRef(), w.sessionID)
+	resultCh := w.host.GitService().CreatePR(ctx, sess.RepoPath, sess.WorkTree, sess.Branch, sess.BaseBranch, req.Title, sess.GetIssueRef(), w.sessionID)
 
 	var lastErr error
 	var prURL string
@@ -627,7 +665,7 @@ func (w *SessionWorker) handleCreatePR(req mcp.CreatePRRequest) {
 		if result.Error != nil {
 			lastErr = result.Error
 		}
-		if trimmed := trimURL(result.Output); trimmed != "" {
+		if trimmed := TrimURL(result.Output); trimmed != "" {
 			prURL = trimmed
 		}
 	}
@@ -641,8 +679,8 @@ func (w *SessionWorker) handleCreatePR(req mcp.CreatePRRequest) {
 	}
 
 	// Mark session as PR created
-	w.agent.config.MarkSessionPRCreated(w.sessionID)
-	if err := w.agent.config.Save(); err != nil {
+	w.host.Config().MarkSessionPRCreated(w.sessionID)
+	if err := w.host.Config().Save(); err != nil {
 		log.Error("failed to save config after PR creation", "error", err)
 	}
 
@@ -653,15 +691,15 @@ func (w *SessionWorker) handleCreatePR(req mcp.CreatePRRequest) {
 	})
 
 	// Start auto-merge if enabled (skip when daemon manages lifecycle)
-	if w.agent.getAutoMerge() && !w.agent.daemonManaged {
+	if w.host.AutoMerge() && !w.host.DaemonManaged() {
 		go w.runAutoMerge()
 	}
 }
 
 // handlePushBranch handles a push_branch MCP tool call.
 func (w *SessionWorker) handlePushBranch(req mcp.PushBranchRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
-	sess := w.agent.config.GetSession(w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
+	sess := w.host.Config().GetSession(w.sessionID)
 	if sess == nil {
 		w.runner.SendPushBranchResponse(mcp.PushBranchResponse{
 			ID:    req.ID,
@@ -675,7 +713,7 @@ func (w *SessionWorker) handlePushBranch(req mcp.PushBranchRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	resultCh := w.agent.gitService.PushUpdates(ctx, sess.RepoPath, sess.WorkTree, sess.Branch, req.CommitMessage)
+	resultCh := w.host.GitService().PushUpdates(ctx, sess.RepoPath, sess.WorkTree, sess.Branch, req.CommitMessage)
 
 	var lastErr error
 	for result := range resultCh {
@@ -700,8 +738,8 @@ func (w *SessionWorker) handlePushBranch(req mcp.PushBranchRequest) {
 
 // handleGetReviewComments handles a get_review_comments MCP tool call.
 func (w *SessionWorker) handleGetReviewComments(req mcp.GetReviewCommentsRequest) {
-	log := w.agent.logger.With("sessionID", w.sessionID)
-	sess := w.agent.config.GetSession(w.sessionID)
+	log := w.host.Logger().With("sessionID", w.sessionID)
+	sess := w.host.Config().GetSession(w.sessionID)
 	if sess == nil {
 		w.runner.SendGetReviewCommentsResponse(mcp.GetReviewCommentsResponse{
 			ID:    req.ID,
@@ -715,7 +753,7 @@ func (w *SessionWorker) handleGetReviewComments(req mcp.GetReviewCommentsRequest
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	comments, err := w.agent.gitService.FetchPRReviewComments(ctx, sess.RepoPath, sess.Branch)
+	comments, err := w.host.GitService().FetchPRReviewComments(ctx, sess.RepoPath, sess.Branch)
 	if err != nil {
 		w.runner.SendGetReviewCommentsResponse(mcp.GetReviewCommentsResponse{
 			ID:    req.ID,
@@ -744,13 +782,9 @@ func (w *SessionWorker) handleGetReviewComments(req mcp.GetReviewCommentsRequest
 
 // hasActiveChildren checks if any child sessions are still running.
 func (w *SessionWorker) hasActiveChildren() bool {
-	children := w.agent.config.GetChildSessions(w.sessionID)
+	children := w.host.Config().GetChildSessions(w.sessionID)
 	for _, child := range children {
-		w.agent.mu.Lock()
-		childWorker, exists := w.agent.workers[child.ID]
-		w.agent.mu.Unlock()
-
-		if exists && !childWorker.Done() {
+		if w.host.IsWorkerRunning(child.ID) {
 			return true
 		}
 	}
@@ -759,7 +793,7 @@ func (w *SessionWorker) hasActiveChildren() bool {
 
 // notifySupervisor sends a status update to the supervisor session.
 func (w *SessionWorker) notifySupervisor(supervisorID string, testsPassed bool) {
-	childSess := w.agent.config.GetSession(w.sessionID)
+	childSess := w.host.Config().GetSession(w.sessionID)
 	if childSess == nil {
 		return
 	}
@@ -769,15 +803,11 @@ func (w *SessionWorker) notifySupervisor(supervisorID string, testsPassed bool) 
 		status = "completed (tests failed)"
 	}
 
-	allChildren := w.agent.config.GetChildSessions(supervisorID)
+	allChildren := w.host.Config().GetChildSessions(supervisorID)
 	allDone := true
 	completedCount := 0
 	for _, child := range allChildren {
-		w.agent.mu.Lock()
-		childWorker, exists := w.agent.workers[child.ID]
-		w.agent.mu.Unlock()
-
-		if exists && !childWorker.Done() {
+		if w.host.IsWorkerRunning(child.ID) {
 			allDone = false
 		} else {
 			completedCount++
@@ -795,17 +825,17 @@ func (w *SessionWorker) notifySupervisor(supervisorID string, testsPassed bool) 
 	}
 
 	// Queue the message for the supervisor
-	state := w.agent.sessionMgr.StateManager().GetOrCreate(supervisorID)
+	state := w.host.SessionManager().StateManager().GetOrCreate(supervisorID)
 	state.SetPendingMsg(prompt)
 }
 
 // runAutoMerge runs the auto-merge state machine. See auto_merge.go.
 func (w *SessionWorker) runAutoMerge() {
-	runAutoMerge(w.agent, w.sessionID)
+	RunAutoMerge(w.host, w.sessionID)
 }
 
-// formatOutput trims strings for logging.
-func formatOutput(s string, maxLen int) string {
+// FormatOutput trims strings for logging.
+func FormatOutput(s string, maxLen int) string {
 	s = strings.TrimSpace(s)
 	if len(s) > maxLen {
 		return s[:maxLen] + "..."

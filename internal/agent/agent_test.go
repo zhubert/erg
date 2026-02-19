@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zhubert/plural-agent/internal/worker"
 	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/exec"
@@ -168,7 +169,7 @@ func TestActiveWorkerCount(t *testing.T) {
 	// Add an active worker
 	sess1 := testSession("worker-1")
 	mock1 := claude.NewMockRunner("worker-1", true, nil)
-	w1 := NewSessionWorker(a, sess1, mock1, "")
+	w1 := worker.NewSessionWorker(a, sess1, mock1, "")
 	a.workers["worker-1"] = w1
 
 	if got := a.activeWorkerCount(); got != 1 {
@@ -178,15 +179,15 @@ func TestActiveWorkerCount(t *testing.T) {
 	// Add another active worker
 	sess2 := testSession("worker-2")
 	mock2 := claude.NewMockRunner("worker-2", true, nil)
-	w2 := NewSessionWorker(a, sess2, mock2, "")
+	w2 := worker.NewSessionWorker(a, sess2, mock2, "")
 	a.workers["worker-2"] = w2
 
 	if got := a.activeWorkerCount(); got != 2 {
 		t.Errorf("expected 2, got %d", got)
 	}
 
-	// Mark one as done
-	close(w1.done)
+	// Mark one as done by replacing with a done worker
+	a.workers["worker-1"] = worker.NewDoneWorker()
 
 	if got := a.activeWorkerCount(); got != 1 {
 		t.Errorf("expected 1 after completing one, got %d", got)
@@ -200,14 +201,10 @@ func TestCleanupCompletedWorkers(t *testing.T) {
 	// Add workers — one active, one done
 	sess1 := testSession("active-1")
 	mock1 := claude.NewMockRunner("active-1", true, nil)
-	w1 := NewSessionWorker(a, sess1, mock1, "")
+	w1 := worker.NewSessionWorker(a, sess1, mock1, "")
 	a.workers["active-1"] = w1
 
-	sess2 := testSession("done-1")
-	mock2 := claude.NewMockRunner("done-1", true, nil)
-	w2 := NewSessionWorker(a, sess2, mock2, "")
-	close(w2.done) // Mark as done
-	a.workers["done-1"] = w2
+	a.workers["done-1"] = worker.NewDoneWorker()
 
 	if len(a.workers) != 2 {
 		t.Fatalf("expected 2 workers, got %d", len(a.workers))
@@ -238,7 +235,7 @@ func TestWaitForWorkers(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Do this")
+	w := worker.NewSessionWorker(a, sess, mock, "Do this")
 	a.workers["wait-1"] = w
 
 	ctx := context.Background()
@@ -272,7 +269,7 @@ func TestShutdown(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Working..."},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Do work")
+	w := worker.NewSessionWorker(a, sess, mock, "Do work")
 	a.workers["shutdown-1"] = w
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,4 +1,4 @@
-package agent
+package daemon
 
 import (
 	"context"
@@ -9,12 +9,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zhubert/plural-agent/internal/daemonstate"
+	"github.com/zhubert/plural-agent/internal/worker"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/exec"
 	"github.com/zhubert/plural-core/git"
 	"github.com/zhubert/plural-core/issues"
 	"github.com/zhubert/plural-core/session"
 )
+
+// testConfig creates a minimal config for testing.
+func testConfig() *config.Config {
+	return &config.Config{
+		Repos:              []string{},
+		Sessions:           []config.Session{},
+		AllowedTools:       []string{},
+		RepoAllowedTools:   make(map[string][]string),
+		AutoMaxTurns:       50,
+		AutoMaxDurationMin: 30,
+	}
+}
+
+// testSession creates a minimal session for testing.
+func testSession(id string) *config.Session {
+	return &config.Session{
+		ID:            id,
+		RepoPath:      "/test/repo",
+		WorkTree:      "/test/worktree-" + id,
+		Branch:        "feature-" + id,
+		Name:          "test/" + id,
+		CreatedAt:     time.Now(),
+		Started:       true,
+		Autonomous:    true,
+		Containerized: true,
+	}
+}
 
 // testDaemon creates a daemon suitable for testing with mock services.
 func testDaemon(cfg *config.Config) *Daemon {
@@ -24,9 +53,9 @@ func testDaemon(cfg *config.Config) *Daemon {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	registry := issues.NewProviderRegistry()
 
-	d := NewDaemon(cfg, gitSvc, sessSvc, registry, logger)
+	d := New(cfg, gitSvc, sessSvc, registry, logger)
 	d.sessionMgr.SetSkipMessageLoad(true)
-	d.state = NewDaemonState("/test/repo")
+	d.state = daemonstate.NewDaemonState("/test/repo")
 	return d
 }
 
@@ -37,10 +66,15 @@ func testDaemonWithExec(cfg *config.Config, mockExec *exec.MockExecutor) *Daemon
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	registry := issues.NewProviderRegistry()
 
-	d := NewDaemon(cfg, gitSvc, sessSvc, registry, logger)
+	d := New(cfg, gitSvc, sessSvc, registry, logger)
 	d.sessionMgr.SetSkipMessageLoad(true)
-	d.state = NewDaemonState("/test/repo")
+	d.state = daemonstate.NewDaemonState("/test/repo")
 	return d
+}
+
+// newMockDoneWorker creates a SessionWorker that is already done.
+func newMockDoneWorker() *worker.SessionWorker {
+	return worker.NewDoneWorker()
 }
 
 func TestDaemonOptions(t *testing.T) {
@@ -56,57 +90,57 @@ func TestDaemonOptions(t *testing.T) {
 		}
 	})
 
-	t.Run("WithDaemonOnce", func(t *testing.T) {
+	t.Run("WithOnce", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonOnce(true)(d)
+		WithOnce(true)(d)
 		if !d.once {
 			t.Error("expected once=true")
 		}
 	})
 
-	t.Run("WithDaemonRepoFilter", func(t *testing.T) {
+	t.Run("WithRepoFilter", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonRepoFilter("owner/repo")(d)
+		WithRepoFilter("owner/repo")(d)
 		if d.repoFilter != "owner/repo" {
 			t.Errorf("expected owner/repo, got %s", d.repoFilter)
 		}
 	})
 
-	t.Run("WithDaemonMaxConcurrent", func(t *testing.T) {
+	t.Run("WithMaxConcurrent", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonMaxConcurrent(5)(d)
+		WithMaxConcurrent(5)(d)
 		if d.getMaxConcurrent() != 5 {
 			t.Errorf("expected 5, got %d", d.getMaxConcurrent())
 		}
 	})
 
-	t.Run("WithDaemonAutoMerge false", func(t *testing.T) {
+	t.Run("WithAutoMerge false", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonAutoMerge(false)(d)
+		WithAutoMerge(false)(d)
 		if d.autoMerge {
 			t.Error("expected autoMerge=false")
 		}
 	})
 
-	t.Run("WithDaemonPollInterval", func(t *testing.T) {
+	t.Run("WithPollInterval", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonPollInterval(10 * time.Second)(d)
+		WithPollInterval(10 * time.Second)(d)
 		if d.pollInterval != 10*time.Second {
 			t.Errorf("expected 10s, got %v", d.pollInterval)
 		}
 	})
 
-	t.Run("WithDaemonMergeMethod", func(t *testing.T) {
+	t.Run("WithMergeMethod", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonMergeMethod("squash")(d)
+		WithMergeMethod("squash")(d)
 		if d.mergeMethod != "squash" {
 			t.Errorf("expected squash, got %s", d.mergeMethod)
 		}
 	})
 
-	t.Run("WithDaemonReviewPollInterval", func(t *testing.T) {
+	t.Run("WithReviewPollInterval", func(t *testing.T) {
 		d := testDaemon(cfg)
-		WithDaemonReviewPollInterval(5 * time.Second)(d)
+		WithReviewPollInterval(5 * time.Second)(d)
 		if d.reviewPollInterval != 5*time.Second {
 			t.Errorf("expected 5s, got %v", d.reviewPollInterval)
 		}
@@ -177,7 +211,7 @@ func TestDaemon_ActiveSlotCount(t *testing.T) {
 		t.Error("expected 0 active slots")
 	}
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:       "item-1",
 		IssueRef: config.IssueRef{Source: "github", ID: "1"},
 	})
@@ -194,7 +228,7 @@ func TestDaemon_CollectCompletedWorkers(t *testing.T) {
 	d := testDaemon(cfg)
 
 	// Add a work item in coding phase with a done worker
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
@@ -203,7 +237,7 @@ func TestDaemon_CollectCompletedWorkers(t *testing.T) {
 	})
 	// Set phase after AddWorkItem since it resets Phase to "idle"
 	d.state.AdvanceWorkItem("item-1", "coding", "async_pending")
-	d.state.GetWorkItem("item-1").State = WorkItemCoding
+	d.state.GetWorkItem("item-1").State = daemonstate.WorkItemCoding
 
 	// Add a session for the work item
 	sess := testSession("sess-1")
@@ -243,14 +277,14 @@ func TestDaemon_ProcessWorkItems_AwaitingReview_PRClosed(t *testing.T) {
 	cfg.AddSession(*sess)
 
 	// Add work item in await_review step
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
 		Branch:      "feature-sess-1",
 		CurrentStep: "await_review",
 		Phase:       "idle",
-		State:       WorkItemCoding, // Non-terminal so it's active
+		State:       daemonstate.WorkItemCoding, // Non-terminal so it's active
 	})
 
 	// Load workflow configs to create engines
@@ -294,14 +328,14 @@ func TestDaemon_ProcessWorkItems_AwaitingCI_Passing(t *testing.T) {
 	cfg.AddSession(*sess)
 
 	// Add work item in await_ci step
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
 		Branch:      "feature-sess-1",
 		CurrentStep: "await_ci",
 		Phase:       "idle",
-		State:       WorkItemCoding, // Non-terminal
+		State:       daemonstate.WorkItemCoding, // Non-terminal
 	})
 
 	d.loadWorkflowConfigs()
@@ -311,7 +345,7 @@ func TestDaemon_ProcessWorkItems_AwaitingCI_Passing(t *testing.T) {
 
 	// After CI passes, engine should advance to merge and then done
 	item := d.state.GetWorkItem("item-1")
-	if item.IsTerminal() && item.State == WorkItemCompleted {
+	if item.IsTerminal() && item.State == daemonstate.WorkItemCompleted {
 		// Successfully merged and completed
 	} else {
 		// May still be in progress depending on sync chain execution
@@ -420,19 +454,19 @@ func TestDaemon_ReviewPollIntervalGating(t *testing.T) {
 	cfg.AddSession(*sess)
 
 	// Add work item in await_review step
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
 		Branch:      "feature-sess-1",
 		CurrentStep: "await_review",
 		Phase:       "idle",
-		State:       WorkItemCoding, // Non-terminal
+		State:       daemonstate.WorkItemCoding, // Non-terminal
 	})
 
 	d.loadWorkflowConfigs()
 
-	// Process — review polling should be skipped because interval hasn't elapsed
+	// Process -- review polling should be skipped because interval hasn't elapsed
 	d.processWorkItems(context.Background())
 
 	// Should still be in await_review (review poll was gated)
@@ -444,50 +478,12 @@ func TestDaemon_ReviewPollIntervalGating(t *testing.T) {
 	// Now set lastReviewPollAt far in the past to simulate elapsed interval
 	d.lastReviewPollAt = time.Now().Add(-2 * time.Hour)
 
-	// Process again — review polling should now proceed
+	// Process again -- review polling should now proceed
 	d.processWorkItems(context.Background())
 
 	// lastReviewPollAt should be updated
 	if time.Since(d.lastReviewPollAt) > 1*time.Second {
 		t.Error("expected lastReviewPollAt to be updated after review poll ran")
-	}
-}
-
-func TestDaemon_ToAgent(t *testing.T) {
-	cfg := testConfig()
-	d := testDaemon(cfg)
-	d.repoFilter = "owner/repo"
-	d.maxConcurrent = 5
-	d.maxTurns = 100
-	d.maxDuration = 60
-	d.autoMerge = true
-	d.mergeMethod = "squash"
-
-	a := d.toAgent()
-
-	if a.config != d.config {
-		t.Error("config mismatch")
-	}
-	if a.repoFilter != "owner/repo" {
-		t.Error("repoFilter mismatch")
-	}
-	if a.maxConcurrent != 5 {
-		t.Error("maxConcurrent mismatch")
-	}
-	if a.maxTurns != 100 {
-		t.Error("maxTurns mismatch")
-	}
-	if a.maxDuration != 60 {
-		t.Error("maxDuration mismatch")
-	}
-	if !a.autoMerge {
-		t.Error("autoMerge mismatch")
-	}
-	if a.mergeMethod != "squash" {
-		t.Errorf("mergeMethod mismatch: expected squash, got %s", a.mergeMethod)
-	}
-	if !a.daemonManaged {
-		t.Error("expected daemonManaged=true for daemon-created agent")
 	}
 }
 
@@ -497,7 +493,7 @@ func TestDaemon_RecoverFromState_Queued(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:       "item-1",
 		IssueRef: config.IssueRef{Source: "github", ID: "1"},
 	})
@@ -506,7 +502,7 @@ func TestDaemon_RecoverFromState_Queued(t *testing.T) {
 
 	// Queued items should remain queued
 	item := d.state.GetWorkItem("item-1")
-	if item.State != WorkItemQueued {
+	if item.State != daemonstate.WorkItemQueued {
 		t.Errorf("expected queued, got %s", item.State)
 	}
 }
@@ -528,7 +524,7 @@ func TestDaemon_RecoverFromState_AsyncPendingWithPR(t *testing.T) {
 	sess := testSession("sess-1")
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
@@ -563,7 +559,7 @@ func TestDaemon_RecoverFromState_AsyncPendingNoPR(t *testing.T) {
 	sess := testSession("sess-1")
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
@@ -576,7 +572,7 @@ func TestDaemon_RecoverFromState_AsyncPendingNoPR(t *testing.T) {
 	d.recoverFromState(context.Background())
 
 	item := d.state.GetWorkItem("item-1")
-	if item.State != WorkItemQueued {
+	if item.State != daemonstate.WorkItemQueued {
 		t.Errorf("expected queued (no PR), got %s", item.State)
 	}
 }
@@ -585,7 +581,7 @@ func TestDaemon_RecoverFromState_AddressingFeedback(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
@@ -610,7 +606,7 @@ func TestDaemon_RecoverFromState_Pushing(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
@@ -632,13 +628,13 @@ func TestDaemon_RecoverFromState_TerminalStatesUntouched(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:       "completed-1",
 		IssueRef: config.IssueRef{Source: "github", ID: "1"},
 	})
 	d.state.MarkWorkItemTerminal("completed-1", false)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:       "failed-1",
 		IssueRef: config.IssueRef{Source: "github", ID: "2"},
 	})
@@ -659,7 +655,7 @@ func TestDaemon_RecoverFromState_AsyncPendingNoBranch(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		CurrentStep: "coding",
@@ -670,7 +666,7 @@ func TestDaemon_RecoverFromState_AsyncPendingNoBranch(t *testing.T) {
 	d.recoverFromState(context.Background())
 
 	item := d.state.GetWorkItem("item-1")
-	if item.State != WorkItemQueued {
+	if item.State != daemonstate.WorkItemQueued {
 		t.Errorf("expected queued (no branch), got %s", item.State)
 	}
 }
@@ -695,7 +691,7 @@ func TestDaemon_PollForNewIssues(t *testing.T) {
 		d.maxConcurrent = 1
 
 		// Add an active item with slot consumed
-		d.state.AddWorkItem(&WorkItem{
+		d.state.AddWorkItem(&daemonstate.WorkItem{
 			ID:       "active-1",
 			IssueRef: config.IssueRef{Source: "github", ID: "1"},
 		})
@@ -710,7 +706,7 @@ func TestDaemon_PollForNewIssues(t *testing.T) {
 }
 
 func TestDaemon_IssueFromWorkItem(t *testing.T) {
-	item := &WorkItem{
+	item := &daemonstate.WorkItem{
 		ID: "item-1",
 		IssueRef: config.IssueRef{
 			Source: "github",
@@ -742,17 +738,17 @@ func TestDaemon_StartQueuedItems(t *testing.T) {
 		cfg.Repos = []string{"/test/repo"}
 
 		// Add two queued items
-		d.state.AddWorkItem(&WorkItem{
+		d.state.AddWorkItem(&daemonstate.WorkItem{
 			ID:       "item-1",
 			IssueRef: config.IssueRef{Source: "github", ID: "1", Title: "Bug 1"},
 		})
-		d.state.AddWorkItem(&WorkItem{
+		d.state.AddWorkItem(&daemonstate.WorkItem{
 			ID:       "item-2",
 			IssueRef: config.IssueRef{Source: "github", ID: "2", Title: "Bug 2"},
 		})
 
 		// Add an active item to fill the slot
-		d.state.AddWorkItem(&WorkItem{
+		d.state.AddWorkItem(&daemonstate.WorkItem{
 			ID:       "active-1",
 			IssueRef: config.IssueRef{Source: "github", ID: "3"},
 		})
@@ -761,10 +757,10 @@ func TestDaemon_StartQueuedItems(t *testing.T) {
 		d.startQueuedItems(context.Background())
 
 		// Both should still be queued since slot is full
-		if d.state.GetWorkItem("item-1").State != WorkItemQueued {
+		if d.state.GetWorkItem("item-1").State != daemonstate.WorkItemQueued {
 			t.Error("item-1 should still be queued")
 		}
-		if d.state.GetWorkItem("item-2").State != WorkItemQueued {
+		if d.state.GetWorkItem("item-2").State != daemonstate.WorkItemQueued {
 			t.Error("item-2 should still be queued")
 		}
 	})
@@ -780,7 +776,7 @@ func TestDaemon_HandleAsyncComplete_PRAlreadyCreated(t *testing.T) {
 	cfg.AddSession(*sess)
 
 	// Add a work item in coding step with async_pending phase and a done worker
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-pr-created",
 		IssueRef:    config.IssueRef{Source: "github", ID: "100"},
 		SessionID:   "sess-pr-created",
@@ -818,7 +814,7 @@ func TestDaemon_HandleAsyncComplete_PRAlreadyMerged(t *testing.T) {
 	sess.PRMerged = true
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-pr-merged",
 		IssueRef:    config.IssueRef{Source: "github", ID: "101"},
 		SessionID:   "sess-pr-merged",
@@ -840,7 +836,7 @@ func TestDaemon_HandleAsyncComplete_PRAlreadyMerged(t *testing.T) {
 
 	// Item should be completed (fast-pathed)
 	item := d.state.GetWorkItem("item-pr-merged")
-	if item.State != WorkItemCompleted {
+	if item.State != daemonstate.WorkItemCompleted {
 		t.Errorf("expected completed, got %s", item.State)
 	}
 	if item.CompletedAt == nil {
@@ -892,7 +888,7 @@ func TestDaemon_WorkItemView_UsesSessionRepoPath(t *testing.T) {
 	sess.RepoPath = "/actual/repo/path"
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "sess-1",
@@ -915,7 +911,7 @@ func TestDaemon_WorkItemView_FallsBackToRepoFilter(t *testing.T) {
 	d.repoFilter = "/fallback/repo"
 
 	// No session added for this work item
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:          "item-1",
 		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
 		SessionID:   "nonexistent-session",
@@ -929,13 +925,4 @@ func TestDaemon_WorkItemView_FallsBackToRepoFilter(t *testing.T) {
 	if view.RepoPath != "/fallback/repo" {
 		t.Errorf("expected fallback to repoFilter /fallback/repo, got %s", view.RepoPath)
 	}
-}
-
-// newMockDoneWorker creates a SessionWorker that is already done.
-func newMockDoneWorker() *SessionWorker {
-	w := &SessionWorker{
-		done: make(chan struct{}),
-	}
-	close(w.done)
-	return w
 }

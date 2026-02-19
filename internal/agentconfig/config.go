@@ -1,13 +1,13 @@
-package agent
+package agentconfig
 
 import "github.com/zhubert/plural-core/config"
 
-// AgentConfig defines the configuration interface required by the agent package.
-// This decouples the agent from the concrete config.Config struct, allowing it
-// to depend only on the methods it actually uses.
+// Config defines the configuration interface required by the agent and worker packages.
+// This decouples them from the concrete config.Config struct, allowing them
+// to depend only on the methods they actually use.
 //
 // *config.Config satisfies this interface implicitly.
-type AgentConfig interface {
+type Config interface {
 	// Session CRUD
 	GetSession(id string) *config.Session
 	GetSessions() []config.Session

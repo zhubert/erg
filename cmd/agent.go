@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/zhubert/plural-agent/internal/agent"
+	"github.com/zhubert/plural-agent/internal/daemon"
 	"github.com/zhubert/plural-core/cli"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/git"
@@ -127,36 +127,36 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	agentRepo = resolved
 
 	// Build daemon options
-	var opts []agent.DaemonOption
+	var opts []daemon.Option
 	if agentOnce {
-		opts = append(opts, agent.WithDaemonOnce(true))
+		opts = append(opts, daemon.WithOnce(true))
 	}
-	opts = append(opts, agent.WithDaemonRepoFilter(agentRepo))
+	opts = append(opts, daemon.WithRepoFilter(agentRepo))
 	if agentMaxConcurrent > 0 {
-		opts = append(opts, agent.WithDaemonMaxConcurrent(agentMaxConcurrent))
+		opts = append(opts, daemon.WithMaxConcurrent(agentMaxConcurrent))
 	}
 	if agentMaxTurns > 0 {
-		opts = append(opts, agent.WithDaemonMaxTurns(agentMaxTurns))
+		opts = append(opts, daemon.WithMaxTurns(agentMaxTurns))
 	}
 	if agentMaxDuration > 0 {
-		opts = append(opts, agent.WithDaemonMaxDuration(agentMaxDuration))
+		opts = append(opts, daemon.WithMaxDuration(agentMaxDuration))
 	}
 	if agentAutoAddressPRComments {
-		opts = append(opts, agent.WithDaemonAutoAddressPRComments(true))
+		opts = append(opts, daemon.WithAutoAddressPRComments(true))
 	}
 	if agentAutoBroadcastPR {
-		opts = append(opts, agent.WithDaemonAutoBroadcastPR(true))
+		opts = append(opts, daemon.WithAutoBroadcastPR(true))
 	}
 	// Auto-merge is on by default for daemon; --no-auto-merge disables it
 	if agentNoAutoMerge {
-		opts = append(opts, agent.WithDaemonAutoMerge(false))
+		opts = append(opts, daemon.WithAutoMerge(false))
 	}
 	if agentMergeMethod != "" {
-		opts = append(opts, agent.WithDaemonMergeMethod(agentMergeMethod))
+		opts = append(opts, daemon.WithMergeMethod(agentMergeMethod))
 	}
 
 	// Create daemon
-	d := agent.NewDaemon(cfg, gitSvc, sessSvc, issueRegistry, agentLogger, opts...)
+	d := daemon.New(cfg, gitSvc, sessSvc, issueRegistry, agentLogger, opts...)
 
 	// Set up signal handling
 	ctx, cancel := context.WithCancel(context.Background())

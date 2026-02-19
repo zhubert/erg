@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/zhubert/plural-agent/internal/agent"
+	"github.com/zhubert/plural-agent/internal/daemonstate"
 )
 
 var agentCleanSkipConfirm bool
@@ -34,8 +34,8 @@ func runAgentClean(cmd *cobra.Command, args []string) error {
 
 func runAgentCleanWithReader(input io.Reader) error {
 	// Check what exists
-	stateExists := agent.DaemonStateExists()
-	lockFiles, err := agent.FindDaemonLocks()
+	stateExists := daemonstate.StateExists()
+	lockFiles, err := daemonstate.FindLocks()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: error finding lock files: %v\n", err)
 	}
@@ -71,7 +71,7 @@ func runAgentCleanWithReader(input io.Reader) error {
 	// Clean state file
 	var stateRemoved bool
 	if stateExists {
-		if err := agent.ClearDaemonState(); err != nil {
+		if err := daemonstate.ClearState(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: error removing state file: %v\n", err)
 		} else {
 			stateRemoved = true
@@ -79,7 +79,7 @@ func runAgentCleanWithReader(input io.Reader) error {
 	}
 
 	// Clean lock files
-	locksRemoved, err := agent.ClearDaemonLocks()
+	locksRemoved, err := daemonstate.ClearLocks()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: error removing lock files: %v\n", err)
 	}

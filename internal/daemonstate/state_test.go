@@ -1,4 +1,4 @@
-package agent
+package daemonstate
 
 import (
 	"encoding/json"
@@ -293,7 +293,7 @@ func TestDaemonState_SaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	state := &DaemonState{
-		Version:   daemonStateVersion,
+		Version:   stateVersion,
 		RepoPath:  "/test/repo",
 		WorkItems: make(map[string]*WorkItem),
 		StartedAt: time.Now().Truncate(time.Millisecond),
@@ -327,8 +327,8 @@ func TestDaemonState_SaveAndLoad(t *testing.T) {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
-	if loaded.Version != daemonStateVersion {
-		t.Errorf("expected version %d, got %d", daemonStateVersion, loaded.Version)
+	if loaded.Version != stateVersion {
+		t.Errorf("expected version %d, got %d", stateVersion, loaded.Version)
 	}
 	if loaded.RepoPath != "/test/repo" {
 		t.Errorf("expected repo path /test/repo, got %s", loaded.RepoPath)
@@ -354,7 +354,7 @@ func TestDaemonState_SaveAtomicity(t *testing.T) {
 	fp := filepath.Join(tmpDir, "daemon-state.json")
 
 	state := &DaemonState{
-		Version:   daemonStateVersion,
+		Version:   stateVersion,
 		RepoPath:  "/test/repo",
 		WorkItems: make(map[string]*WorkItem),
 		StartedAt: time.Now(),
@@ -390,6 +390,68 @@ func TestDaemonState_SaveAtomicity(t *testing.T) {
 	json.Unmarshal(data, &loaded)
 	if len(loaded.WorkItems) != 2 {
 		t.Errorf("expected 2 work items, got %d", len(loaded.WorkItems))
+	}
+}
+
+func TestNewDaemonState(t *testing.T) {
+	state := NewDaemonState("/my/repo")
+
+	if state.Version != stateVersion {
+		t.Errorf("expected version %d, got %d", stateVersion, state.Version)
+	}
+	if state.RepoPath != "/my/repo" {
+		t.Errorf("expected repo path /my/repo, got %s", state.RepoPath)
+	}
+	if state.WorkItems == nil {
+		t.Error("expected WorkItems map to be initialized")
+	}
+	if len(state.WorkItems) != 0 {
+		t.Errorf("expected 0 work items, got %d", len(state.WorkItems))
+	}
+	if state.StartedAt.IsZero() {
+		t.Error("expected StartedAt to be set")
+	}
+}
+
+func TestClearState(t *testing.T) {
+	tmpDir := t.TempDir()
+	fp := filepath.Join(tmpDir, "daemon-state.json")
+
+	state := &DaemonState{
+		Version:   stateVersion,
+		RepoPath:  "/test/repo",
+		WorkItems: make(map[string]*WorkItem),
+		StartedAt: time.Now(),
+		filePath:  fp,
+	}
+	if err := state.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	if _, err := os.Stat(fp); err != nil {
+		t.Fatalf("expected state file to exist: %v", err)
+	}
+
+	if err := os.Remove(fp); err != nil {
+		t.Fatalf("failed to remove state file: %v", err)
+	}
+
+	if _, err := os.Stat(fp); !os.IsNotExist(err) {
+		t.Error("expected state file to be removed")
+	}
+}
+
+func TestLockFilePath(t *testing.T) {
+	path1 := LockFilePath("/repo/a")
+	path2 := LockFilePath("/repo/b")
+	path3 := LockFilePath("/repo/a")
+
+	if path1 != path3 {
+		t.Errorf("expected same lock path for same repo, got %s vs %s", path1, path3)
+	}
+
+	if path1 == path2 {
+		t.Error("expected different lock paths for different repos")
 	}
 }
 
@@ -434,67 +496,4 @@ func TestDaemonLock_DoubleAcquireFails(t *testing.T) {
 	}
 
 	os.Remove(lockPath)
-}
-
-func TestNewDaemonState(t *testing.T) {
-	state := NewDaemonState("/my/repo")
-
-	if state.Version != daemonStateVersion {
-		t.Errorf("expected version %d, got %d", daemonStateVersion, state.Version)
-	}
-	if state.RepoPath != "/my/repo" {
-		t.Errorf("expected repo path /my/repo, got %s", state.RepoPath)
-	}
-	if state.WorkItems == nil {
-		t.Error("expected WorkItems map to be initialized")
-	}
-	if len(state.WorkItems) != 0 {
-		t.Errorf("expected 0 work items, got %d", len(state.WorkItems))
-	}
-	if state.StartedAt.IsZero() {
-		t.Error("expected StartedAt to be set")
-	}
-}
-
-
-func TestClearDaemonState(t *testing.T) {
-	tmpDir := t.TempDir()
-	fp := filepath.Join(tmpDir, "daemon-state.json")
-
-	state := &DaemonState{
-		Version:   daemonStateVersion,
-		RepoPath:  "/test/repo",
-		WorkItems: make(map[string]*WorkItem),
-		StartedAt: time.Now(),
-		filePath:  fp,
-	}
-	if err := state.Save(); err != nil {
-		t.Fatalf("Save failed: %v", err)
-	}
-
-	if _, err := os.Stat(fp); err != nil {
-		t.Fatalf("expected state file to exist: %v", err)
-	}
-
-	if err := os.Remove(fp); err != nil {
-		t.Fatalf("failed to remove state file: %v", err)
-	}
-
-	if _, err := os.Stat(fp); !os.IsNotExist(err) {
-		t.Error("expected state file to be removed")
-	}
-}
-
-func TestLockFilePath(t *testing.T) {
-	path1 := lockFilePath("/repo/a")
-	path2 := lockFilePath("/repo/b")
-	path3 := lockFilePath("/repo/a")
-
-	if path1 != path3 {
-		t.Errorf("expected same lock path for same repo, got %s vs %s", path1, path3)
-	}
-
-	if path1 == path2 {
-		t.Error("expected different lock paths for different repos")
-	}
 }

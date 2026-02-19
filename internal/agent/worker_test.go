@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zhubert/plural-agent/internal/worker"
 	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/exec"
@@ -72,7 +73,7 @@ func TestWorkerCompletesAfterDoneChunk(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this issue")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this issue")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -82,8 +83,8 @@ func TestWorkerCompletesAfterDoneChunk(t *testing.T) {
 	if !w.Done() {
 		t.Error("expected worker to be done")
 	}
-	if w.turns != 1 {
-		t.Errorf("expected 1 turn, got %d", w.turns)
+	if w.Turns() != 1 {
+		t.Errorf("expected 1 turn, got %d", w.Turns())
 	}
 }
 
@@ -102,15 +103,15 @@ func TestWorkerHandlesMultipleChunks(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	w.Start(ctx)
 	w.Wait()
 
-	if w.turns != 1 {
-		t.Errorf("expected 1 turn, got %d", w.turns)
+	if w.Turns() != 1 {
+		t.Errorf("expected 1 turn, got %d", w.Turns())
 	}
 }
 
@@ -126,7 +127,7 @@ func TestWorkerStopsOnErrorChunk(t *testing.T) {
 		claude.ResponseChunk{Error: context.DeadlineExceeded, Done: true},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -151,7 +152,7 @@ func TestWorkerStopsOnContextCancellation(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Working..."},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w.Start(ctx)
@@ -190,7 +191,7 @@ func TestWorkerRespectsMaxTurns(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -228,7 +229,7 @@ func TestWorkerAutoRespondsToQuestion(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Working"},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -291,7 +292,7 @@ func TestWorkerAutoApprovesPlan(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Planning..."},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -326,7 +327,7 @@ func TestWorkerDoneBeforeStart(t *testing.T) {
 	sess := testSession("test-8")
 
 	mock := claude.NewMockRunner("test-8", true, nil)
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 
 	if w.Done() {
 		t.Error("worker should not be done before Start()")
@@ -340,16 +341,16 @@ func TestNewSessionWorker(t *testing.T) {
 	sess := testSession("test-9")
 
 	mock := claude.NewMockRunner("test-9", true, nil)
-	w := NewSessionWorker(a, sess, mock, "Initial message")
+	w := worker.NewSessionWorker(a, sess, mock, "Initial message")
 
-	if w.sessionID != "test-9" {
-		t.Errorf("expected sessionID 'test-9', got %q", w.sessionID)
+	if w.SessionID() != "test-9" {
+		t.Errorf("expected sessionID 'test-9', got %q", w.SessionID())
 	}
-	if w.initialMsg != "Initial message" {
-		t.Errorf("expected initialMsg 'Initial message', got %q", w.initialMsg)
+	if w.InitialMsg() != "Initial message" {
+		t.Errorf("expected initialMsg 'Initial message', got %q", w.InitialMsg())
 	}
-	if w.turns != 0 {
-		t.Errorf("expected 0 turns initially, got %d", w.turns)
+	if w.Turns() != 0 {
+		t.Errorf("expected 0 turns initially, got %d", w.Turns())
 	}
 }
 
@@ -371,7 +372,7 @@ func TestWorkerSendsInitialMessage(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "GitHub Issue #42: Fix bug\n\nDetails here")
+	w := worker.NewSessionWorker(a, sess, mock, "GitHub Issue #42: Fix bug\n\nDetails here")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -394,11 +395,11 @@ func TestCheckLimits(t *testing.T) {
 		a := testAgent(cfg)
 
 		sess := testSession("test-limits-1")
-		w := NewSessionWorker(a, sess, nil, "")
-		w.turns = 5
-		w.startTime = time.Now()
+		w := worker.NewSessionWorker(a, sess, nil, "")
+		w.SetTurns(5)
+		w.SetStartTime(time.Now())
 
-		if w.checkLimits() {
+		if w.CheckLimits() {
 			t.Error("should not hit limits")
 		}
 	})
@@ -409,10 +410,10 @@ func TestCheckLimits(t *testing.T) {
 		a := testAgent(cfg)
 
 		sess := testSession("test-limits-2")
-		w := NewSessionWorker(a, sess, nil, "")
-		w.turns = 5
+		w := worker.NewSessionWorker(a, sess, nil, "")
+		w.SetTurns(5)
 
-		if !w.checkLimits() {
+		if !w.CheckLimits() {
 			t.Error("should hit turn limit")
 		}
 	})
@@ -423,10 +424,10 @@ func TestCheckLimits(t *testing.T) {
 		a := testAgent(cfg)
 
 		sess := testSession("test-limits-3")
-		w := NewSessionWorker(a, sess, nil, "")
-		w.startTime = time.Now().Add(-2 * time.Minute) // Started 2 minutes ago
+		w := worker.NewSessionWorker(a, sess, nil, "")
+		w.SetStartTime(time.Now().Add(-2 * time.Minute)) // Started 2 minutes ago
 
-		if !w.checkLimits() {
+		if !w.CheckLimits() {
 			t.Error("should hit duration limit")
 		}
 	})
@@ -442,9 +443,9 @@ func TestHasActiveChildren(t *testing.T) {
 		cfg.AddSession(*sess)
 
 		mock := claude.NewMockRunner("supervisor-1", true, nil)
-		w := NewSessionWorker(a, sess, mock, "")
+		w := worker.NewSessionWorker(a, sess, mock, "")
 
-		if w.hasActiveChildren() {
+		if w.HasActiveChildren() {
 			t.Error("should have no active children")
 		}
 	})
@@ -464,13 +465,13 @@ func TestHasActiveChildren(t *testing.T) {
 
 		// Create a child worker that is not done
 		childMock := claude.NewMockRunner("child-1", true, nil)
-		childWorker := NewSessionWorker(a, childSess, childMock, "")
+		childWorker := worker.NewSessionWorker(a, childSess, childMock, "")
 		a.workers["child-1"] = childWorker
 
 		mock := claude.NewMockRunner("supervisor-2", true, nil)
-		w := NewSessionWorker(a, sess, mock, "")
+		w := worker.NewSessionWorker(a, sess, mock, "")
 
-		if !w.hasActiveChildren() {
+		if !w.HasActiveChildren() {
 			t.Error("should have active children")
 		}
 	})
@@ -488,16 +489,14 @@ func TestHasActiveChildren(t *testing.T) {
 		cfg.AddSession(*childSess)
 		cfg.AddChildSession("supervisor-3", "child-2")
 
-		// Create a child worker that is done
-		childMock := claude.NewMockRunner("child-2", true, nil)
-		childWorker := NewSessionWorker(a, childSess, childMock, "")
-		close(childWorker.done) // Mark as done
+		// Create a child worker that is already done
+		childWorker := worker.NewDoneWorker()
 		a.workers["child-2"] = childWorker
 
 		mock := claude.NewMockRunner("supervisor-3", true, nil)
-		w := NewSessionWorker(a, sess, mock, "")
+		w := worker.NewSessionWorker(a, sess, mock, "")
 
-		if w.hasActiveChildren() {
+		if w.HasActiveChildren() {
 			t.Error("should not have active children (child is done)")
 		}
 	})
@@ -579,7 +578,7 @@ func TestWorkerAutoRespondsToQuestionNoOptions(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Working"},
 	)
 
-	w := NewSessionWorker(a, sess, mock, "Solve this")
+	w := worker.NewSessionWorker(a, sess, mock, "Solve this")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -667,9 +666,9 @@ func TestSessionManagerStateManager(t *testing.T) {
 // continues running when auto-merge is active to process pending messages
 // (e.g., review comments from the auto-merge state machine).
 func TestWorkerKeepsRunningDuringAutoMerge(t *testing.T) {
-	origInterval := autoMergeWorkerPollInterval
-	autoMergeWorkerPollInterval = 100 * time.Millisecond
-	defer func() { autoMergeWorkerPollInterval = origInterval }()
+	origInterval := worker.AutoMergeWorkerPollInterval
+	worker.AutoMergeWorkerPollInterval = 100 * time.Millisecond
+	defer func() { worker.AutoMergeWorkerPollInterval = origInterval }()
 
 	cfg := testConfig()
 	sess := testSession("test-automerge")
@@ -691,7 +690,7 @@ func TestWorkerKeepsRunningDuringAutoMerge(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	worker := NewSessionWorker(a, sess, mockRunner, "Test task")
+	worker := worker.NewSessionWorker(a, sess, mockRunner, "Test task")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -719,9 +718,9 @@ func TestWorkerKeepsRunningDuringAutoMerge(t *testing.T) {
 // TestWorkerProcessesPendingMessagesDuringAutoMerge verifies that pending
 // messages (e.g., review comments) are sent to Claude while auto-merge is running.
 func TestWorkerProcessesPendingMessagesDuringAutoMerge(t *testing.T) {
-	origInterval := autoMergeWorkerPollInterval
-	autoMergeWorkerPollInterval = 100 * time.Millisecond
-	defer func() { autoMergeWorkerPollInterval = origInterval }()
+	origInterval := worker.AutoMergeWorkerPollInterval
+	worker.AutoMergeWorkerPollInterval = 100 * time.Millisecond
+	defer func() { worker.AutoMergeWorkerPollInterval = origInterval }()
 
 	cfg := testConfig()
 	sess := testSession("test-automerge-comments")
@@ -744,7 +743,7 @@ func TestWorkerProcessesPendingMessagesDuringAutoMerge(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	worker := NewSessionWorker(a, sess, mockRunner, "Test task")
+	worker := worker.NewSessionWorker(a, sess, mockRunner, "Test task")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -773,18 +772,18 @@ func TestWorkerProcessesPendingMessagesDuringAutoMerge(t *testing.T) {
 	worker.Wait()
 
 	// Verify worker processed at least 2 turns (initial + review comments)
-	if worker.turns < 2 {
-		t.Errorf("Expected at least 2 turns (initial + review comments), got %d", worker.turns)
+	if worker.Turns() < 2 {
+		t.Errorf("Expected at least 2 turns (initial + review comments), got %d", worker.Turns())
 	}
 }
 
 // TestWorkerAutoMergeDoesNotIncrementTurns verifies that the worker's auto-merge
-// polling loop does NOT increment w.turns. Only actual Claude API round-trips
+// polling loop does NOT increment w.Turns(). Only actual Claude API round-trips
 // should count as turns.
 func TestWorkerAutoMergeDoesNotIncrementTurns(t *testing.T) {
-	origInterval := autoMergeWorkerPollInterval
-	autoMergeWorkerPollInterval = 100 * time.Millisecond
-	defer func() { autoMergeWorkerPollInterval = origInterval }()
+	origInterval := worker.AutoMergeWorkerPollInterval
+	worker.AutoMergeWorkerPollInterval = 100 * time.Millisecond
+	defer func() { worker.AutoMergeWorkerPollInterval = origInterval }()
 
 	cfg := testConfig()
 	sess := testSession("test-automerge-turns")
@@ -806,7 +805,7 @@ func TestWorkerAutoMergeDoesNotIncrementTurns(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	worker := NewSessionWorker(a, sess, mockRunner, "Test task")
+	worker := worker.NewSessionWorker(a, sess, mockRunner, "Test task")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -818,12 +817,12 @@ func TestWorkerAutoMergeDoesNotIncrementTurns(t *testing.T) {
 	// At this point worker should have 1 turn from the initial response
 	// and be in auto-merge polling mode
 
-	// Let it poll a couple of cycles (autoMergeWorkerPollInterval is 15s
+	// Let it poll a couple of cycles (AutoMergeWorkerPollInterval is 15s
 	// but the worker should check every cycle). We'll just wait a short
 	// time and then mark as merged.
 	time.Sleep(300 * time.Millisecond)
 
-	turnsBeforeMerge := worker.turns
+	turnsBeforeMerge := worker.Turns()
 
 	// Mark PR as merged to let the worker exit
 	cfg.MarkSessionPRMerged(sess.ID)
@@ -832,12 +831,12 @@ func TestWorkerAutoMergeDoesNotIncrementTurns(t *testing.T) {
 	worker.Wait()
 
 	// Turns should not have increased beyond what was set before auto-merge polling
-	if worker.turns != turnsBeforeMerge {
+	if worker.Turns() != turnsBeforeMerge {
 		t.Errorf("expected turns to remain at %d during auto-merge polling, got %d",
-			turnsBeforeMerge, worker.turns)
+			turnsBeforeMerge, worker.Turns())
 	}
-	if worker.turns != 1 {
-		t.Errorf("expected exactly 1 turn (initial response only), got %d", worker.turns)
+	if worker.Turns() != 1 {
+		t.Errorf("expected exactly 1 turn (initial response only), got %d", worker.Turns())
 	}
 }
 
@@ -874,7 +873,7 @@ func TestWorkerDaemonManagedSkipsAutoMerge(t *testing.T) {
 		claude.ResponseChunk{Done: true},
 	)
 
-	worker := NewSessionWorker(a, sess, mockRunner, "Test task")
+	worker := worker.NewSessionWorker(a, sess, mockRunner, "Test task")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -989,7 +988,7 @@ func TestWorkerHandleCreatePRSavesMessagesBeforePR(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Working..."},
 	)
 
-	worker := NewSessionWorker(a, sess, mockRunner, "Test task")
+	worker := worker.NewSessionWorker(a, sess, mockRunner, "Test task")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -1094,7 +1093,7 @@ func TestWorkerDaemonManagedHandleCreatePRSkipsAutoMerge(t *testing.T) {
 		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "Working..."},
 	)
 
-	worker := NewSessionWorker(a, sess, mockRunner, "Test task")
+	worker := worker.NewSessionWorker(a, sess, mockRunner, "Test task")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

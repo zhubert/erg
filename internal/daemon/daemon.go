@@ -1,4 +1,4 @@
-package agent
+package daemon
 
 import (
 	"context"
@@ -7,30 +7,40 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zhubert/plural-core/manager"
+	"github.com/zhubert/plural-agent/internal/agentconfig"
+	"github.com/zhubert/plural-agent/internal/daemonstate"
+	"github.com/zhubert/plural-agent/internal/worker"
+	"github.com/zhubert/plural-agent/internal/workflow"
+	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/git"
 	"github.com/zhubert/plural-core/issues"
+	"github.com/zhubert/plural-core/manager"
 	"github.com/zhubert/plural-core/session"
-	"github.com/zhubert/plural-agent/internal/workflow"
+)
+
+const (
+	defaultPollInterval       = 30 * time.Second
+	defaultReviewPollInterval = 60 * time.Second
+	autonomousFilterLabel     = "queued"
 )
 
 // Daemon is the persistent orchestrator that manages the full lifecycle of work items.
 type Daemon struct {
-	config         AgentConfig
+	config         agentconfig.Config
 	gitService     *git.GitService
 	sessionService *session.SessionService
 	sessionMgr     *manager.SessionManager
 	issueRegistry  *issues.ProviderRegistry
-	state          *DaemonState
-	lock           *DaemonLock
-	workers         map[string]*SessionWorker
+	state          *daemonstate.DaemonState
+	lock           *daemonstate.DaemonLock
+	workers        map[string]*worker.SessionWorker
 	workflowConfigs map[string]*workflow.Config // keyed by repo path
-	engines         map[string]*workflow.Engine // keyed by repo path
-	mu              sync.Mutex
-	logger          *slog.Logger
+	engines        map[string]*workflow.Engine  // keyed by repo path
+	mu             sync.Mutex
+	logger         *slog.Logger
 
-	// Options (carried over from Agent)
+	// Options
 	once                  bool
 	repoFilter            string
 	maxConcurrent         int
@@ -45,73 +55,73 @@ type Daemon struct {
 	lastReviewPollAt      time.Time
 }
 
-// DaemonOption configures the daemon.
-type DaemonOption func(*Daemon)
+// Option configures the daemon.
+type Option func(*Daemon)
 
-// WithDaemonOnce configures the daemon to run one tick and exit.
-func WithDaemonOnce(once bool) DaemonOption {
+// WithOnce configures the daemon to run one tick and exit.
+func WithOnce(once bool) Option {
 	return func(d *Daemon) { d.once = once }
 }
 
-// WithDaemonRepoFilter limits polling to a specific repo.
-func WithDaemonRepoFilter(repo string) DaemonOption {
+// WithRepoFilter limits polling to a specific repo.
+func WithRepoFilter(repo string) Option {
 	return func(d *Daemon) { d.repoFilter = repo }
 }
 
-// WithDaemonMaxConcurrent overrides the config's max concurrent setting.
-func WithDaemonMaxConcurrent(max int) DaemonOption {
+// WithMaxConcurrent overrides the config's max concurrent setting.
+func WithMaxConcurrent(max int) Option {
 	return func(d *Daemon) { d.maxConcurrent = max }
 }
 
-// WithDaemonMaxTurns overrides the config's max autonomous turns setting.
-func WithDaemonMaxTurns(max int) DaemonOption {
+// WithMaxTurns overrides the config's max autonomous turns setting.
+func WithMaxTurns(max int) Option {
 	return func(d *Daemon) { d.maxTurns = max }
 }
 
-// WithDaemonMaxDuration overrides the config's max autonomous duration (minutes) setting.
-func WithDaemonMaxDuration(max int) DaemonOption {
+// WithMaxDuration overrides the config's max autonomous duration (minutes) setting.
+func WithMaxDuration(max int) Option {
 	return func(d *Daemon) { d.maxDuration = max }
 }
 
-// WithDaemonAutoAddressPRComments enables auto-addressing PR review comments.
-func WithDaemonAutoAddressPRComments(v bool) DaemonOption {
+// WithAutoAddressPRComments enables auto-addressing PR review comments.
+func WithAutoAddressPRComments(v bool) Option {
 	return func(d *Daemon) { d.autoAddressPRComments = v }
 }
 
-// WithDaemonAutoBroadcastPR enables auto-creating PRs when broadcast group completes.
-func WithDaemonAutoBroadcastPR(v bool) DaemonOption {
+// WithAutoBroadcastPR enables auto-creating PRs when broadcast group completes.
+func WithAutoBroadcastPR(v bool) Option {
 	return func(d *Daemon) { d.autoBroadcastPR = v }
 }
 
-// WithDaemonAutoMerge enables auto-merging PRs after review approval and CI pass.
-func WithDaemonAutoMerge(v bool) DaemonOption {
+// WithAutoMerge enables auto-merging PRs after review approval and CI pass.
+func WithAutoMerge(v bool) Option {
 	return func(d *Daemon) { d.autoMerge = v }
 }
 
-// WithDaemonMergeMethod sets the merge method (rebase, squash, or merge).
-func WithDaemonMergeMethod(method string) DaemonOption {
+// WithMergeMethod sets the merge method (rebase, squash, or merge).
+func WithMergeMethod(method string) Option {
 	return func(d *Daemon) { d.mergeMethod = method }
 }
 
-// WithDaemonPollInterval sets the polling interval (mainly for testing).
-func WithDaemonPollInterval(d time.Duration) DaemonOption {
+// WithPollInterval sets the polling interval (mainly for testing).
+func WithPollInterval(d time.Duration) Option {
 	return func(dm *Daemon) { dm.pollInterval = d }
 }
 
-// WithDaemonReviewPollInterval sets the review polling interval (mainly for testing).
-func WithDaemonReviewPollInterval(d time.Duration) DaemonOption {
+// WithReviewPollInterval sets the review polling interval (mainly for testing).
+func WithReviewPollInterval(d time.Duration) Option {
 	return func(dm *Daemon) { dm.reviewPollInterval = d }
 }
 
-// NewDaemon creates a new daemon.
-func NewDaemon(cfg AgentConfig, gitSvc *git.GitService, sessSvc *session.SessionService, registry *issues.ProviderRegistry, logger *slog.Logger, opts ...DaemonOption) *Daemon {
+// New creates a new daemon.
+func New(cfg agentconfig.Config, gitSvc *git.GitService, sessSvc *session.SessionService, registry *issues.ProviderRegistry, logger *slog.Logger, opts ...Option) *Daemon {
 	d := &Daemon{
 		config:             cfg,
 		gitService:         gitSvc,
 		sessionService:     sessSvc,
 		sessionMgr:         manager.NewSessionManager(cfg, gitSvc),
 		issueRegistry:      registry,
-		workers:            make(map[string]*SessionWorker),
+		workers:            make(map[string]*worker.SessionWorker),
 		logger:             logger,
 		autoMerge:          true, // Auto-merge is default for daemon
 		pollInterval:       defaultPollInterval,
@@ -135,7 +145,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	)
 
 	// Acquire lock
-	lock, err := AcquireLock(d.repoFilter)
+	lock, err := daemonstate.AcquireLock(d.repoFilter)
 	if err != nil {
 		return fmt.Errorf("failed to acquire daemon lock: %w", err)
 	}
@@ -143,11 +153,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 	defer d.releaseLock()
 
 	// Load or create state
-	state, err := LoadDaemonState(d.repoFilter)
+	state, err := daemonstate.LoadDaemonState(d.repoFilter)
 	if err != nil {
 		// If state is for a different repo, create fresh
 		d.logger.Warn("failed to load daemon state, creating new", "error", err)
-		state = NewDaemonState(d.repoFilter)
+		state = daemonstate.NewDaemonState(d.repoFilter)
 	}
 	d.state = state
 
@@ -226,7 +236,7 @@ func (d *Daemon) collectCompletedWorkers(ctx context.Context) {
 }
 
 // handleAsyncComplete handles the completion of an async action.
-func (d *Daemon) handleAsyncComplete(ctx context.Context, item *WorkItem) {
+func (d *Daemon) handleAsyncComplete(ctx context.Context, item *daemonstate.WorkItem) {
 	log := d.logger.With("workItem", item.ID, "step", item.CurrentStep)
 
 	sess := d.config.GetSession(item.SessionID)
@@ -308,7 +318,7 @@ func (d *Daemon) handleAsyncComplete(ctx context.Context, item *WorkItem) {
 
 // executeSyncChain executes synchronous task states in sequence until
 // hitting an async task, a wait state, or a terminal state.
-func (d *Daemon) executeSyncChain(ctx context.Context, item *WorkItem, engine *workflow.Engine) {
+func (d *Daemon) executeSyncChain(ctx context.Context, item *daemonstate.WorkItem, engine *workflow.Engine) {
 	for {
 		view := d.workItemView(item)
 		result, err := engine.ProcessStep(ctx, view)
@@ -358,7 +368,7 @@ func (d *Daemon) executeSyncChain(ctx context.Context, item *WorkItem, engine *w
 }
 
 // handleFeedbackComplete handles the transition after Claude finishes addressing feedback.
-func (d *Daemon) handleFeedbackComplete(ctx context.Context, item *WorkItem) {
+func (d *Daemon) handleFeedbackComplete(ctx context.Context, item *daemonstate.WorkItem) {
 	log := d.logger.With("workItem", item.ID, "branch", item.Branch)
 
 	// Push changes
@@ -496,7 +506,7 @@ func (d *Daemon) processCIItems(ctx context.Context) {
 // waitForActiveWorkers waits for all active workers to complete (used in --once mode).
 func (d *Daemon) waitForActiveWorkers(ctx context.Context) {
 	d.mu.Lock()
-	workers := make([]*SessionWorker, 0, len(d.workers))
+	workers := make([]*worker.SessionWorker, 0, len(d.workers))
 	for _, w := range d.workers {
 		workers = append(workers, w)
 	}
@@ -510,7 +520,7 @@ func (d *Daemon) waitForActiveWorkers(ctx context.Context) {
 // shutdown gracefully stops all workers and releases the lock.
 func (d *Daemon) shutdown() {
 	d.mu.Lock()
-	workers := make([]*SessionWorker, 0, len(d.workers))
+	workers := make([]*worker.SessionWorker, 0, len(d.workers))
 	for _, w := range d.workers {
 		workers = append(workers, w)
 	}
@@ -622,7 +632,7 @@ func (d *Daemon) loadWorkflowConfigs() {
 
 		// Create engine with action registry and event checker
 		registry := d.buildActionRegistry()
-		checker := NewDaemonEventChecker(d)
+		checker := NewEventChecker(d)
 		engine := workflow.NewEngine(cfg, registry, checker, d.logger)
 		d.engines[repoPath] = engine
 
@@ -633,11 +643,11 @@ func (d *Daemon) loadWorkflowConfigs() {
 // buildActionRegistry creates the action registry with all daemon actions.
 func (d *Daemon) buildActionRegistry() *workflow.ActionRegistry {
 	registry := workflow.NewActionRegistry()
-	registry.Register("ai.code", &CodingAction{daemon: d})
-	registry.Register("github.create_pr", &CreatePRAction{daemon: d})
-	registry.Register("github.push", &PushAction{daemon: d})
-	registry.Register("github.merge", &MergeAction{daemon: d})
-	registry.Register("github.comment_issue", &CommentIssueAction{daemon: d})
+	registry.Register("ai.code", &codingAction{daemon: d})
+	registry.Register("github.create_pr", &createPRAction{daemon: d})
+	registry.Register("github.push", &pushAction{daemon: d})
+	registry.Register("github.merge", &mergeAction{daemon: d})
+	registry.Register("github.comment_issue", &commentIssueAction{daemon: d})
 	return registry
 }
 
@@ -657,7 +667,7 @@ func (d *Daemon) getEngine(repoPath string) *workflow.Engine {
 	// Create a default engine on the fly
 	cfg := workflow.DefaultConfig()
 	registry := d.buildActionRegistry()
-	checker := NewDaemonEventChecker(d)
+	checker := NewEventChecker(d)
 	return workflow.NewEngine(cfg, registry, checker, d.logger)
 }
 
@@ -711,28 +721,28 @@ func (d *Daemon) getEffectiveMergeMethod(repoPath string) string {
 }
 
 // runHooks runs the after-hooks for a given workflow step.
-func (d *Daemon) runHooks(ctx context.Context, hooks []workflow.HookConfig, item *WorkItem, sess *config.Session) {
+func (d *Daemon) runHooks(ctx context.Context, hooks []workflow.HookConfig, item *daemonstate.WorkItem, sess *config.Session) {
 	if len(hooks) == 0 {
 		return
 	}
 
 	hookCtx := workflow.HookContext{
-		RepoPath:  sess.RepoPath,
-		Branch:    item.Branch,
-		SessionID: item.SessionID,
-		IssueID:   item.IssueRef.ID,
+		RepoPath:   sess.RepoPath,
+		Branch:     item.Branch,
+		SessionID:  item.SessionID,
+		IssueID:    item.IssueRef.ID,
 		IssueTitle: item.IssueRef.Title,
-		IssueURL:  item.IssueRef.URL,
-		PRURL:     item.PRURL,
-		WorkTree:  sess.WorkTree,
-		Provider:  item.IssueRef.Source,
+		IssueURL:   item.IssueRef.URL,
+		PRURL:      item.PRURL,
+		WorkTree:   sess.WorkTree,
+		Provider:   item.IssueRef.Source,
 	}
 
 	workflow.RunHooks(ctx, hooks, hookCtx, d.logger)
 }
 
 // workItemView creates a read-only view of a work item for the engine.
-func (d *Daemon) workItemView(item *WorkItem) *workflow.WorkItemView {
+func (d *Daemon) workItemView(item *daemonstate.WorkItem) *workflow.WorkItemView {
 	// Use the session's actual repo path rather than d.repoFilter,
 	// which may be empty or a pattern (e.g., "owner/repo") in multi-repo daemons.
 	repoPath := d.repoFilter
@@ -760,4 +770,50 @@ func (d *Daemon) workItemView(item *WorkItem) *workflow.WorkItemView {
 // activeSlotCount returns the number of work items consuming concurrency slots.
 func (d *Daemon) activeSlotCount() int {
 	return d.state.ActiveSlotCount()
+}
+
+// Compile-time assertion: Daemon must implement worker.Host.
+var _ worker.Host = (*Daemon)(nil)
+
+// --- Host interface implementation ---
+
+func (d *Daemon) Config() agentconfig.Config                { return d.config }
+func (d *Daemon) GitService() *git.GitService               { return d.gitService }
+func (d *Daemon) SessionManager() *manager.SessionManager    { return d.sessionMgr }
+func (d *Daemon) Logger() *slog.Logger                      { return d.logger }
+func (d *Daemon) MaxTurns() int                             { return d.getMaxTurns() }
+func (d *Daemon) MaxDuration() int                          { return d.getMaxDuration() }
+func (d *Daemon) AutoMerge() bool                           { return d.autoMerge }
+func (d *Daemon) MergeMethod() string                       { return d.getMergeMethod() }
+func (d *Daemon) DaemonManaged() bool                       { return true }
+func (d *Daemon) AutoAddressPRComments() bool               { return d.getAutoAddressPRComments() }
+
+func (d *Daemon) AutoCreatePR(ctx context.Context, sessionID string) (string, error) {
+	sess := d.config.GetSession(sessionID)
+	if sess == nil {
+		return "", fmt.Errorf("session not found")
+	}
+	return d.createPR(ctx, &daemonstate.WorkItem{SessionID: sessionID, Branch: sess.Branch})
+}
+
+func (d *Daemon) CreateChildSession(ctx context.Context, supervisorID, taskDescription string) (worker.SessionInfo, error) {
+	// Daemon doesn't directly support child sessions through Host interface;
+	// worker child creation goes through the Agent path. This is a no-op for daemon.
+	return worker.SessionInfo{}, fmt.Errorf("child sessions not supported in daemon mode")
+}
+
+func (d *Daemon) CleanupSession(ctx context.Context, sessionID string) error {
+	d.cleanupSession(ctx, sessionID)
+	return nil
+}
+
+func (d *Daemon) SaveRunnerMessages(sessionID string, runner claude.RunnerInterface) {
+	d.saveRunnerMessages(sessionID, runner)
+}
+
+func (d *Daemon) IsWorkerRunning(sessionID string) bool {
+	d.mu.Lock()
+	w, exists := d.workers[sessionID]
+	d.mu.Unlock()
+	return exists && !w.Done()
 }

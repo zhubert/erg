@@ -1,4 +1,4 @@
-package agent
+package daemon
 
 import (
 	"context"
@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhubert/plural-agent/internal/daemonstate"
+	"github.com/zhubert/plural-agent/internal/workflow"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/git"
 	"github.com/zhubert/plural-core/issues"
-	"github.com/zhubert/plural-agent/internal/workflow"
 )
 
 // pollForNewIssues checks for new issues and creates work items for them.
@@ -25,7 +26,7 @@ func (d *Daemon) pollForNewIssues(ctx context.Context) {
 	// Check concurrency
 	maxConcurrent := d.getMaxConcurrent()
 	activeSlots := d.activeSlotCount()
-	queuedCount := len(d.state.GetWorkItemsByState(WorkItemQueued))
+	queuedCount := len(d.state.GetWorkItemsByState(daemonstate.WorkItemQueued))
 
 	if activeSlots+queuedCount >= maxConcurrent {
 		log.Debug("at concurrency limit, skipping poll",
@@ -80,7 +81,7 @@ func (d *Daemon) pollForNewIssues(ctx context.Context) {
 				continue
 			}
 
-			item := &WorkItem{
+			item := &daemonstate.WorkItem{
 				ID: fmt.Sprintf("%s-%s", repoPath, issue.ID),
 				IssueRef: config.IssueRef{
 					Source: string(provider),
@@ -142,12 +143,9 @@ func (d *Daemon) fetchIssuesForProvider(ctx context.Context, repoPath string, wf
 }
 
 // startQueuedItems starts coding on queued work items that have available slots.
-// Items are initialized to the engine's start state and processed through
-// executeSyncChain, which invokes the CodingAction to create sessions and
-// spawn Claude workers.
 func (d *Daemon) startQueuedItems(ctx context.Context) {
 	maxConcurrent := d.getMaxConcurrent()
-	queued := d.state.GetWorkItemsByState(WorkItemQueued)
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
 
 	for _, item := range queued {
 		if d.activeSlotCount() >= maxConcurrent {
@@ -172,13 +170,11 @@ func (d *Daemon) startQueuedItems(ctx context.Context) {
 		startState := engine.GetStartState()
 		d.state.AdvanceWorkItem(item.ID, startState, "idle")
 
-		// Process through the engine — this will invoke CodingAction.Execute
+		// Process through the engine — this will invoke codingAction.Execute
 		// which calls startCoding to create the session and spawn the worker.
 		d.executeSyncChain(ctx, item, engine)
 	}
 }
-
-// Helper methods adapted from Agent
 
 // matchesRepoFilter checks if a repo path matches the daemon's repo filter.
 func (d *Daemon) matchesRepoFilter(ctx context.Context, repoPath string) bool {

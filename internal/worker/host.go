@@ -1,0 +1,49 @@
+package worker
+
+import (
+	"context"
+	"log/slog"
+
+	"github.com/zhubert/plural-agent/internal/agentconfig"
+	"github.com/zhubert/plural-core/claude"
+	"github.com/zhubert/plural-core/git"
+	"github.com/zhubert/plural-core/manager"
+)
+
+// Host is the interface that SessionWorker and auto-merge use to access
+// their owning agent or daemon. It decouples SessionWorker from concrete types,
+// allowing both Agent and Daemon to satisfy it directly.
+type Host interface {
+	// Config returns the agent configuration.
+	Config() agentconfig.Config
+
+	// GitService returns the git service.
+	GitService() *git.GitService
+
+	// SessionManager returns the session manager.
+	SessionManager() *manager.SessionManager
+
+	// Logger returns the structured logger.
+	Logger() *slog.Logger
+
+	// Settings
+	MaxTurns() int
+	MaxDuration() int
+	AutoMerge() bool
+	MergeMethod() string
+	DaemonManaged() bool
+	AutoAddressPRComments() bool
+
+	// Operations
+	AutoCreatePR(ctx context.Context, sessionID string) (string, error)
+	CreateChildSession(ctx context.Context, supervisorID, taskDescription string) (SessionInfo, error)
+	CleanupSession(ctx context.Context, sessionID string) error
+	SaveRunnerMessages(sessionID string, runner claude.RunnerInterface)
+	IsWorkerRunning(sessionID string) bool
+}
+
+// SessionInfo holds the minimal info needed after creating a child session.
+type SessionInfo struct {
+	ID     string
+	Branch string
+}

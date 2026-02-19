@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/zhubert/plural-core/git"
+
+	"github.com/zhubert/plural-agent/internal/worker"
 )
 
 func TestTrimURL(t *testing.T) {
@@ -42,9 +44,9 @@ func TestTrimURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := trimURL(tt.input)
+			got := worker.TrimURL(tt.input)
 			if got != tt.expected {
-				t.Errorf("trimURL(%q) = %q, want %q", tt.input, got, tt.expected)
+				t.Errorf("worker.TrimURL(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
@@ -56,7 +58,7 @@ func TestFormatPRCommentsPrompt(t *testing.T) {
 			{Author: "alice", Body: "Fix this typo", Path: "main.go", Line: 42},
 		}
 
-		result := formatPRCommentsPrompt(comments)
+		result := worker.FormatPRCommentsPrompt(comments)
 
 		if !strings.Contains(result, "1 comment(s)") {
 			t.Error("expected comment count in prompt")
@@ -78,7 +80,7 @@ func TestFormatPRCommentsPrompt(t *testing.T) {
 			{Author: "bob", Body: "Add tests", Path: "b.go"},
 		}
 
-		result := formatPRCommentsPrompt(comments)
+		result := worker.FormatPRCommentsPrompt(comments)
 
 		if !strings.Contains(result, "2 comment(s)") {
 			t.Error("expected comment count")
@@ -103,7 +105,7 @@ func TestFormatPRCommentsPrompt(t *testing.T) {
 			{Author: "reviewer", Body: "General feedback"},
 		}
 
-		result := formatPRCommentsPrompt(comments)
+		result := worker.FormatPRCommentsPrompt(comments)
 
 		if strings.Contains(result, "File:") {
 			t.Error("should not contain File: for comment without path")
@@ -118,7 +120,7 @@ func TestFormatPRCommentsPrompt(t *testing.T) {
 			{Body: "Anonymous comment", Path: "main.go"},
 		}
 
-		result := formatPRCommentsPrompt(comments)
+		result := worker.FormatPRCommentsPrompt(comments)
 
 		if strings.Contains(result, "by @") {
 			t.Error("should not contain author for comment without author")
@@ -142,9 +144,9 @@ func TestFormatOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := formatOutput(tt.input, tt.maxLen)
+			got := worker.FormatOutput(tt.input, tt.maxLen)
 			if got != tt.expected {
-				t.Errorf("formatOutput(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.expected)
+				t.Errorf("worker.FormatOutput(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.expected)
 			}
 		})
 	}

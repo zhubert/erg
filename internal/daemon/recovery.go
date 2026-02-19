@@ -1,14 +1,14 @@
-package agent
+package daemon
 
 import (
 	"context"
 	"time"
 
+	"github.com/zhubert/plural-agent/internal/daemonstate"
 	"github.com/zhubert/plural-core/git"
 )
 
 // recoverFromState reconciles daemon state with reality after a restart.
-// It handles each interrupted state case to resume or fix up work items.
 func (d *Daemon) recoverFromState(ctx context.Context) {
 	if d.state == nil || len(d.state.WorkItems) == 0 {
 		return
@@ -41,7 +41,7 @@ func (d *Daemon) recoverFromState(ctx context.Context) {
 
 		default:
 			// "idle" or empty — normal wait/queue state
-			if item.State == WorkItemQueued {
+			if item.State == daemonstate.WorkItemQueued {
 				log.Info("work item queued, will start on next tick")
 			} else {
 				log.Info("work item in wait state, resuming polling")
@@ -51,27 +51,27 @@ func (d *Daemon) recoverFromState(ctx context.Context) {
 }
 
 // recoverAsyncPending handles recovery when a worker was active but daemon restarted.
-func (d *Daemon) recoverAsyncPending(ctx context.Context, item *WorkItem, log interface{ Info(string, ...any) }) {
+func (d *Daemon) recoverAsyncPending(ctx context.Context, item *daemonstate.WorkItem, log interface{ Info(string, ...any) }) {
 	if item.Branch == "" {
 		log.Info("no branch, re-queuing")
-		d.state.mu.Lock()
-		item.State = WorkItemQueued
-		item.CurrentStep = ""
-		item.Phase = "idle"
-		item.UpdatedAt = time.Now()
-		d.state.mu.Unlock()
+		d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+			it.State = daemonstate.WorkItemQueued
+			it.CurrentStep = ""
+			it.Phase = "idle"
+			it.UpdatedAt = time.Now()
+		})
 		return
 	}
 
 	sess := d.config.GetSession(item.SessionID)
 	if sess == nil {
 		log.Info("session not found, re-queuing")
-		d.state.mu.Lock()
-		item.State = WorkItemQueued
-		item.CurrentStep = ""
-		item.Phase = "idle"
-		item.UpdatedAt = time.Now()
-		d.state.mu.Unlock()
+		d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+			it.State = daemonstate.WorkItemQueued
+			it.CurrentStep = ""
+			it.Phase = "idle"
+			it.UpdatedAt = time.Now()
+		})
 		return
 	}
 
@@ -83,31 +83,31 @@ func (d *Daemon) recoverAsyncPending(ctx context.Context, item *WorkItem, log in
 	if err == nil && (prState == git.PRStateOpen || prState == git.PRStateMerged) {
 		if prState == git.PRStateMerged {
 			log.Info("PR merged, marking completed")
-			d.state.mu.Lock()
-			item.CurrentStep = "done"
-			item.Phase = "idle"
-			item.State = WorkItemCompleted
-			now := time.Now()
-			item.CompletedAt = &now
-			item.UpdatedAt = now
-			d.state.mu.Unlock()
+			d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+				it.CurrentStep = "done"
+				it.Phase = "idle"
+				it.State = daemonstate.WorkItemCompleted
+				now := time.Now()
+				it.CompletedAt = &now
+				it.UpdatedAt = now
+			})
 		} else {
 			log.Info("PR exists, advancing to await_review")
-			d.state.mu.Lock()
-			item.CurrentStep = "await_review"
-			item.Phase = "idle"
-			item.UpdatedAt = time.Now()
-			d.state.mu.Unlock()
+			d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+				it.CurrentStep = "await_review"
+				it.Phase = "idle"
+				it.UpdatedAt = time.Now()
+			})
 		}
 		return
 	}
 
 	// No PR — re-queue to restart coding
 	log.Info("no PR found, re-queuing")
-	d.state.mu.Lock()
-	item.State = WorkItemQueued
-	item.CurrentStep = ""
-	item.Phase = "idle"
-	item.UpdatedAt = time.Now()
-	d.state.mu.Unlock()
+	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+		it.State = daemonstate.WorkItemQueued
+		it.CurrentStep = ""
+		it.Phase = "idle"
+		it.UpdatedAt = time.Now()
+	})
 }

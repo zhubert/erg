@@ -7,11 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zhubert/plural-core/manager"
+	"github.com/zhubert/plural-agent/internal/agentconfig"
+	"github.com/zhubert/plural-agent/internal/worker"
 	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/git"
 	"github.com/zhubert/plural-core/issues"
+	"github.com/zhubert/plural-core/manager"
 	"github.com/zhubert/plural-core/session"
 )
 
@@ -24,12 +26,12 @@ const (
 // Agent is the headless autonomous agent that polls for issues
 // and manages worker goroutines to process them.
 type Agent struct {
-	config         AgentConfig
+	config         agentconfig.Config
 	gitService     *git.GitService
 	sessionService *session.SessionService
 	sessionMgr     *manager.SessionManager
 	issueRegistry  *issues.ProviderRegistry
-	workers        map[string]*SessionWorker
+	workers        map[string]*worker.SessionWorker
 	mu             sync.Mutex
 	logger         *slog.Logger
 
@@ -96,14 +98,14 @@ func WithPollInterval(d time.Duration) Option {
 }
 
 // New creates a new headless agent.
-func New(cfg AgentConfig, gitSvc *git.GitService, sessSvc *session.SessionService, registry *issues.ProviderRegistry, logger *slog.Logger, opts ...Option) *Agent {
+func New(cfg agentconfig.Config, gitSvc *git.GitService, sessSvc *session.SessionService, registry *issues.ProviderRegistry, logger *slog.Logger, opts ...Option) *Agent {
 	a := &Agent{
 		config:         cfg,
 		gitService:     gitSvc,
 		sessionService: sessSvc,
 		sessionMgr:     manager.NewSessionManager(cfg, gitSvc),
 		issueRegistry:  registry,
-		workers:        make(map[string]*SessionWorker),
+		workers:        make(map[string]*worker.SessionWorker),
 		logger:         logger,
 		pollInterval:   defaultPollInterval,
 	}
@@ -159,7 +161,7 @@ func (a *Agent) Run(ctx context.Context) error {
 // Shutdown gracefully stops all workers and cleans up resources.
 func (a *Agent) Shutdown() {
 	a.mu.Lock()
-	workers := make([]*SessionWorker, 0, len(a.workers))
+	workers := make([]*worker.SessionWorker, 0, len(a.workers))
 	for _, w := range a.workers {
 		workers = append(workers, w)
 	}
@@ -275,19 +277,19 @@ func (a *Agent) startWorker(ctx context.Context, sess *config.Session, initialMs
 	// Get or create runner via session manager
 	runner := a.sessionMgr.GetOrCreateRunner(sess)
 
-	worker := NewSessionWorker(a, sess, runner, initialMsg)
+	w := worker.NewSessionWorker(a, sess, runner, initialMsg)
 
 	a.mu.Lock()
-	a.workers[sess.ID] = worker
+	a.workers[sess.ID] = w
 	a.mu.Unlock()
 
-	worker.Start(ctx)
+	w.Start(ctx)
 }
 
 // waitForWorkers waits for all active workers to complete.
 func (a *Agent) waitForWorkers(ctx context.Context) {
 	a.mu.Lock()
-	workers := make([]*SessionWorker, 0, len(a.workers))
+	workers := make([]*worker.SessionWorker, 0, len(a.workers))
 	for _, w := range a.workers {
 		workers = append(workers, w)
 	}
@@ -420,7 +422,7 @@ func (a *Agent) autoCreatePR(ctx context.Context, sessionID string) (string, err
 			lastErr = result.Error
 		}
 		if result.Output != "" {
-			trimmed := trimURL(result.Output)
+			trimmed := worker.TrimURL(result.Output)
 			if trimmed != "" {
 				prURL = trimmed
 			}
@@ -481,4 +483,47 @@ func (a *Agent) saveRunnerMessages(sessionID string, runner claude.RunnerInterfa
 	if err := a.sessionMgr.SaveRunnerMessages(sessionID, runner); err != nil {
 		a.logger.Error("failed to save session messages", "sessionID", sessionID, "error", err)
 	}
+}
+
+// Compile-time assertion: Agent must implement worker.Host.
+var _ worker.Host = (*Agent)(nil)
+
+// --- Host interface implementation ---
+
+func (a *Agent) Config() agentconfig.Config              { return a.config }
+func (a *Agent) GitService() *git.GitService            { return a.gitService }
+func (a *Agent) SessionManager() *manager.SessionManager { return a.sessionMgr }
+func (a *Agent) Logger() *slog.Logger                   { return a.logger }
+func (a *Agent) MaxTurns() int                          { return a.getMaxTurns() }
+func (a *Agent) MaxDuration() int                       { return a.getMaxDuration() }
+func (a *Agent) AutoMerge() bool                        { return a.getAutoMerge() }
+func (a *Agent) MergeMethod() string                    { return a.getMergeMethod() }
+func (a *Agent) DaemonManaged() bool                    { return a.daemonManaged }
+func (a *Agent) AutoAddressPRComments() bool            { return a.getAutoAddressPRComments() }
+
+func (a *Agent) AutoCreatePR(ctx context.Context, sessionID string) (string, error) {
+	return a.autoCreatePR(ctx, sessionID)
+}
+
+func (a *Agent) CreateChildSession(ctx context.Context, supervisorID, taskDescription string) (worker.SessionInfo, error) {
+	sess, err := a.createChildSession(ctx, supervisorID, taskDescription)
+	if err != nil {
+		return worker.SessionInfo{}, err
+	}
+	return worker.SessionInfo{ID: sess.ID, Branch: sess.Branch}, nil
+}
+
+func (a *Agent) CleanupSession(ctx context.Context, sessionID string) error {
+	return a.cleanupSession(ctx, sessionID)
+}
+
+func (a *Agent) SaveRunnerMessages(sessionID string, runner claude.RunnerInterface) {
+	a.saveRunnerMessages(sessionID, runner)
+}
+
+func (a *Agent) IsWorkerRunning(sessionID string) bool {
+	a.mu.Lock()
+	w, exists := a.workers[sessionID]
+	a.mu.Unlock()
+	return exists && !w.Done()
 }

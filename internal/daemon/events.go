@@ -1,4 +1,4 @@
-package agent
+package daemon
 
 import (
 	"context"
@@ -8,18 +8,18 @@ import (
 	"github.com/zhubert/plural-agent/internal/workflow"
 )
 
-// DaemonEventChecker implements workflow.EventChecker for the daemon.
-type DaemonEventChecker struct {
+// EventChecker implements workflow.EventChecker for the daemon.
+type EventChecker struct {
 	daemon *Daemon
 }
 
-// NewDaemonEventChecker creates a new event checker backed by the daemon.
-func NewDaemonEventChecker(d *Daemon) *DaemonEventChecker {
-	return &DaemonEventChecker{daemon: d}
+// NewEventChecker creates a new event checker backed by the daemon.
+func NewEventChecker(d *Daemon) *EventChecker {
+	return &EventChecker{daemon: d}
 }
 
 // CheckEvent checks whether an event has fired for a work item.
-func (c *DaemonEventChecker) CheckEvent(ctx context.Context, event string, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
+func (c *EventChecker) CheckEvent(ctx context.Context, event string, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
 	switch event {
 	case "pr.reviewed":
 		return c.checkPRReviewed(ctx, params, item)
@@ -31,9 +31,7 @@ func (c *DaemonEventChecker) CheckEvent(ctx context.Context, event string, param
 }
 
 // checkPRReviewed checks for PR review status.
-// Returns true when the PR is approved. Internally handles the feedback loop
-// (detect comments → start address feedback worker → push → back to polling).
-func (c *DaemonEventChecker) checkPRReviewed(ctx context.Context, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
+func (c *EventChecker) checkPRReviewed(ctx context.Context, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
 	d := c.daemon
 	log := d.logger.With("workItem", item.ID, "branch", item.Branch, "event", "pr.reviewed")
 
@@ -134,7 +132,7 @@ func (c *DaemonEventChecker) checkPRReviewed(ctx context.Context, params *workfl
 }
 
 // checkCIComplete checks CI status and returns true when CI has passed.
-func (c *DaemonEventChecker) checkCIComplete(ctx context.Context, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
+func (c *EventChecker) checkCIComplete(ctx context.Context, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
 	d := c.daemon
 	log := d.logger.With("workItem", item.ID, "branch", item.Branch, "event", "ci.complete")
 
@@ -168,7 +166,6 @@ func (c *DaemonEventChecker) checkCIComplete(ctx context.Context, params *workfl
 
 		switch onFailure {
 		case "abandon":
-			// Signal error by returning data that the daemon can act on
 			return false, map[string]any{"ci_failed": true, "ci_action": "abandon"}, nil
 		case "notify":
 			return false, map[string]any{"ci_failed": true, "ci_action": "notify"}, nil

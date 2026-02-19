@@ -11,6 +11,8 @@ import (
 	"github.com/zhubert/plural-core/git"
 	"github.com/zhubert/plural-core/issues"
 	"github.com/zhubert/plural-core/session"
+
+	"github.com/zhubert/plural-agent/internal/worker"
 )
 
 func TestCheckReviewApproval(t *testing.T) {
@@ -25,9 +27,9 @@ func TestCheckReviewApproval(t *testing.T) {
 
 		// With failed git call, reviewDecision defaults to "" which maps to ReviewNone.
 		// At early attempts, ReviewNone should continue polling.
-		action := checkReviewApproval(a, "merge-review-1", sess, 1)
-		if action != mergeActionContinue {
-			t.Errorf("expected mergeActionContinue at attempt 1, got %d", action)
+		action := worker.CheckReviewApproval(a, "merge-review-1", sess, 1)
+		if action != worker.MergeActionContinue {
+			t.Errorf("expected worker.MergeActionContinue at attempt 1, got %d", action)
 		}
 	})
 
@@ -38,9 +40,9 @@ func TestCheckReviewApproval(t *testing.T) {
 		sess := testSession("merge-review-2")
 		cfg.AddSession(*sess)
 
-		action := checkReviewApproval(a, "merge-review-2", sess, maxAutoMergePollAttempts)
-		if action != mergeActionStop {
-			t.Errorf("expected mergeActionStop at max attempts, got %d", action)
+		action := worker.CheckReviewApproval(a, "merge-review-2", sess, 120)
+		if action != worker.MergeActionStop {
+			t.Errorf("expected worker.MergeActionStop at max attempts, got %d", action)
 		}
 	})
 }
@@ -56,9 +58,9 @@ func TestCheckCIAndMerge(t *testing.T) {
 		// The default mock executor returns empty success for all commands.
 		// CheckPRChecks interprets exit 0 with unparseable output as CIStatusPassing.
 		// CIStatusPassing triggers doMerge, which also "succeeds" with mock executor.
-		action := checkCIAndMerge(a, "merge-ci-1", sess, 1)
-		if action != mergeActionProceed {
-			t.Errorf("expected mergeActionProceed (mock returns passing CI), got %d", action)
+		action := worker.CheckCIAndMerge(a, "merge-ci-1", sess, 1)
+		if action != worker.MergeActionProceed {
+			t.Errorf("expected worker.MergeActionProceed (mock returns passing CI), got %d", action)
 		}
 	})
 
@@ -86,9 +88,9 @@ func TestCheckCIAndMerge(t *testing.T) {
 		sess := testSession("merge-ci-fail")
 		cfg.AddSession(*sess)
 
-		action := checkCIAndMerge(a, "merge-ci-fail", sess, 1)
-		if action != mergeActionStop {
-			t.Errorf("expected mergeActionStop for failing CI, got %d", action)
+		action := worker.CheckCIAndMerge(a, "merge-ci-fail", sess, 1)
+		if action != worker.MergeActionStop {
+			t.Errorf("expected worker.MergeActionStop for failing CI, got %d", action)
 		}
 	})
 
@@ -116,9 +118,9 @@ func TestCheckCIAndMerge(t *testing.T) {
 		sess := testSession("merge-ci-pending")
 		cfg.AddSession(*sess)
 
-		action := checkCIAndMerge(a, "merge-ci-pending", sess, 1)
-		if action != mergeActionContinue {
-			t.Errorf("expected mergeActionContinue for pending CI, got %d", action)
+		action := worker.CheckCIAndMerge(a, "merge-ci-pending", sess, 1)
+		if action != worker.MergeActionContinue {
+			t.Errorf("expected worker.MergeActionContinue for pending CI, got %d", action)
 		}
 	})
 }
@@ -133,22 +135,22 @@ func TestCheckAndAddressComments_NoNewComments(t *testing.T) {
 
 	// With mock executor, GetBatchPRStatesWithComments will fail,
 	// which causes it to proceed (not block on comment check failure).
-	action := checkAndAddressComments(a, "merge-comments-1", sess, 1)
-	if action != mergeActionProceed {
-		t.Errorf("expected mergeActionProceed when comment check fails, got %d", action)
+	action := worker.CheckAndAddressComments(a, "merge-comments-1", sess, 1)
+	if action != worker.MergeActionProceed {
+		t.Errorf("expected worker.MergeActionProceed when comment check fails, got %d", action)
 	}
 }
 
 func TestMergeActionConstants(t *testing.T) {
 	// Verify the merge action constants are distinct and have expected values
-	if mergeActionContinue != 0 {
-		t.Errorf("expected mergeActionContinue=0, got %d", mergeActionContinue)
+	if worker.MergeActionContinue != 0 {
+		t.Errorf("expected worker.MergeActionContinue=0, got %d", worker.MergeActionContinue)
 	}
-	if mergeActionStop != 1 {
-		t.Errorf("expected mergeActionStop=1, got %d", mergeActionStop)
+	if worker.MergeActionStop != 1 {
+		t.Errorf("expected worker.MergeActionStop=1, got %d", worker.MergeActionStop)
 	}
-	if mergeActionProceed != 2 {
-		t.Errorf("expected mergeActionProceed=2, got %d", mergeActionProceed)
+	if worker.MergeActionProceed != 2 {
+		t.Errorf("expected worker.MergeActionProceed=2, got %d", worker.MergeActionProceed)
 	}
 }
 
@@ -165,9 +167,9 @@ func TestDoMerge_WithMockExecutor(t *testing.T) {
 		cfg.AddSession(*sess)
 
 		// Default mock executor returns empty success for MergePR
-		action := doMerge(a, "merge-test-1", sess)
-		if action != mergeActionProceed {
-			t.Errorf("expected mergeActionProceed on merge success, got %d", action)
+		action := worker.DoMerge(a, "merge-test-1", sess)
+		if action != worker.MergeActionProceed {
+			t.Errorf("expected worker.MergeActionProceed on merge success, got %d", action)
 		}
 
 		// Verify session was marked as merged
@@ -203,9 +205,9 @@ func TestDoMerge_WithMockExecutor(t *testing.T) {
 		}
 		cfg.AddSession(*sess)
 
-		action := doMerge(a, "merge-test-2", sess)
-		if action != mergeActionStop {
-			t.Errorf("expected mergeActionStop on merge failure, got %d", action)
+		action := worker.DoMerge(a, "merge-test-2", sess)
+		if action != worker.MergeActionStop {
+			t.Errorf("expected worker.MergeActionStop on merge failure, got %d", action)
 		}
 	})
 }

@@ -1,14 +1,15 @@
-package agent
+package daemon
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
+	"github.com/zhubert/plural-agent/internal/daemonstate"
+	"github.com/zhubert/plural-agent/internal/workflow"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/exec"
 	"github.com/zhubert/plural-core/git"
-	"github.com/zhubert/plural-agent/internal/workflow"
 )
 
 var errGHFailed = fmt.Errorf("gh: command failed")
@@ -17,7 +18,7 @@ func TestCommentIssueAction_Execute_WorkItemNotFound(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	action := &CommentIssueAction{daemon: d}
+	action := &commentIssueAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{"body": "Hello!"})
 	ac := &workflow.ActionContext{
 		WorkItemID: "nonexistent",
@@ -38,13 +39,13 @@ func TestCommentIssueAction_Execute_NonGitHubIssue(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	// Add a work item with Asana source — should succeed (no-op)
-	d.state.AddWorkItem(&WorkItem{
+	// Add a work item with Asana source -- should succeed (no-op)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:       "item-1",
 		IssueRef: config.IssueRef{Source: "asana", ID: "task-abc"},
 	})
 
-	action := &CommentIssueAction{daemon: d}
+	action := &commentIssueAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{"body": "Hello!"})
 	ac := &workflow.ActionContext{
 		WorkItemID: "item-1",
@@ -63,12 +64,12 @@ func TestCommentIssueAction_Execute_InvalidIssueNumber(t *testing.T) {
 	d := testDaemon(cfg)
 
 	// GitHub issue with non-numeric ID (invalid)
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:       "item-1",
 		IssueRef: config.IssueRef{Source: "github", ID: "not-a-number"},
 	})
 
-	action := &CommentIssueAction{daemon: d}
+	action := &commentIssueAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{"body": "Hello!"})
 	ac := &workflow.ActionContext{
 		WorkItemID: "item-1",
@@ -104,13 +105,13 @@ func TestCommentIssueAction_Execute_Success(t *testing.T) {
 	sess := testSession("sess-1")
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:        "item-1",
 		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
 		SessionID: "sess-1",
 	})
 
-	action := &CommentIssueAction{daemon: d}
+	action := &commentIssueAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{"body": "Work has started on this issue."})
 	ac := &workflow.ActionContext{
 		WorkItemID: "item-1",
@@ -145,14 +146,14 @@ func TestCommentIssueAction_Execute_EmptyBody(t *testing.T) {
 	sess := testSession("sess-1")
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:        "item-1",
 		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
 		SessionID: "sess-1",
 	})
 
-	action := &CommentIssueAction{daemon: d}
-	// Empty body — should fail
+	action := &commentIssueAction{daemon: d}
+	// Empty body -- should fail
 	params := workflow.NewParamHelper(map[string]any{"body": ""})
 	ac := &workflow.ActionContext{
 		WorkItemID: "item-1",
@@ -186,13 +187,13 @@ func TestCommentIssueAction_Execute_GhError(t *testing.T) {
 	sess := testSession("sess-1")
 	cfg.AddSession(*sess)
 
-	d.state.AddWorkItem(&WorkItem{
+	d.state.AddWorkItem(&daemonstate.WorkItem{
 		ID:        "item-1",
 		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
 		SessionID: "sess-1",
 	})
 
-	action := &CommentIssueAction{daemon: d}
+	action := &commentIssueAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{"body": "Starting work!"})
 	ac := &workflow.ActionContext{
 		WorkItemID: "item-1",

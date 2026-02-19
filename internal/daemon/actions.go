@@ -1,4 +1,4 @@
-package agent
+package daemon
 
 import (
 	"context"
@@ -6,23 +6,22 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/zhubert/plural-agent/internal/daemonstate"
+	"github.com/zhubert/plural-agent/internal/worker"
+	"github.com/zhubert/plural-agent/internal/workflow"
 	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/issues"
 	"github.com/zhubert/plural-core/session"
-	"github.com/zhubert/plural-agent/internal/workflow"
 )
 
-// CodingAction implements the ai.code action.
-type CodingAction struct {
+// codingAction implements the ai.code action.
+type codingAction struct {
 	daemon *Daemon
 }
 
 // Execute creates a session and starts a Claude worker for the work item.
-// Returns Async: true because the Claude worker runs in the background;
-// the engine will set the phase to "async_pending" and wait for
-// AdvanceAfterAsync when the worker completes.
-func (a *CodingAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+func (a *codingAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item := d.state.GetWorkItem(ac.WorkItemID)
 	if item == nil {
@@ -36,13 +35,13 @@ func (a *CodingAction) Execute(ctx context.Context, ac *workflow.ActionContext) 
 	return workflow.ActionResult{Success: true, Async: true}
 }
 
-// CreatePRAction implements the github.create_pr action.
-type CreatePRAction struct {
+// createPRAction implements the github.create_pr action.
+type createPRAction struct {
 	daemon *Daemon
 }
 
 // Execute creates a PR. This is a synchronous action.
-func (a *CreatePRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item := d.state.GetWorkItem(ac.WorkItemID)
 	if item == nil {
@@ -60,13 +59,13 @@ func (a *CreatePRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 	}
 }
 
-// PushAction implements the github.push action.
-type PushAction struct {
+// pushAction implements the github.push action.
+type pushAction struct {
 	daemon *Daemon
 }
 
 // Execute pushes changes. This is a synchronous action.
-func (a *PushAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+func (a *pushAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item := d.state.GetWorkItem(ac.WorkItemID)
 	if item == nil {
@@ -80,13 +79,13 @@ func (a *PushAction) Execute(ctx context.Context, ac *workflow.ActionContext) wo
 	return workflow.ActionResult{Success: true}
 }
 
-// MergeAction implements the github.merge action.
-type MergeAction struct {
+// mergeAction implements the github.merge action.
+type mergeAction struct {
 	daemon *Daemon
 }
 
 // Execute merges the PR. This is a synchronous action.
-func (a *MergeAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+func (a *mergeAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item := d.state.GetWorkItem(ac.WorkItemID)
 	if item == nil {
@@ -100,14 +99,13 @@ func (a *MergeAction) Execute(ctx context.Context, ac *workflow.ActionContext) w
 	return workflow.ActionResult{Success: true}
 }
 
-// CommentIssueAction implements the github.comment_issue action.
-type CommentIssueAction struct {
+// commentIssueAction implements the github.comment_issue action.
+type commentIssueAction struct {
 	daemon *Daemon
 }
 
 // Execute posts a comment on the GitHub issue for the work item.
-// This is a synchronous action. It is a no-op for non-GitHub issues.
-func (a *CommentIssueAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+func (a *commentIssueAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item := d.state.GetWorkItem(ac.WorkItemID)
 	if item == nil {
@@ -122,9 +120,7 @@ func (a *CommentIssueAction) Execute(ctx context.Context, ac *workflow.ActionCon
 }
 
 // startCoding creates a session and starts a Claude worker for a work item.
-// It returns an error if session setup fails. On success, the worker is running
-// in the background and the caller (engine) is responsible for setting step/phase.
-func (d *Daemon) startCoding(ctx context.Context, item *WorkItem) error {
+func (d *Daemon) startCoding(ctx context.Context, item *daemonstate.WorkItem) error {
 	log := d.logger.With("workItem", item.ID, "issue", item.IssueRef.ID)
 
 	// Find the matching repo path
@@ -185,16 +181,13 @@ func (d *Daemon) startCoding(ctx context.Context, item *WorkItem) error {
 	}
 
 	// Update work item with session info.
-	// Engine handles CurrentStep/Phase; State is set here because it's still
-	// used by GetWorkItemsByState, GetActiveWorkItems, and IsTerminal for
-	// concurrency tracking and polling filters.
 	item.SessionID = sess.ID
 	item.Branch = sess.Branch
-	item.State = WorkItemCoding
+	item.State = daemonstate.WorkItemCoding
 	item.UpdatedAt = time.Now()
 
 	// Build initial message using provider-aware formatting
-	initialMsg := formatInitialMessage(item.IssueRef)
+	initialMsg := worker.FormatInitialMessage(item.IssueRef)
 
 	// Resolve coding system prompt from workflow config
 	systemPrompt := params.String("system_prompt", "")
@@ -211,7 +204,7 @@ func (d *Daemon) startCoding(ctx context.Context, item *WorkItem) error {
 }
 
 // addressFeedback resumes the Claude session to address review comments.
-func (d *Daemon) addressFeedback(ctx context.Context, item *WorkItem) {
+func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem) {
 	log := d.logger.With("workItem", item.ID, "branch", item.Branch)
 
 	sess := d.config.GetSession(item.SessionID)
@@ -241,7 +234,7 @@ func (d *Daemon) addressFeedback(ctx context.Context, item *WorkItem) {
 	item.UpdatedAt = time.Now()
 
 	// Format comments as a prompt
-	prompt := formatPRCommentsPrompt(comments)
+	prompt := worker.FormatPRCommentsPrompt(comments)
 
 	// Resolve review system prompt from workflow config
 	wfCfg := d.getWorkflowConfig(sess.RepoPath)
@@ -264,7 +257,7 @@ func (d *Daemon) addressFeedback(ctx context.Context, item *WorkItem) {
 }
 
 // createPR creates a pull request for a work item's session.
-func (d *Daemon) createPR(ctx context.Context, item *WorkItem) (string, error) {
+func (d *Daemon) createPR(ctx context.Context, item *daemonstate.WorkItem) (string, error) {
 	sess := d.config.GetSession(item.SessionID)
 	if sess == nil {
 		return "", fmt.Errorf("session not found")
@@ -285,7 +278,7 @@ func (d *Daemon) createPR(ctx context.Context, item *WorkItem) (string, error) {
 			lastErr = result.Error
 		}
 		if result.Output != "" {
-			trimmed := trimURL(result.Output)
+			trimmed := worker.TrimURL(result.Output)
 			if trimmed != "" {
 				prURL = trimmed
 			}
@@ -306,7 +299,7 @@ func (d *Daemon) createPR(ctx context.Context, item *WorkItem) (string, error) {
 }
 
 // pushChanges pushes changes for a work item's session.
-func (d *Daemon) pushChanges(ctx context.Context, item *WorkItem) error {
+func (d *Daemon) pushChanges(ctx context.Context, item *daemonstate.WorkItem) error {
 	sess := d.config.GetSession(item.SessionID)
 	if sess == nil {
 		return fmt.Errorf("session not found")
@@ -328,7 +321,7 @@ func (d *Daemon) pushChanges(ctx context.Context, item *WorkItem) error {
 }
 
 // mergePR merges the PR for a work item.
-func (d *Daemon) mergePR(ctx context.Context, item *WorkItem) error {
+func (d *Daemon) mergePR(ctx context.Context, item *daemonstate.WorkItem) error {
 	sess := d.config.GetSession(item.SessionID)
 	if sess == nil {
 		return fmt.Errorf("session not found")
@@ -357,8 +350,7 @@ func (d *Daemon) mergePR(ctx context.Context, item *WorkItem) error {
 }
 
 // commentOnIssue posts a comment on the GitHub issue for a work item.
-// For non-GitHub issues, this is a no-op (logged as a warning).
-func (d *Daemon) commentOnIssue(ctx context.Context, item *WorkItem, params *workflow.ParamHelper) error {
+func (d *Daemon) commentOnIssue(ctx context.Context, item *daemonstate.WorkItem, params *workflow.ParamHelper) error {
 	if item.IssueRef.Source != "github" {
 		d.logger.Warn("github.comment_issue skipped: not a github issue",
 			"workItem", item.ID, "source", item.IssueRef.Source)
@@ -399,49 +391,19 @@ func (d *Daemon) commentOnIssue(ctx context.Context, item *WorkItem, params *wor
 	return d.gitService.CommentOnIssue(commentCtx, repoPath, issueNum, body)
 }
 
-// startWorker creates and starts a session worker for a work item.
-func (d *Daemon) startWorker(ctx context.Context, item *WorkItem, sess *config.Session, initialMsg string) {
-	d.startWorkerWithPrompt(ctx, item, sess, initialMsg, "")
-}
-
 // startWorkerWithPrompt creates and starts a session worker with an optional custom system prompt.
-func (d *Daemon) startWorkerWithPrompt(ctx context.Context, item *WorkItem, sess *config.Session, initialMsg, customPrompt string) {
+func (d *Daemon) startWorkerWithPrompt(ctx context.Context, item *daemonstate.WorkItem, sess *config.Session, initialMsg, customPrompt string) {
 	runner := d.sessionMgr.GetOrCreateRunner(sess)
 	if customPrompt != "" {
 		runner.SetCustomSystemPrompt(customPrompt)
 	}
-	worker := NewSessionWorker(d.toAgent(), sess, runner, initialMsg)
+	w := worker.NewSessionWorker(d, sess, runner, initialMsg)
 
 	d.mu.Lock()
-	d.workers[item.ID] = worker
+	d.workers[item.ID] = w
 	d.mu.Unlock()
 
-	worker.Start(ctx)
-}
-
-// toAgent returns an Agent-compatible wrapper for the daemon.
-// This allows reusing SessionWorker which expects an *Agent.
-func (d *Daemon) toAgent() *Agent {
-	return &Agent{
-		config:                d.config,
-		gitService:            d.gitService,
-		sessionService:        d.sessionService,
-		sessionMgr:            d.sessionMgr,
-		issueRegistry:         d.issueRegistry,
-		workers:               d.workers,
-		logger:                d.logger,
-		once:                  d.once,
-		repoFilter:            d.repoFilter,
-		maxConcurrent:         d.maxConcurrent,
-		maxTurns:              d.maxTurns,
-		maxDuration:           d.maxDuration,
-		autoAddressPRComments: d.autoAddressPRComments,
-		autoBroadcastPR:       d.autoBroadcastPR,
-		autoMerge:             d.autoMerge,
-		mergeMethod:           d.mergeMethod,
-		pollInterval:          d.pollInterval,
-		daemonManaged:         true,
-	}
+	w.Start(ctx)
 }
 
 // cleanupSession cleans up a session's worktree and removes it from config.
@@ -481,7 +443,7 @@ func (d *Daemon) findRepoPath(ctx context.Context) string {
 }
 
 // issueFromWorkItem converts a WorkItem's issue ref to an issues.Issue.
-func issueFromWorkItem(item *WorkItem) issues.Issue {
+func issueFromWorkItem(item *daemonstate.WorkItem) issues.Issue {
 	return issues.Issue{
 		ID:     item.IssueRef.ID,
 		Title:  item.IssueRef.Title,
