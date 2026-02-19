@@ -120,6 +120,15 @@ Key files: `daemon.go` (main loop), `daemon_actions.go` (action execution), `dae
 
 ---
 
+## Releasing
+
+```bash
+./scripts/release.sh patch            # v0.0.3 -> v0.0.4
+./scripts/release.sh minor            # v0.0.3 -> v0.1.0
+./scripts/release.sh major            # v0.0.3 -> v1.0.0
+./scripts/release.sh patch --dry-run  # Dry run
+```
+
 ## License
 
 MIT License
