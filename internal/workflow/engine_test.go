@@ -626,3 +626,330 @@ func TestEngine_FullTraversal(t *testing.T) {
 		t.Errorf("expected await_ci, got %q", result.NewStep)
 	}
 }
+
+func TestEngine_ProcessStep_RetryOnFailure(t *testing.T) {
+	registry := NewActionRegistry()
+	registry.Register("fail.action", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("transient error")},
+	})
+
+	cfg := &Config{
+		Start: "step1",
+		States: map[string]*State{
+			"step1": {
+				Type:   StateTypeTask,
+				Action: "fail.action",
+				Next:   "done",
+				Error:  "failed",
+				Retry: []RetryConfig{
+					{MaxAttempts: 3, Interval: &Duration{30 * time.Second}, BackoffRate: 2.0},
+				},
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	// First attempt — should retry (count goes from 0 to 1)
+	view := &WorkItemView{CurrentStep: "step1", Phase: "idle", StepData: map[string]any{}}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "step1" {
+		t.Errorf("expected to stay on step1 for retry, got %q", result.NewStep)
+	}
+	if result.NewPhase != "retry_pending" {
+		t.Errorf("expected retry_pending phase, got %q", result.NewPhase)
+	}
+	if result.Data["_retry_count"] != 1 {
+		t.Errorf("expected retry count 1, got %v", result.Data["_retry_count"])
+	}
+}
+
+func TestEngine_ProcessStep_RetryExhausted(t *testing.T) {
+	registry := NewActionRegistry()
+	registry.Register("fail.action", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("persistent error")},
+	})
+
+	cfg := &Config{
+		Start: "step1",
+		States: map[string]*State{
+			"step1": {
+				Type:   StateTypeTask,
+				Action: "fail.action",
+				Next:   "done",
+				Error:  "failed",
+				Retry: []RetryConfig{
+					{MaxAttempts: 2},
+				},
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	// Already retried 2 times — should fall through to error edge
+	view := &WorkItemView{
+		CurrentStep: "step1",
+		Phase:       "idle",
+		StepData:    map[string]any{"_retry_count": 2},
+	}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "failed" {
+		t.Errorf("expected failed after retries exhausted, got %q", result.NewStep)
+	}
+}
+
+func TestEngine_ProcessStep_CatchError(t *testing.T) {
+	registry := NewActionRegistry()
+	registry.Register("fail.action", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("some error")},
+	})
+
+	cfg := &Config{
+		Start: "step1",
+		States: map[string]*State{
+			"step1": {
+				Type:   StateTypeTask,
+				Action: "fail.action",
+				Next:   "done",
+				Catch: []CatchConfig{
+					{Errors: []string{"*"}, Next: "recovery"},
+				},
+			},
+			"done":     {Type: StateTypeSucceed},
+			"recovery": {Type: StateTypeSucceed},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "step1", Phase: "idle"}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "recovery" {
+		t.Errorf("expected recovery via catch, got %q", result.NewStep)
+	}
+	if result.Data["_caught_error"] != "some error" {
+		t.Errorf("expected caught error in data, got %v", result.Data["_caught_error"])
+	}
+}
+
+func TestEngine_ProcessStep_CatchSpecificError(t *testing.T) {
+	registry := NewActionRegistry()
+	registry.Register("fail.action", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("timeout")},
+	})
+
+	cfg := &Config{
+		Start: "step1",
+		States: map[string]*State{
+			"step1": {
+				Type:   StateTypeTask,
+				Action: "fail.action",
+				Next:   "done",
+				Error:  "failed",
+				Catch: []CatchConfig{
+					{Errors: []string{"permission_denied"}, Next: "auth_fix"},
+					{Errors: []string{"timeout"}, Next: "retry_later"},
+				},
+			},
+			"done":        {Type: StateTypeSucceed},
+			"failed":      {Type: StateTypeFail},
+			"auth_fix":    {Type: StateTypeSucceed},
+			"retry_later": {Type: StateTypeSucceed},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "step1", Phase: "idle"}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// "timeout" should match second catch rule
+	if result.NewStep != "retry_later" {
+		t.Errorf("expected retry_later via specific catch, got %q", result.NewStep)
+	}
+}
+
+func TestEngine_ProcessStep_RetryThenCatch(t *testing.T) {
+	registry := NewActionRegistry()
+	registry.Register("fail.action", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("transient")},
+	})
+
+	cfg := &Config{
+		Start: "step1",
+		States: map[string]*State{
+			"step1": {
+				Type:   StateTypeTask,
+				Action: "fail.action",
+				Next:   "done",
+				Retry: []RetryConfig{
+					{MaxAttempts: 1},
+				},
+				Catch: []CatchConfig{
+					{Errors: []string{"*"}, Next: "recovery"},
+				},
+			},
+			"done":     {Type: StateTypeSucceed},
+			"recovery": {Type: StateTypeSucceed},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	// Retry exhausted (1 attempt used) — should fall through to catch
+	view := &WorkItemView{
+		CurrentStep: "step1",
+		Phase:       "idle",
+		StepData:    map[string]any{"_retry_count": 1},
+	}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "recovery" {
+		t.Errorf("expected recovery after retry exhausted, got %q", result.NewStep)
+	}
+}
+
+func TestEngine_AdvanceAfterAsync_RetryOnFailure(t *testing.T) {
+	cfg := &Config{
+		Start: "coding",
+		States: map[string]*State{
+			"coding": {
+				Type:   StateTypeTask,
+				Action: "ai.code",
+				Next:   "done",
+				Error:  "failed",
+				Retry: []RetryConfig{
+					{MaxAttempts: 2},
+				},
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, NewActionRegistry(), nil, testLogger())
+
+	view := &WorkItemView{
+		CurrentStep: "coding",
+		Phase:       "async_pending",
+		StepData:    map[string]any{},
+	}
+	result, err := engine.AdvanceAfterAsync(view, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "coding" {
+		t.Errorf("expected to stay on coding for retry, got %q", result.NewStep)
+	}
+	if result.NewPhase != "retry_pending" {
+		t.Errorf("expected retry_pending phase, got %q", result.NewPhase)
+	}
+}
+
+func TestEngine_RetryDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		retry    RetryConfig
+		attempt  int
+		expected time.Duration
+	}{
+		{
+			name:     "no interval",
+			retry:    RetryConfig{MaxAttempts: 3},
+			attempt:  1,
+			expected: 0,
+		},
+		{
+			name:     "first attempt with interval",
+			retry:    RetryConfig{MaxAttempts: 3, Interval: &Duration{10 * time.Second}, BackoffRate: 2.0},
+			attempt:  1,
+			expected: 10 * time.Second,
+		},
+		{
+			name:     "second attempt with backoff",
+			retry:    RetryConfig{MaxAttempts: 3, Interval: &Duration{10 * time.Second}, BackoffRate: 2.0},
+			attempt:  2,
+			expected: 20 * time.Second,
+		},
+		{
+			name:     "third attempt with backoff",
+			retry:    RetryConfig{MaxAttempts: 3, Interval: &Duration{10 * time.Second}, BackoffRate: 2.0},
+			attempt:  3,
+			expected: 40 * time.Second,
+		},
+		{
+			name:     "no backoff rate defaults to 1.0",
+			retry:    RetryConfig{MaxAttempts: 3, Interval: &Duration{10 * time.Second}},
+			attempt:  3,
+			expected: 10 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := retryDelay(tt.retry, tt.attempt)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestMatchesErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		errStr   string
+		patterns []string
+		want     bool
+	}{
+		{"empty patterns matches all", "any error", nil, true},
+		{"wildcard matches all", "any error", []string{"*"}, true},
+		{"exact match", "timeout", []string{"timeout"}, true},
+		{"no match", "timeout", []string{"permission_denied"}, false},
+		{"multiple patterns with match", "timeout", []string{"permission_denied", "timeout"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchesErrors(tt.errStr, tt.patterns)
+			if got != tt.want {
+				t.Errorf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestGetRetryCount(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]any
+		want int
+	}{
+		{"nil data", nil, 0},
+		{"no key", map[string]any{}, 0},
+		{"int value", map[string]any{"_retry_count": 3}, 3},
+		{"float64 value (JSON unmarshal)", map[string]any{"_retry_count": float64(2)}, 2},
+		{"string value (invalid)", map[string]any{"_retry_count": "x"}, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getRetryCount(tt.data)
+			if got != tt.want {
+				t.Errorf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+}

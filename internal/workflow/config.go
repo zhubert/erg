@@ -36,15 +36,31 @@ type SettingsConfig struct {
 
 // State represents a single node in the workflow graph.
 type State struct {
-	Type       StateType      `yaml:"type"`
-	Action     string         `yaml:"action,omitempty"`
-	Event      string         `yaml:"event,omitempty"`
-	Params     map[string]any `yaml:"params,omitempty"`
-	Next       string         `yaml:"next,omitempty"`
-	Error      string         `yaml:"error,omitempty"`
-	Timeout    *Duration      `yaml:"timeout,omitempty"`
-	TimeoutNext string        `yaml:"timeout_next,omitempty"`
-	After      []HookConfig   `yaml:"after,omitempty"`
+	Type        StateType      `yaml:"type"`
+	Action      string         `yaml:"action,omitempty"`
+	Event       string         `yaml:"event,omitempty"`
+	Params      map[string]any `yaml:"params,omitempty"`
+	Next        string         `yaml:"next,omitempty"`
+	Error       string         `yaml:"error,omitempty"`
+	Timeout     *Duration      `yaml:"timeout,omitempty"`
+	TimeoutNext string         `yaml:"timeout_next,omitempty"`
+	Retry       []RetryConfig  `yaml:"retry,omitempty"`
+	Catch       []CatchConfig  `yaml:"catch,omitempty"`
+	After       []HookConfig   `yaml:"after,omitempty"`
+}
+
+// RetryConfig defines retry behavior for a state on failure.
+type RetryConfig struct {
+	MaxAttempts int       `yaml:"max_attempts"`
+	Interval    *Duration `yaml:"interval,omitempty"`
+	BackoffRate float64   `yaml:"backoff_rate,omitempty"`
+	Errors      []string  `yaml:"errors,omitempty"` // Error patterns to match ("*" matches all)
+}
+
+// CatchConfig defines error catching with a transition to another state.
+type CatchConfig struct {
+	Errors []string `yaml:"errors,omitempty"` // Error patterns to match ("*" matches all)
+	Next   string   `yaml:"next"`
 }
 
 // SourceConfig defines where issues come from.

@@ -150,6 +150,39 @@ func validateState(name string, state *State, allStates map[string]*State) []Val
 		}
 	}
 
+	// Validate retry configs
+	for i, retry := range state.Retry {
+		retryPrefix := fmt.Sprintf("%s.retry[%d]", prefix, i)
+		if retry.MaxAttempts <= 0 {
+			errs = append(errs, ValidationError{
+				Field:   retryPrefix + ".max_attempts",
+				Message: "max_attempts must be greater than 0",
+			})
+		}
+		if retry.BackoffRate < 0 {
+			errs = append(errs, ValidationError{
+				Field:   retryPrefix + ".backoff_rate",
+				Message: "backoff_rate must not be negative",
+			})
+		}
+	}
+
+	// Validate catch configs
+	for i, catch := range state.Catch {
+		catchPrefix := fmt.Sprintf("%s.catch[%d]", prefix, i)
+		if catch.Next == "" {
+			errs = append(errs, ValidationError{
+				Field:   catchPrefix + ".next",
+				Message: "next is required for catch rules",
+			})
+		} else if _, ok := allStates[catch.Next]; !ok {
+			errs = append(errs, ValidationError{
+				Field:   catchPrefix + ".next",
+				Message: fmt.Sprintf("references non-existent state %q", catch.Next),
+			})
+		}
+	}
+
 	// Validate next/error references exist
 	if state.Next != "" {
 		if _, ok := allStates[state.Next]; !ok {

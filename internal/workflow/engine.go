@@ -135,23 +135,27 @@ func (e *Engine) processTaskState(ctx context.Context, item *WorkItemView, state
 	}
 
 	if !result.Success {
-		// Follow error edge if available
-		if state.Error != "" {
-			return &StepResult{
-				NewStep:  state.Error,
-				NewPhase: "idle",
-				Data:     result.Data,
-				Hooks:    state.After,
-			}, nil
+		errStr := ""
+		if result.Error != nil {
+			errStr = result.Error.Error()
 		}
-		return nil, fmt.Errorf("action %q failed: %v", state.Action, result.Error)
+		return e.handleFailure(item, state, errStr, result.Data)
 	}
 
-	// Success — follow next edge
+	// Success — reset retry count on success
+	data := result.Data
+	if getRetryCount(item.StepData) > 0 {
+		if data == nil {
+			data = make(map[string]any)
+		}
+		data["_retry_count"] = 0
+	}
+
+	// Follow next edge
 	return &StepResult{
 		NewStep:  state.Next,
 		NewPhase: "idle",
-		Data:     result.Data,
+		Data:     data,
 		Hooks:    state.After,
 	}, nil
 }
@@ -230,21 +234,153 @@ func (e *Engine) AdvanceAfterAsync(item *WorkItemView, success bool) (*StepResul
 	}
 
 	if !success {
-		if state.Error != "" {
-			return &StepResult{
-				NewStep:  state.Error,
-				NewPhase: "idle",
-				Hooks:    state.After,
-			}, nil
-		}
-		return nil, fmt.Errorf("async action failed in state %q with no error edge", item.CurrentStep)
+		return e.handleFailure(item, state, "async action failed", nil)
+	}
+
+	// Reset retry count on success
+	var data map[string]any
+	if getRetryCount(item.StepData) > 0 {
+		data = map[string]any{"_retry_count": 0}
 	}
 
 	return &StepResult{
 		NewStep:  state.Next,
 		NewPhase: "idle",
+		Data:     data,
 		Hooks:    state.After,
 	}, nil
+}
+
+// handleFailure processes a failure in a task state, checking retry and catch rules
+// before falling back to the error edge.
+func (e *Engine) handleFailure(item *WorkItemView, state *State, errStr string, data map[string]any) (*StepResult, error) {
+	// Check retry rules first
+	retryCount := getRetryCount(item.StepData)
+	for _, retry := range state.Retry {
+		if !matchesErrors(errStr, retry.Errors) {
+			continue
+		}
+		if retryCount < retry.MaxAttempts {
+			newCount := retryCount + 1
+			retryData := mergeData(data, map[string]any{
+				"_retry_count": newCount,
+				"_last_error":  errStr,
+			})
+
+			e.logger.Info("retrying action",
+				"state", item.CurrentStep,
+				"attempt", newCount,
+				"max_attempts", retry.MaxAttempts,
+				"error", errStr,
+			)
+
+			// Calculate retry delay and store it for the daemon to enforce
+			delay := retryDelay(retry, newCount)
+			if delay > 0 {
+				retryData["_retry_after"] = time.Now().Add(delay).Format(time.RFC3339)
+			}
+
+			return &StepResult{
+				NewStep:  item.CurrentStep,
+				NewPhase: "retry_pending",
+				Data:     retryData,
+			}, nil
+		}
+	}
+
+	// Check catch rules
+	for _, catch := range state.Catch {
+		if matchesErrors(errStr, catch.Errors) {
+			catchData := mergeData(data, map[string]any{
+				"_caught_error": errStr,
+				"_retry_count":  0,
+			})
+			return &StepResult{
+				NewStep:  catch.Next,
+				NewPhase: "idle",
+				Data:     catchData,
+				Hooks:    state.After,
+			}, nil
+		}
+	}
+
+	// Fall back to error edge
+	if state.Error != "" {
+		return &StepResult{
+			NewStep:  state.Error,
+			NewPhase: "idle",
+			Data:     data,
+			Hooks:    state.After,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("action %q failed with no retry, catch, or error edge: %s", state.Action, errStr)
+}
+
+// getRetryCount extracts the retry count from step data.
+func getRetryCount(stepData map[string]any) int {
+	if stepData == nil {
+		return 0
+	}
+	v, ok := stepData["_retry_count"]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+// retryDelay calculates the delay for the given retry attempt using exponential backoff.
+func retryDelay(retry RetryConfig, attempt int) time.Duration {
+	if retry.Interval == nil {
+		return 0
+	}
+	base := retry.Interval.Duration
+	rate := retry.BackoffRate
+	if rate <= 0 {
+		rate = 1.0
+	}
+	// Delay = interval * backoff_rate^(attempt-1)
+	delay := base
+	for i := 1; i < attempt; i++ {
+		delay = time.Duration(float64(delay) * rate)
+	}
+	return delay
+}
+
+// matchesErrors checks if an error string matches any of the given patterns.
+// An empty patterns list or a "*" pattern matches everything.
+func matchesErrors(errStr string, patterns []string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	for _, p := range patterns {
+		if p == "*" {
+			return true
+		}
+		if errStr == p {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeData merges overlay into base, returning a new map.
+func mergeData(base, overlay map[string]any) map[string]any {
+	result := make(map[string]any)
+	for k, v := range base {
+		result[k] = v
+	}
+	for k, v := range overlay {
+		result[k] = v
+	}
+	return result
 }
 
 // GetState returns the state definition for a given state name.
