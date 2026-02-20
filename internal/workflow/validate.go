@@ -185,6 +185,15 @@ func validateState(name string, state *State, allStates map[string]*State) []Val
 			}
 		}
 
+	case StateTypePass:
+		// Pass states require next
+		if state.Next == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".next",
+				Message: "next is required for pass states",
+			})
+		}
+
 	case StateTypeSucceed, StateTypeFail:
 		// Terminal states must not have next
 		if state.Next != "" {

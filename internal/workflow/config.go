@@ -14,6 +14,7 @@ const (
 	StateTypeTask    StateType = "task"
 	StateTypeWait    StateType = "wait"
 	StateTypeChoice  StateType = "choice"
+	StateTypePass    StateType = "pass"
 	StateTypeSucceed StateType = "succeed"
 	StateTypeFail    StateType = "fail"
 )
@@ -49,6 +50,7 @@ type State struct {
 	Catch       []CatchConfig  `yaml:"catch,omitempty"`
 	Choices     []ChoiceRule   `yaml:"choices,omitempty"`
 	Default     string         `yaml:"default,omitempty"`
+	Data        map[string]any `yaml:"data,omitempty"`
 	After       []HookConfig   `yaml:"after,omitempty"`
 }
 
@@ -139,6 +141,7 @@ var ValidStateTypes = map[StateType]bool{
 	StateTypeTask:    true,
 	StateTypeWait:    true,
 	StateTypeChoice:  true,
+	StateTypePass:    true,
 	StateTypeSucceed: true,
 	StateTypeFail:    true,
 }

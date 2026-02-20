@@ -1157,3 +1157,56 @@ func TestValuesEqual(t *testing.T) {
 		})
 	}
 }
+
+func TestEngine_ProcessStep_Pass(t *testing.T) {
+	cfg := &Config{
+		Start: "setup",
+		States: map[string]*State{
+			"setup": {
+				Type: StateTypePass,
+				Data: map[string]any{
+					"merge_method": "squash",
+					"cleanup":     true,
+				},
+				Next: "coding",
+			},
+			"coding": {Type: StateTypeSucceed},
+		},
+	}
+	engine := NewEngine(cfg, NewActionRegistry(), nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "setup", Phase: "idle"}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "coding" {
+		t.Errorf("expected coding, got %q", result.NewStep)
+	}
+	if result.Data["merge_method"] != "squash" {
+		t.Error("expected merge_method=squash in data")
+	}
+	if result.Data["cleanup"] != true {
+		t.Error("expected cleanup=true in data")
+	}
+}
+
+func TestEngine_ProcessStep_PassNoData(t *testing.T) {
+	cfg := &Config{
+		Start: "skip",
+		States: map[string]*State{
+			"skip": {Type: StateTypePass, Next: "done"},
+			"done": {Type: StateTypeSucceed},
+		},
+	}
+	engine := NewEngine(cfg, NewActionRegistry(), nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "skip", Phase: "idle"}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "done" {
+		t.Errorf("expected done, got %q", result.NewStep)
+	}
+}

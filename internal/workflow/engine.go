@@ -102,6 +102,9 @@ func (e *Engine) ProcessStep(ctx context.Context, item *WorkItemView) (*StepResu
 	case StateTypeChoice:
 		return e.processChoiceState(item, state)
 
+	case StateTypePass:
+		return e.processPassState(item, state)
+
 	default:
 		return nil, fmt.Errorf("unsupported state type %q", state.Type)
 	}
@@ -299,6 +302,16 @@ func valuesEqual(a, b any) bool {
 		return true
 	}
 	return false
+}
+
+// processPassState injects data into step data and immediately transitions to the next state.
+func (e *Engine) processPassState(item *WorkItemView, state *State) (*StepResult, error) {
+	return &StepResult{
+		NewStep:  state.Next,
+		NewPhase: "idle",
+		Data:     state.Data,
+		Hooks:    state.After,
+	}, nil
 }
 
 // AdvanceAfterAsync is called when an async action (e.g., Claude worker) completes.
