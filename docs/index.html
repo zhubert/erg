@@ -760,7 +760,7 @@
                 <div class="feature-card">
                     <span class="feature-icon" aria-hidden="true">~</span>
                     <h3>workflow engine</h3>
-                    <p>configurable state machine via <code>.plural/workflow.yaml</code>. customize the pipeline per-repository.</p>
+                    <p>configurable state machine via <code>.plural/workflow.yaml</code>. task, wait, choice, and pass states with retry, catch, and timeout.</p>
                 </div>
                 <div class="feature-card">
                     <span class="feature-icon" aria-hidden="true">*</span>
@@ -849,7 +849,7 @@
                         <span class="state-type">succeed</span>
                     </div>
                 </div>
-                <p class="state-error-branch">any state can transition to <code>failed</code> on error</p>
+                <p class="state-error-branch"><code>retry</code> with exponential backoff · <code>catch</code> to recovery states · <code>timeout</code> enforced on wait states</p>
 
                 <!-- YAML config -->
                 <div class="yaml-block">
@@ -867,14 +867,22 @@
       <span class="yk">max_turns:</span> <span class="yv">50</span>
       <span class="yk">max_duration:</span> <span class="yv">30m</span>
       <span class="yk">system_prompt:</span> <span class="yv">file:.plural/prompt.md</span>
-    <span class="yk">after:</span>
+    <span class="yk">before:</span>                        <span class="yc"># runs before step; failure blocks</span>
+      <span class="yv">- run: "make deps"</span>
+    <span class="yk">after:</span>                         <span class="yc"># runs after; fire-and-forget</span>
       <span class="yv">- run: "make lint"</span>
+    <span class="yk">retry:</span>                         <span class="yc"># retry with exponential backoff</span>
+      - <span class="yk">max_attempts:</span> <span class="yv">3</span>
+        <span class="yk">interval:</span> <span class="yv">30s</span>
+        <span class="yk">backoff_rate:</span> <span class="yv">2.0</span>
     <span class="yk">next:</span> <span class="yv">open_pr</span>
     <span class="yk">error:</span> <span class="yv">failed</span>
 
   <span class="yk">await_review:</span>
     <span class="yk">type:</span> <span class="ys">wait</span>
     <span class="yk">event:</span> <span class="ya">pr.reviewed</span>
+    <span class="yk">timeout:</span> <span class="yv">48h</span>                  <span class="yc"># enforced at runtime</span>
+    <span class="yk">timeout_next:</span> <span class="yv">nudge_reviewers</span>  <span class="yc"># dedicated timeout edge</span>
     <span class="yk">params:</span>
       <span class="yk">auto_address:</span> <span class="yv">true</span>
       <span class="yk">max_feedback_rounds:</span> <span class="yv">3</span>
@@ -889,20 +897,20 @@
                 <!-- Customization callouts -->
                 <div class="customize-grid">
                     <div class="customize-item">
-                        <h4>custom prompts</h4>
-                        <p>inject system prompts inline or via <code>file:</code> paths. separate prompts for the coding phase and review phase.</p>
+                        <h4>error recovery</h4>
+                        <p>task states support <code>retry</code> with exponential backoff and <code>catch</code> to route specific errors to recovery states.</p>
                     </div>
                     <div class="customize-item">
-                        <h4>after-hooks</h4>
-                        <p>run shell commands after any state. hooks receive <code>$PLURAL_BRANCH</code>, <code>$PLURAL_PR_URL</code>, and more via env vars.</p>
+                        <h4>timeout enforcement</h4>
+                        <p>wait states enforce <code>timeout</code> durations at runtime. <code>timeout_next</code> provides a dedicated transition edge.</p>
                     </div>
                     <div class="customize-item">
-                        <h4>CI failure policy</h4>
-                        <p>choose <code>retry</code>, <code>abandon</code>, or <code>notify</code> when CI fails. configure timeout per wait state.</p>
+                        <h4>conditional branching</h4>
+                        <p><code>choice</code> states evaluate rules against step data. <code>pass</code> states inject data for downstream states to read.</p>
                     </div>
                     <div class="customize-item">
-                        <h4>add or reorder states</h4>
-                        <p>insert a <code>github.comment_issue</code> step, remove auto-merge, or rearrange the graph entirely.</p>
+                        <h4>before & after hooks</h4>
+                        <p><code>before</code> hooks block on failure. <code>after</code> hooks are fire-and-forget. hooks receive <code>$PLURAL_BRANCH</code>, <code>$PLURAL_PR_URL</code>, and more.</p>
                     </div>
                 </div>
 
