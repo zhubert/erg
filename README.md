@@ -1,8 +1,8 @@
 # Plural Agent
 
-**Autonomous headless daemon for Claude Code.** Label an issue, and plural-agent codes it, opens a PR, addresses review comments, and merges — no human in the loop.
+**Configurable autonomous agent that turns issues into merged PRs** — with containerized Claude Code sessions, workflow orchestration, and multi-provider support.
 
-Plural Agent is the headless agent extracted from [Plural](https://github.com/zhubert/plural). It runs as a persistent daemon that polls for issues, spins up containerized Claude Code sessions, and manages the full lifecycle from coding through merge.
+Plural Agent polls for work from GitHub, Asana, or Linear, spins up containerized Claude Code sessions, and manages the full lifecycle: coding, PR creation, review feedback, CI, and merge. The workflow is a configurable state machine — customize the pipeline per-repo or use sensible defaults.
 
 ## Install
 
@@ -26,23 +26,24 @@ Or [build from source](#build-from-source).
 plural-agent agent --repo owner/repo
 ```
 
-Label a GitHub issue `queued` and plural-agent picks it up automatically.
+Label a GitHub issue `queued` and plural-agent picks it up automatically. For Asana or Linear, configure the [workflow source](#workflow-configuration).
 
 ---
 
 ## How It Works
 
-1. Agent finds issues labeled `queued` on the target repo
+1. Agent polls for issues from your configured provider (GitHub labels, Asana projects, or Linear teams)
 2. Creates a containerized Claude Code session on a new branch
 3. Claude works the issue autonomously
 4. A PR is created when coding is complete
-5. Agent polls for review approval and CI, then merges
+5. Agent addresses review feedback, waits for CI, and merges
 
 For complex issues, Claude can delegate subtasks to child sessions via MCP tools (`create_child_session`, `list_child_sessions`, `merge_child_to_parent`). The supervisor waits for all children before creating a PR.
 
-## Agent Flags
+## CLI Reference
 
 ```bash
+# Agent daemon
 plural-agent agent --repo owner/repo              # Required: repo to poll
 plural-agent agent --repo owner/repo --once       # Single tick, then exit
 plural-agent agent --repo owner/repo --auto-merge # Auto-merge after review + CI (default)
@@ -52,6 +53,15 @@ plural-agent agent --repo owner/repo --max-turns 80
 plural-agent agent --repo owner/repo --max-duration 45
 plural-agent agent --repo owner/repo --merge-method squash
 plural-agent agent --repo owner/repo --auto-address-pr-comments
+
+# Cleanup
+plural-agent agent clean                          # Remove daemon state and lock files
+plural-agent agent clean -y                       # Clean without confirmation
+
+# General
+plural-agent --version                            # Show version
+plural-agent --debug                              # Debug logging (default: on)
+plural-agent -q / --quiet                         # Info-level logging only
 ```
 
 If `--repo` is not specified and the current directory is inside a git repository, that repository is used as the default.
@@ -517,18 +527,6 @@ These can also be set via `~/.plural/config.json`:
 | Auto-address PR comments | `auto_address_pr_comments` | `false` |
 
 Graceful shutdown: `SIGINT`/`SIGTERM` once to finish current work, twice to force exit.
-
-## CLI Reference
-
-```bash
-plural-agent agent --repo ...          # Run headless agent daemon
-plural-agent agent --repo ... --once   # Process one tick and exit
-plural-agent agent clean               # Remove daemon state and lock files
-plural-agent agent clean -y            # Clean without confirmation
-plural-agent --version                 # Show version
-plural-agent --debug                   # Debug logging (default: on)
-plural-agent -q / --quiet              # Info-level logging only
-```
 
 ## Data Storage
 
