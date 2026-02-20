@@ -375,6 +375,29 @@ func TestValidate(t *testing.T) {
 			wantFields: []string{"states.c.params.body"},
 		},
 		{
+			name: "valid pass state",
+			cfg: &Config{
+				Start:  "setup",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"setup": {Type: StateTypePass, Data: map[string]any{"key": "val"}, Next: "done"},
+					"done":  {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: nil,
+		},
+		{
+			name: "pass state missing next",
+			cfg: &Config{
+				Start:  "setup",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"setup": {Type: StateTypePass, Data: map[string]any{"key": "val"}},
+				},
+			},
+			wantFields: []string{"states.setup.next"},
+		},
+		{
 			name: "valid choice state",
 			cfg: &Config{
 				Start:  "check",

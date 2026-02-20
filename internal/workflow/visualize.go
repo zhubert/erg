@@ -57,6 +57,11 @@ func GenerateMermaid(cfg *Config) string {
 			if state.Default != "" {
 				sb.WriteString(fmt.Sprintf("    %s --> %s : default\n", name, state.Default))
 			}
+
+		case StateTypePass:
+			if state.Next != "" {
+				sb.WriteString(fmt.Sprintf("    %s --> %s : pass\n", name, state.Next))
+			}
 		}
 
 		// Add note for params
