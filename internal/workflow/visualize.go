@@ -28,6 +28,12 @@ func GenerateMermaid(cfg *Config) string {
 				sb.WriteString(fmt.Sprintf("    %s --> %s : error\n", name, state.Error))
 			}
 
+			// Emit before-hooks
+			if len(state.Before) > 0 {
+				hookName := name + "_before"
+				sb.WriteString(fmt.Sprintf("    %s --> %s : before hooks\n", hookName, name))
+			}
+
 			// Emit after-hooks
 			if len(state.After) > 0 {
 				hookName := name + "_hooks"

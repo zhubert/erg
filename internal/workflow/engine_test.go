@@ -1210,3 +1210,41 @@ func TestEngine_ProcessStep_PassNoData(t *testing.T) {
 		t.Errorf("expected done, got %q", result.NewStep)
 	}
 }
+
+func TestEngine_GetBeforeHooks(t *testing.T) {
+	cfg := &Config{
+		Start: "coding",
+		States: map[string]*State{
+			"coding": {
+				Type:   StateTypeTask,
+				Action: "ai.code",
+				Next:   "done",
+				Before: []HookConfig{{Run: "echo setup"}, {Run: "make lint"}},
+			},
+			"done":    {Type: StateTypeSucceed},
+			"no_hook": {Type: StateTypeSucceed},
+		},
+	}
+	engine := NewEngine(cfg, NewActionRegistry(), nil, testLogger())
+
+	// State with before hooks
+	hooks := engine.GetBeforeHooks("coding")
+	if len(hooks) != 2 {
+		t.Fatalf("expected 2 before hooks, got %d", len(hooks))
+	}
+	if hooks[0].Run != "echo setup" {
+		t.Errorf("expected 'echo setup', got %q", hooks[0].Run)
+	}
+
+	// State without before hooks
+	hooks = engine.GetBeforeHooks("no_hook")
+	if len(hooks) != 0 {
+		t.Errorf("expected 0 before hooks, got %d", len(hooks))
+	}
+
+	// Non-existent state
+	hooks = engine.GetBeforeHooks("nonexistent")
+	if hooks != nil {
+		t.Errorf("expected nil for non-existent state, got %v", hooks)
+	}
+}

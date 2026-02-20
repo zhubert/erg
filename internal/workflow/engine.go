@@ -33,12 +33,13 @@ type WorkItemView struct {
 
 // StepResult is the outcome of processing a step.
 type StepResult struct {
-	NewStep    string         // The step to move to (empty if no change)
-	NewPhase   string         // The phase within the new step
-	Terminal   bool           // True if the workflow has reached a terminal state
-	TerminalOK bool           // True if terminal state is succeed (false = fail)
-	Data       map[string]any // Data to merge into step data
-	Hooks      []HookConfig   // After-hooks to run
+	NewStep     string         // The step to move to (empty if no change)
+	NewPhase    string         // The phase within the new step
+	Terminal    bool           // True if the workflow has reached a terminal state
+	TerminalOK  bool           // True if terminal state is succeed (false = fail)
+	Data        map[string]any // Data to merge into step data
+	BeforeHooks []HookConfig   // Before-hooks to run before the step executes
+	Hooks       []HookConfig   // After-hooks to run
 }
 
 // Engine is the core workflow orchestrator.
@@ -478,6 +479,18 @@ func (e *Engine) GetState(name string) *State {
 		return nil
 	}
 	return e.config.States[name]
+}
+
+// GetBeforeHooks returns the before hooks for a given state name.
+// The daemon should call this when entering a new state and run the hooks
+// before processing the step. If a before hook fails, the daemon should
+// follow the error edge.
+func (e *Engine) GetBeforeHooks(stateName string) []HookConfig {
+	state := e.GetState(stateName)
+	if state == nil {
+		return nil
+	}
+	return state.Before
 }
 
 // IsTerminalState returns true if the named state is a terminal state.
