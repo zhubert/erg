@@ -375,6 +375,70 @@ func TestValidate(t *testing.T) {
 			wantFields: []string{"states.c.params.body"},
 		},
 		{
+			name: "retry with zero max_attempts",
+			cfg: &Config{
+				Start:  "t",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"t":    {Type: StateTypeTask, Action: "ai.code", Next: "done", Retry: []RetryConfig{{MaxAttempts: 0}}},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.t.retry[0].max_attempts"},
+		},
+		{
+			name: "retry with negative backoff_rate",
+			cfg: &Config{
+				Start:  "t",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"t":    {Type: StateTypeTask, Action: "ai.code", Next: "done", Retry: []RetryConfig{{MaxAttempts: 3, BackoffRate: -1.0}}},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.t.retry[0].backoff_rate"},
+		},
+		{
+			name: "catch missing next",
+			cfg: &Config{
+				Start:  "t",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"t":    {Type: StateTypeTask, Action: "ai.code", Next: "done", Catch: []CatchConfig{{Errors: []string{"*"}}}},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.t.catch[0].next"},
+		},
+		{
+			name: "catch references non-existent state",
+			cfg: &Config{
+				Start:  "t",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"t":    {Type: StateTypeTask, Action: "ai.code", Next: "done", Catch: []CatchConfig{{Errors: []string{"*"}, Next: "nonexistent"}}},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.t.catch[0].next"},
+		},
+		{
+			name: "valid retry and catch config",
+			cfg: &Config{
+				Start:  "t",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"t": {Type: StateTypeTask, Action: "ai.code", Next: "done",
+						Retry: []RetryConfig{{MaxAttempts: 3, BackoffRate: 2.0}},
+						Catch: []CatchConfig{{Errors: []string{"*"}, Next: "failed"}},
+					},
+					"done":   {Type: StateTypeSucceed},
+					"failed": {Type: StateTypeFail},
+				},
+			},
+			wantFields: nil,
+		},
+		{
 			name: "timeout_next without timeout",
 			cfg: &Config{
 				Start:  "w",
