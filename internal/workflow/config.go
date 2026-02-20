@@ -51,6 +51,7 @@ type State struct {
 	Choices     []ChoiceRule   `yaml:"choices,omitempty"`
 	Default     string         `yaml:"default,omitempty"`
 	Data        map[string]any `yaml:"data,omitempty"`
+	Before      []HookConfig   `yaml:"before,omitempty"`
 	After       []HookConfig   `yaml:"after,omitempty"`
 }
 

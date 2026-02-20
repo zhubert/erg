@@ -123,6 +123,10 @@ func Merge(partial, defaults *Config) *Config {
 				s.Params[k] = v
 			}
 		}
+		if state.Before != nil {
+			s.Before = make([]HookConfig, len(state.Before))
+			copy(s.Before, state.Before)
+		}
 		if state.After != nil {
 			s.After = make([]HookConfig, len(state.After))
 			copy(s.After, state.After)

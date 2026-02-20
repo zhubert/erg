@@ -151,6 +151,90 @@ func TestHookContext_EnvVars(t *testing.T) {
 	}
 }
 
+func TestRunBeforeHooks_Success(t *testing.T) {
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "before_output.txt")
+
+	hooks := []HookConfig{
+		{Run: "echo before > " + outFile},
+	}
+
+	hookCtx := HookContext{RepoPath: dir, Branch: "test"}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	err := RunBeforeHooks(context.Background(), hooks, hookCtx, logger)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("hook output file not created: %v", err)
+	}
+	if got := string(data); got != "before\n" {
+		t.Errorf("hook output: got %q, want %q", got, "before\n")
+	}
+}
+
+func TestRunBeforeHooks_FailureBlocks(t *testing.T) {
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "should_not_exist.txt")
+
+	hooks := []HookConfig{
+		{Run: "exit 1"},                             // This fails
+		{Run: "echo nope > " + outFile},              // This should NOT run
+	}
+
+	hookCtx := HookContext{RepoPath: dir}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	err := RunBeforeHooks(context.Background(), hooks, hookCtx, logger)
+	if err == nil {
+		t.Fatal("expected error from failing before hook")
+	}
+
+	// Second hook should NOT have run
+	if _, err := os.Stat(outFile); err == nil {
+		t.Error("second hook should not have run after first hook failure")
+	}
+}
+
+func TestRunBeforeHooks_EmptyRun(t *testing.T) {
+	hooks := []HookConfig{{Run: ""}}
+	hookCtx := HookContext{RepoPath: t.TempDir()}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	err := RunBeforeHooks(context.Background(), hooks, hookCtx, logger)
+	if err != nil {
+		t.Fatalf("expected no error for empty run, got: %v", err)
+	}
+}
+
+func TestRunBeforeHooks_MultipleSuccess(t *testing.T) {
+	dir := t.TempDir()
+	outFile1 := filepath.Join(dir, "first.txt")
+	outFile2 := filepath.Join(dir, "second.txt")
+
+	hooks := []HookConfig{
+		{Run: "echo first > " + outFile1},
+		{Run: "echo second > " + outFile2},
+	}
+
+	hookCtx := HookContext{RepoPath: dir}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	err := RunBeforeHooks(context.Background(), hooks, hookCtx, logger)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	for _, f := range []string{outFile1, outFile2} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("expected file %s to exist", f)
+		}
+	}
+}
+
 func splitEnvVar(s string) []string {
 	idx := 0
 	for i, c := range s {
