@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zhubert/plural-agent/internal/agentconfig"
+	"github.com/zhubert/plural-agent/internal/container"
 	"github.com/zhubert/plural-agent/internal/daemon"
 	"github.com/zhubert/plural-agent/internal/workflow"
 	"github.com/zhubert/plural-core/cli"
@@ -73,10 +74,44 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 	agentRepo = resolved
 
+	// Set up signal handling (needed early for auto-detect/build cancellation)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		agentLogger.Info("received signal, shutting down gracefully", "signal", sig)
+		cancel()
+		// On second signal, force exit
+		sig = <-sigCh
+		agentLogger.Warn("received second signal, force exiting", "signal", sig)
+		os.Exit(1)
+	}()
+
 	// Load workflow config for settings
 	wfCfg, err := workflow.LoadAndMerge(agentRepo)
 	if err != nil {
 		return fmt.Errorf("error loading workflow config: %w", err)
+	}
+
+	// Auto-detect container image if not explicitly configured
+	if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
+		detected := container.Detect(ctx, agentRepo)
+		agentLogger.Info("auto-detected languages", "languages", detected, "repo", agentRepo)
+
+		image, err := container.EnsureImage(ctx, detected, agentLogger)
+		if err != nil {
+			return fmt.Errorf("failed to auto-build container image: %w\n\n"+
+				"You can skip auto-detection by setting container_image in .plural/workflow.yaml", err)
+		}
+
+		if wfCfg.Settings == nil {
+			wfCfg.Settings = &workflow.SettingsConfig{}
+		}
+		wfCfg.Settings.ContainerImage = image
 	}
 
 	// Build AgentConfig from workflow settings + defaults
@@ -107,18 +142,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 	cfg := agentconfig.NewAgentConfig(cfgOpts...)
 
-	// Validate container image is configured (BYOC: users must provide their own image)
-	if cfg.GetContainerImage() == "" {
-		return fmt.Errorf(
-			"container_image is required but not configured.\n\n" +
-				"Set it in your .plural/workflow.yaml:\n\n" +
-				"  settings:\n" +
-				"    container_image: ghcr.io/zhubert/plural-claude  # or your custom image\n\n" +
-				"Extend the base image with your toolchain using FROM.\n" +
-				"See https://github.com/zhubert/plural-agent for details.",
-		)
-	}
-
 	// Initialize issue providers (nil configs — Asana/Linear are configured via workflow source, not config.json)
 	githubProvider := issues.NewGitHubProvider(gitSvc)
 	asanaProvider := issues.NewAsanaProvider(cfg)
@@ -138,23 +161,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Create daemon
 	d := daemon.New(cfg, gitSvc, sessSvc, issueRegistry, agentLogger, opts...)
-
-	// Set up signal handling
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigCh
-		agentLogger.Info("received signal, shutting down gracefully", "signal", sig)
-		cancel()
-		// On second signal, force exit
-		sig = <-sigCh
-		agentLogger.Warn("received second signal, force exiting", "signal", sig)
-		os.Exit(1)
-	}()
 
 	// Run daemon
 	return d.Run(ctx)
