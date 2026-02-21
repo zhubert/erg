@@ -479,7 +479,12 @@ func (d *Daemon) processWaitItems(ctx context.Context) {
 			continue
 		}
 
-		if result.NewStep != item.CurrentStep || result.NewPhase != item.Phase {
+		// Compare against the view (snapshot before ProcessStep) rather than
+		// the live item. Event handlers like addressFeedback may mutate
+		// item.Phase during ProcessStep; comparing against the stale item
+		// would incorrectly detect a "change" and overwrite the handler's
+		// phase update.
+		if result.NewStep != view.CurrentStep || result.NewPhase != view.Phase {
 			if len(result.Hooks) > 0 {
 				d.runHooks(ctx, result.Hooks, item, sess)
 			}
@@ -523,7 +528,8 @@ func (d *Daemon) processCIItems(ctx context.Context) {
 			continue
 		}
 
-		if result.NewStep != item.CurrentStep || result.NewPhase != item.Phase {
+		// Compare against the view snapshot, not the live item (see processWaitItems).
+		if result.NewStep != view.CurrentStep || result.NewPhase != view.Phase {
 			if len(result.Hooks) > 0 {
 				d.runHooks(ctx, result.Hooks, item, sess)
 			}
