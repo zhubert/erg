@@ -47,6 +47,13 @@ For complex issues, Claude can delegate subtasks to child sessions via MCP tools
 plural-agent --repo owner/repo        # Required: repo to poll
 plural-agent --repo owner/repo --once # Single tick, then exit
 
+# Workflow management
+plural-agent workflow init                    # Generate .plural/workflow.yaml template
+plural-agent workflow init --repo /path/to/repo
+plural-agent workflow validate                # Validate workflow configuration
+plural-agent workflow validate --repo /path/to/repo
+plural-agent workflow visualize               # Print mermaid diagram of workflow
+
 # Cleanup
 plural-agent clean                    # Remove daemon state and lock files
 plural-agent clean -y                 # Clean without confirmation

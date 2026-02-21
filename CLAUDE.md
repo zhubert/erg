@@ -60,6 +60,7 @@ cmd/                       CLI commands (Cobra)
   mcp_server.go            MCP server for permission prompts (internal)
   root.go                  Root command, version template
   util.go                  Shared CLI helpers
+  workflow.go              Workflow management subcommands (init, validate, visualize)
 internal/
   agentconfig/             Shared config interface (leaf package)
     config.go              Config interface — decouples agent/daemon from concrete config
@@ -71,33 +72,49 @@ internal/
     worker.go              SessionWorker — manages a single session's lifecycle
     auto_merge.go          Auto-merge logic (poll for review + CI, then merge)
     helpers.go             TrimURL, FormatPRCommentsPrompt, FormatInitialMessage
+  workflow/                Workflow engine and configuration
+    actions.go             Action string constants
+    config.go              WorkflowConfig, StateConfig, Source, Settings types
+    defaults.go            DefaultConfig() — built-in default state machine
+    engine.go              Engine — evaluates states, drives transitions
+    hooks.go               RunBeforeHooks, RunHooks — shell hook execution
+    init.go                WriteTemplate — generates .plural/workflow.yaml scaffold
+    loader.go              Load, LoadAndMerge — YAML parsing and merge with defaults
+    params.go              Param extraction helpers for actions/events
+    prompt.go              Prompt formatting for workflow-driven sessions
+    validate.go            Validate — structural validation of workflow configs
+    visualize.go           GenerateMermaid — mermaid diagram generation
   agent/                   Headless autonomous agent
     agent.go               Agent struct, options, New, Run, polling, Host impl
     issue_poller.go        Issue polling abstraction (GitHub label-based)
   daemon/                  Persistent orchestrator
-    daemon.go              Daemon struct, options, New, Run loop, Host impl
+    daemon.go              Daemon struct, options, New, Run loop
+    host.go                Host interface implementation for Daemon
+    lifecycle.go           Worker lifecycle and graceful shutdown helpers
     actions.go             Workflow action handlers (coding, PR creation, merge)
     events.go              Workflow event handlers (PR reviewed, CI complete)
     polling.go             Issue polling across providers (GitHub, Asana, Linear)
     recovery.go            State recovery on daemon restart
-  workflow/                Workflow engine and configuration
 ```
 
 Import graph (no cycles):
 ```
-cmd/agent.go  → daemon, agentconfig
-cmd/clean.go  → daemonstate
-daemon/       → worker, daemonstate, agentconfig, workflow
-agent/        → worker, agentconfig
-worker/       → agentconfig
-daemonstate/  → (leaf)
-agentconfig/  → (leaf)
+cmd/agent.go     → daemon, agentconfig, workflow
+cmd/clean.go     → daemonstate
+cmd/workflow.go  → workflow
+daemon/          → worker, daemonstate, agentconfig, workflow
+agent/           → worker, agentconfig
+worker/          → agentconfig
+workflow/        → (leaf, depends only on plural-core)
+daemonstate/     → (leaf)
+agentconfig/     → (leaf)
 ```
 
 ### Key Dependencies
 
 - `github.com/zhubert/plural-core` — shared library with config, git, session, claude, MCP, workflow, and issue provider packages
 - `github.com/spf13/cobra` — CLI framework
+- `gopkg.in/yaml.v3` — YAML parsing for workflow configs
 
 ### Key Patterns
 
