@@ -12,6 +12,7 @@ import (
 
 	"github.com/zhubert/plural-agent/internal/daemonstate"
 	"github.com/zhubert/plural-agent/internal/worker"
+	"github.com/zhubert/plural-agent/internal/workflow"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/exec"
 	"github.com/zhubert/plural-core/git"
@@ -1071,6 +1072,76 @@ func TestDaemon_WorkerDone_ChannelInitialized(t *testing.T) {
 	}
 	if cap(d.workerDone) != 1 {
 		t.Fatalf("expected workerDone channel capacity 1, got %d", cap(d.workerDone))
+	}
+}
+
+// phaseMutatingEventChecker is a mock EventChecker that simulates the side effect
+// of addressFeedback: it mutates the actual work item's Phase during CheckEvent
+// (just as addressFeedback does when it detects new comments), while the engine
+// receives the stale view with the original Phase. This is the exact race condition
+// that caused the phase to be overwritten in processWaitItems.
+type phaseMutatingEventChecker struct {
+	state    *daemonstate.DaemonState
+	itemID   string
+	newPhase string
+}
+
+func (c *phaseMutatingEventChecker) CheckEvent(_ context.Context, event string, _ *workflow.ParamHelper, _ *workflow.WorkItemView) (bool, map[string]any, error) {
+	if event == "pr.reviewed" {
+		// Simulate addressFeedback mutating the work item's phase directly
+		item := c.state.GetWorkItem(c.itemID)
+		if item != nil {
+			item.Phase = c.newPhase
+		}
+	}
+	return false, nil, nil
+}
+
+func TestProcessWaitItems_PreservesPhaseSetByEventHandler(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-phase")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-phase",
+		IssueRef:    config.IssueRef{Source: "github", ID: "100"},
+		SessionID:   "sess-phase",
+		Branch:      "feature-sess-phase",
+		CurrentStep: "await_review",
+	})
+	// Transition out of queued so GetActiveWorkItems includes it
+	d.state.TransitionWorkItem("item-phase", daemonstate.WorkItemCoding)
+	d.state.AdvanceWorkItem("item-phase", "await_review", "idle")
+
+	// Inject a custom engine with a phase-mutating event checker.
+	// When processWaitItems calls engine.ProcessStep, the event checker
+	// will mutate item.Phase to "addressing_feedback" (simulating addressFeedback)
+	// and return fired=false. Before the fix, processWaitItems would compare
+	// result.NewPhase ("idle") against item.Phase ("addressing_feedback"),
+	// see a mismatch, and call AdvanceWorkItem to overwrite it back to "idle".
+	checker := &phaseMutatingEventChecker{
+		state:    d.state,
+		itemID:   "item-phase",
+		newPhase: "addressing_feedback",
+	}
+	wfCfg := workflow.DefaultConfig()
+	registry := d.buildActionRegistry()
+	engine := workflow.NewEngine(wfCfg, registry, checker, d.logger)
+	d.engines = map[string]*workflow.Engine{"/test/repo": engine}
+
+	d.lastReviewPollAt = time.Time{} // Ensure processWaitItems runs
+	d.processWaitItems(context.Background())
+
+	item := d.state.GetWorkItem("item-phase")
+	if item.Phase != "addressing_feedback" {
+		t.Errorf("expected phase 'addressing_feedback' to be preserved, got %q", item.Phase)
+	}
+	if item.CurrentStep != "await_review" {
+		t.Errorf("expected step to remain 'await_review', got %q", item.CurrentStep)
 	}
 }
 
