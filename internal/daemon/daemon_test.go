@@ -704,8 +704,11 @@ func TestDaemon_RecoverFromState_AddressingFeedback_PRApproved(t *testing.T) {
 	d.recoverFromState(context.Background())
 
 	item := d.state.GetWorkItem("item-1")
-	if item.CurrentStep != "merge" {
-		t.Errorf("expected merge, got %s", item.CurrentStep)
+	// Recovery should reset to idle at await_review (not advance to merge).
+	// The merge step is a sync task that requires executeSyncChain() to run,
+	// which only happens during the normal tick loop — not during recovery.
+	if item.CurrentStep != "await_review" {
+		t.Errorf("expected await_review, got %s", item.CurrentStep)
 	}
 	if item.Phase != "idle" {
 		t.Errorf("expected idle, got %s", item.Phase)
@@ -1479,5 +1482,76 @@ func TestDaemon_WorkerDone_CreateWorkerNotifies(t *testing.T) {
 		// success — notification received
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("expected workerDone signal after worker completed")
+	}
+}
+
+func TestDaemon_ProcessIdleSyncItems_ExecutesMerge(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Mock merge success
+	mockExec.AddPrefixMatch("gh", []string{"pr", "merge"}, exec.MockResponse{
+		Stdout: []byte("merged"),
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	// Simulate the old recovery bug: item stuck at merge/idle.
+	// AddWorkItem forces State=Queued, so we update it afterward.
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "1"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+	})
+	d.state.UpdateWorkItem("item-1", func(it *daemonstate.WorkItem) {
+		it.State = daemonstate.WorkItemCoding
+	})
+	d.state.AdvanceWorkItem("item-1", "merge", "idle")
+
+	d.loadWorkflowConfigs()
+
+	d.processIdleSyncItems(context.Background())
+
+	item := d.state.GetWorkItem("item-1")
+	if item.State != daemonstate.WorkItemCompleted {
+		t.Errorf("expected completed, got state=%s step=%s phase=%s", item.State, item.CurrentStep, item.Phase)
+	}
+}
+
+func TestDaemon_ProcessIdleSyncItems_SkipsWaitStates(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	// Item in a wait state (await_review) should NOT be processed
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "1"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+	})
+	d.state.UpdateWorkItem("item-1", func(it *daemonstate.WorkItem) {
+		it.State = daemonstate.WorkItemCoding
+	})
+	d.state.AdvanceWorkItem("item-1", "await_review", "idle")
+
+	d.loadWorkflowConfigs()
+
+	d.processIdleSyncItems(context.Background())
+
+	item := d.state.GetWorkItem("item-1")
+	// Should remain unchanged
+	if item.CurrentStep != "await_review" {
+		t.Errorf("expected await_review to be unchanged, got %s", item.CurrentStep)
+	}
+	if item.Phase != "idle" {
+		t.Errorf("expected idle to be unchanged, got %s", item.Phase)
 	}
 }

@@ -203,6 +203,7 @@ func (d *Daemon) notifyWorkerDone() {
 func (d *Daemon) tick(ctx context.Context) {
 	d.collectCompletedWorkers(ctx) // Detect finished Claude sessions
 	d.processRetryItems(ctx)       // Re-execute items whose retry delay has elapsed
+	d.processIdleSyncItems(ctx)    // Execute items idle on sync task steps (e.g. after recovery)
 	d.processWorkItems(ctx)        // Process active items via engine
 	d.pollForNewIssues(ctx)        // Find new issues (if slots available)
 	d.startQueuedItems(ctx)        // Start coding on queued items
@@ -582,6 +583,35 @@ func (d *Daemon) processCIItems(ctx context.Context) {
 	}
 }
 
+
+// processIdleSyncItems finds items in idle phase sitting on synchronous task steps
+// (e.g. "merge") and executes them. This catches items that were advanced to a sync
+// task step during recovery but never had executeSyncChain called.
+func (d *Daemon) processIdleSyncItems(ctx context.Context) {
+	for _, item := range d.state.GetActiveWorkItems() {
+		if item.Phase != "idle" || item.IsTerminal() {
+			continue
+		}
+
+		sess := d.config.GetSession(item.SessionID)
+		if sess == nil {
+			continue
+		}
+
+		engine := d.getEngine(sess.RepoPath)
+		if engine == nil {
+			continue
+		}
+
+		state := engine.GetState(item.CurrentStep)
+		if state == nil || state.Type != workflow.StateTypeTask {
+			continue
+		}
+
+		d.logger.Info("executing idle sync task", "workItem", item.ID, "step", item.CurrentStep)
+		d.executeSyncChain(ctx, item, engine)
+	}
+}
 
 // processRetryItems checks for items in retry_pending phase whose delay has elapsed,
 // and re-executes them via the engine.

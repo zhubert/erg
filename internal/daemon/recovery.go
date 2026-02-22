@@ -143,16 +143,11 @@ func (d *Daemon) recoverWaitPhase(ctx context.Context, item *daemonstate.WorkIte
 		return
 	}
 
-	// PR is open — check if it's already approved (only relevant at await_review)
-	if item.CurrentStep == "await_review" {
-		reviewDecision, err := d.gitService.CheckPRReviewDecision(pollCtx, sess.RepoPath, item.Branch)
-		if err == nil && reviewDecision == git.ReviewApproved {
-			log.Info("PR approved, advancing to merge")
-			d.state.AdvanceWorkItem(item.ID, "merge", "idle")
-			return
-		}
-	}
-
+	// PR is open — reset to idle so the normal tick loop can process it.
+	// We intentionally do NOT advance to "merge" here even if the review is
+	// approved, because the merge step is a sync task that requires
+	// executeSyncChain() to run. Recovery only restores state; the tick loop
+	// handles execution.
 	log.Info("PR open, resetting to idle for continued polling", "phase", item.Phase)
 	d.resetPhaseToIdle(item)
 }
