@@ -60,6 +60,9 @@ func TestDaemon_ReconstructSessions_RecoveredItemsGetSessions(t *testing.T) {
 	if !sess1.Started {
 		t.Error("expected Started=true")
 	}
+	if !sess1.Containerized {
+		t.Error("expected Containerized=true")
+	}
 	if !sess1.PRCreated {
 		t.Error("expected PRCreated=true for post-coding item")
 	}

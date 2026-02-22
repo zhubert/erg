@@ -1691,3 +1691,94 @@ func TestTruncateLogs(t *testing.T) {
 		}
 	})
 }
+
+func TestDaemon_RefreshStaleSession_RealSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Real session with WorkTree — should NOT be refreshed
+	sess := testSession("sess-real")
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "1"},
+		SessionID: "sess-real",
+		Branch:    "feature-sess-real",
+	}
+	d.state.AddWorkItem(item)
+
+	result := d.refreshStaleSession(item, sess)
+
+	if result.ID != "sess-real" {
+		t.Errorf("expected session ID unchanged, got %s", result.ID)
+	}
+	if d.state.GetWorkItem("item-1").SessionID != "sess-real" {
+		t.Error("expected work item session ID unchanged")
+	}
+}
+
+func TestDaemon_RefreshStaleSession_ReconstructedSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Reconstructed session — no WorkTree (simulates daemon restart recovery)
+	sess := &config.Session{
+		ID:            "sess-stale",
+		RepoPath:      "/test/repo",
+		Branch:        "issue-38",
+		DaemonManaged: true,
+		Autonomous:    true,
+		Containerized: true,
+		Started:       true,
+		PRCreated:     true,
+	}
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-stale",
+		IssueRef:  config.IssueRef{Source: "github", ID: "38"},
+		SessionID: "sess-stale",
+		Branch:    "issue-38",
+	}
+	d.state.AddWorkItem(item)
+
+	result := d.refreshStaleSession(item, sess)
+
+	// Should have a new session ID
+	if result.ID == "sess-stale" {
+		t.Error("expected new session ID, got the stale one")
+	}
+	if result.ID == "" {
+		t.Error("expected non-empty session ID")
+	}
+
+	// Old session should be gone from config
+	if cfg.GetSession("sess-stale") != nil {
+		t.Error("expected old session to be removed from config")
+	}
+
+	// New session should exist in config with same properties
+	newSess := cfg.GetSession(result.ID)
+	if newSess == nil {
+		t.Fatal("expected new session to exist in config")
+	}
+	if newSess.RepoPath != "/test/repo" {
+		t.Errorf("expected RepoPath /test/repo, got %s", newSess.RepoPath)
+	}
+	if newSess.Branch != "issue-38" {
+		t.Errorf("expected Branch issue-38, got %s", newSess.Branch)
+	}
+	if !newSess.Containerized {
+		t.Error("expected Containerized=true")
+	}
+	if !newSess.PRCreated {
+		t.Error("expected PRCreated=true")
+	}
+
+	// Work item should reference new session
+	updatedItem := d.state.GetWorkItem("item-stale")
+	if updatedItem.SessionID != result.ID {
+		t.Errorf("expected work item to reference new session %s, got %s", result.ID, updatedItem.SessionID)
+	}
+}

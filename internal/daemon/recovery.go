@@ -37,6 +37,7 @@ func (d *Daemon) reconstructSessions() {
 			Branch:        item.Branch,
 			DaemonManaged: true,
 			Autonomous:    true,
+			Containerized: true,
 			Started:       true,
 			PRCreated:     prCreated,
 		}

@@ -358,7 +358,7 @@ func (w *SessionWorker) handleStreaming(chunk claude.ResponseChunk) {
 		// Detect API errors emitted as text content (e.g., 500 errors from
 		// the Anthropic API that the runner surfaces as text rather than
 		// as chunk.Error).
-		if isAPIErrorContent(chunk.Content) {
+		if isAPIErrorContent(chunk.Content) || isSessionNotFoundContent(chunk.Content) {
 			w.apiErrorInStream = true
 		}
 
@@ -381,6 +381,13 @@ func isAPIErrorContent(content string) bool {
 	}
 	return strings.Contains(content, `"type":"error"`) ||
 		strings.Contains(content, `"type": "error"`)
+}
+
+// isSessionNotFoundContent returns true if the streamed text content indicates
+// the Claude conversation could not be found (e.g., after a daemon restart when
+// the session ID is stale). This is a fatal error — the worker cannot resume.
+func isSessionNotFoundContent(content string) bool {
+	return strings.Contains(content, "No conversation found with session ID:")
 }
 
 // handleDone handles completion of a streaming response.

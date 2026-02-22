@@ -449,6 +449,56 @@ func TestIsAPIErrorContent(t *testing.T) {
 	}
 }
 
+func TestIsSessionNotFoundContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"exact match", "\n[Error: No conversation found with session ID: 65832c71-192c-43fa-b2c1-c849eb38b4b6]\n", true},
+		{"without newlines", "[Error: No conversation found with session ID: abc123]", true},
+		{"normal content", "Here is the code I wrote", false},
+		{"similar but different", "No conversation found", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSessionNotFoundContent(tt.content); got != tt.want {
+				t.Errorf("isSessionNotFoundContent(%q) = %v, want %v", tt.content, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSessionWorker_ExitError_SessionNotFound(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+	h := newMockHost(mockExec)
+
+	sess := &config.Session{ID: "s1", RepoPath: "/repo", Branch: "feat-1"}
+	h.cfg.AddSession(*sess)
+
+	runner := claude.NewMockRunner("s1", false, nil)
+	// Simulate the "No conversation found" error emitted as text content
+	runner.QueueResponse(
+		claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "\n[Error: No conversation found with session ID: s1]\n"},
+		claude.ResponseChunk{Done: true},
+	)
+
+	w := NewSessionWorker(h, sess, runner, "Address review feedback")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	w.Start(ctx)
+	w.Wait()
+
+	if w.ExitError() == nil {
+		t.Fatal("expected ExitError to be set for session-not-found error")
+	}
+	if w.ExitError().Error() != "API error detected in response stream" {
+		t.Errorf("unexpected error: %v", w.ExitError())
+	}
+}
+
 func TestNewDoneWorkerWithError(t *testing.T) {
 	err := fmt.Errorf("something broke")
 	w := NewDoneWorkerWithError(err)

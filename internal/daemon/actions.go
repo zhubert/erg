@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/zhubert/plural-agent/internal/daemonstate"
 	"github.com/zhubert/plural-agent/internal/worker"
 	"github.com/zhubert/plural-agent/internal/workflow"
@@ -361,6 +362,12 @@ func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem
 		return
 	}
 
+	// If the session was reconstructed after daemon restart (no worktree),
+	// the old Claude conversation is gone. Generate a new session ID so the
+	// runner starts a fresh conversation instead of failing with
+	// "No conversation found with session ID".
+	sess = d.refreshStaleSession(item, sess)
+
 	// Fetch review comments
 	pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -544,6 +551,39 @@ func (d *Daemon) commentOnIssue(ctx context.Context, item *daemonstate.WorkItem,
 	defer cancel()
 
 	return d.gitService.CommentOnIssue(commentCtx, repoPath, issueNum, body)
+}
+
+// refreshStaleSession checks if a session was reconstructed after daemon restart
+// (missing WorkTree) and generates a new session ID so the Claude runner starts a
+// fresh conversation instead of trying to resume a stale one.
+// Returns the (possibly new) session.
+func (d *Daemon) refreshStaleSession(item *daemonstate.WorkItem, sess *config.Session) *config.Session {
+	if sess.WorkTree != "" {
+		return sess // Real session with worktree — not stale
+	}
+
+	log := d.logger.With("workItem", item.ID, "oldSessionID", sess.ID, "branch", item.Branch)
+
+	oldID := sess.ID
+	newID := uuid.New().String()
+
+	// Clone session with new ID
+	newSess := *sess
+	newSess.ID = newID
+
+	// Swap in config
+	d.config.RemoveSession(oldID)
+	d.config.AddSession(newSess)
+
+	// Update work item to reference the new session
+	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+		it.SessionID = newID
+	})
+
+	d.saveConfig("refreshStaleSession")
+
+	log.Info("refreshed stale session with new ID", "newSessionID", newID)
+	return &newSess
 }
 
 // configureRunner explicitly configures a runner for daemon use.
@@ -896,6 +936,9 @@ func (a *fixCIAction) Execute(ctx context.Context, ac *workflow.ActionContext) w
 
 // startFixCI resumes the coding session with CI failure context.
 func (d *Daemon) startFixCI(ctx context.Context, item *daemonstate.WorkItem, sess *config.Session, round int, ciLogs string) error {
+	// Refresh stale session (same reason as addressFeedback)
+	sess = d.refreshStaleSession(item, sess)
+
 	prompt := formatCIFixPrompt(round, ciLogs)
 
 	// Resolve system prompt from workflow config's fix_ci state
