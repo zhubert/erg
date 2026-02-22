@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zhubert/plural-agent/internal/daemonstate"
+	"github.com/zhubert/plural-agent/internal/worker"
 	"github.com/zhubert/plural-agent/internal/workflow"
 	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
@@ -1692,11 +1693,11 @@ func TestTruncateLogs(t *testing.T) {
 	})
 }
 
-func TestDaemon_RefreshStaleSession_RealSession(t *testing.T) {
+func TestDaemon_RefreshStaleSession_ActiveWorker(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	// Real session with WorkTree — should NOT be refreshed
+	// Session with an active worker — should NOT be refreshed
 	sess := testSession("sess-real")
 	cfg.AddSession(*sess)
 
@@ -1708,6 +1709,11 @@ func TestDaemon_RefreshStaleSession_RealSession(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
+	// Register an active worker for this item
+	d.mu.Lock()
+	d.workers[item.ID] = &worker.SessionWorker{}
+	d.mu.Unlock()
+
 	result := d.refreshStaleSession(item, sess)
 
 	if result.ID != "sess-real" {
@@ -1718,11 +1724,11 @@ func TestDaemon_RefreshStaleSession_RealSession(t *testing.T) {
 	}
 }
 
-func TestDaemon_RefreshStaleSession_ReconstructedSession(t *testing.T) {
+func TestDaemon_RefreshStaleSession_NoActiveWorker(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 
-	// Reconstructed session — no WorkTree (simulates daemon restart recovery)
+	// Session with no active worker — conversation is dead, should be refreshed
 	sess := &config.Session{
 		ID:            "sess-stale",
 		RepoPath:      "/test/repo",
@@ -1778,6 +1784,60 @@ func TestDaemon_RefreshStaleSession_ReconstructedSession(t *testing.T) {
 
 	// Work item should reference new session
 	updatedItem := d.state.GetWorkItem("item-stale")
+	if updatedItem.SessionID != result.ID {
+		t.Errorf("expected work item to reference new session %s, got %s", result.ID, updatedItem.SessionID)
+	}
+}
+
+func TestDaemon_RefreshStaleSession_WorkTreeButNoWorker(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Session has WorkTree set (initial coding session completed) but no active
+	// worker — the container and conversation are gone. This is the bug scenario:
+	// previously refreshStaleSession would skip this because WorkTree != "".
+	sess := testSession("sess-done")
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-done",
+		IssueRef:  config.IssueRef{Source: "github", ID: "38"},
+		SessionID: "sess-done",
+		Branch:    "feature-sess-done",
+	}
+	d.state.AddWorkItem(item)
+
+	// No worker registered for this item — conversation is dead
+
+	result := d.refreshStaleSession(item, sess)
+
+	// Should have a new session ID
+	if result.ID == "sess-done" {
+		t.Error("expected new session ID, got the original one")
+	}
+	if result.ID == "" {
+		t.Error("expected non-empty session ID")
+	}
+
+	// Old session should be gone from config
+	if cfg.GetSession("sess-done") != nil {
+		t.Error("expected old session to be removed from config")
+	}
+
+	// New session should exist in config with same properties
+	newSess := cfg.GetSession(result.ID)
+	if newSess == nil {
+		t.Fatal("expected new session to exist in config")
+	}
+	if newSess.WorkTree != "/test/worktree-sess-done" {
+		t.Errorf("expected WorkTree preserved, got %s", newSess.WorkTree)
+	}
+	if newSess.Branch != "feature-sess-done" {
+		t.Errorf("expected Branch feature-sess-done, got %s", newSess.Branch)
+	}
+
+	// Work item should reference new session
+	updatedItem := d.state.GetWorkItem("item-done")
 	if updatedItem.SessionID != result.ID {
 		t.Errorf("expected work item to reference new session %s, got %s", result.ID, updatedItem.SessionID)
 	}

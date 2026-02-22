@@ -553,13 +553,17 @@ func (d *Daemon) commentOnIssue(ctx context.Context, item *daemonstate.WorkItem,
 	return d.gitService.CommentOnIssue(commentCtx, repoPath, issueNum, body)
 }
 
-// refreshStaleSession checks if a session was reconstructed after daemon restart
-// (missing WorkTree) and generates a new session ID so the Claude runner starts a
-// fresh conversation instead of trying to resume a stale one.
+// refreshStaleSession checks if the Claude conversation for this item is still
+// alive by looking for an active worker. If no worker is running, the container
+// and conversation are gone and we generate a new session ID so the Claude runner
+// starts a fresh conversation instead of trying to resume a dead one.
 // Returns the (possibly new) session.
 func (d *Daemon) refreshStaleSession(item *daemonstate.WorkItem, sess *config.Session) *config.Session {
-	if sess.WorkTree != "" {
-		return sess // Real session with worktree — not stale
+	d.mu.Lock()
+	_, hasWorker := d.workers[item.ID]
+	d.mu.Unlock()
+	if hasWorker {
+		return sess // Active worker — conversation is still alive
 	}
 
 	log := d.logger.With("workItem", item.ID, "oldSessionID", sess.ID, "branch", item.Branch)
