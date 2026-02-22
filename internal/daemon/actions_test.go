@@ -1904,3 +1904,71 @@ func TestDaemon_RefreshStaleSession_RecreatesWorktree(t *testing.T) {
 	// Clean up worktree
 	_ = osexec.Command("git", "-C", repoDir, "worktree", "remove", "--force", result.WorkTree).Run()
 }
+
+func TestDaemon_RefreshStaleSession_RemovesStaleWorktree(t *testing.T) {
+	// Create a real git repo with a branch checked out in a worktree
+	repoDir := t.TempDir()
+	runGit := func(args ...string) string {
+		t.Helper()
+		cmd := osexec.Command("git", append([]string{"-C", repoDir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v failed: %s (%v)", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	runGit("init")
+	runGit("commit", "--allow-empty", "-m", "init")
+	runGit("checkout", "-b", "issue-99")
+	runGit("commit", "--allow-empty", "-m", "work on issue")
+	runGit("checkout", "-")
+
+	// Create a stale worktree that holds the branch (simulates the old session's worktree)
+	staleWorktree := filepath.Join(t.TempDir(), "stale-worktree")
+	runGit("worktree", "add", staleWorktree, "issue-99")
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:            "sess-stale-wt",
+		RepoPath:      repoDir,
+		Branch:        "issue-99",
+		DaemonManaged: true,
+		Autonomous:    true,
+		Containerized: true,
+		Started:       true,
+		PRCreated:     true,
+	}
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-stale-wt",
+		IssueRef:  config.IssueRef{Source: "github", ID: "99"},
+		SessionID: "sess-stale-wt",
+		Branch:    "issue-99",
+	}
+	d.state.AddWorkItem(item)
+
+	result := d.refreshStaleSession(context.Background(), item, sess)
+
+	if result.ID == "sess-stale-wt" {
+		t.Error("expected new session ID")
+	}
+
+	// Should have a new worktree despite the stale one existing
+	if result.WorkTree == "" {
+		t.Fatal("expected WorkTree to be recreated, got empty string")
+	}
+	if result.WorkTree == staleWorktree {
+		t.Error("expected a new worktree path, not the stale one")
+	}
+
+	// New worktree should be valid
+	if _, err := osexec.Command("git", "-C", result.WorkTree, "rev-parse", "--git-dir").Output(); err != nil {
+		t.Errorf("expected new worktree to be a valid git directory: %v", err)
+	}
+
+	// Clean up
+	_ = osexec.Command("git", "-C", repoDir, "worktree", "remove", "--force", result.WorkTree).Run()
+}

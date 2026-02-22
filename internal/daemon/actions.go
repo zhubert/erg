@@ -607,9 +607,24 @@ func (d *Daemon) refreshStaleSession(ctx context.Context, item *daemonstate.Work
 
 // recreateWorktree creates a git worktree for an existing branch.
 // This is used when recovering a session that lost its worktree after daemon restart.
+// If another worktree already has this branch checked out (stale from a previous
+// session), it is removed first.
 func (d *Daemon) recreateWorktree(ctx context.Context, repoPath, branch, sessionID string) (string, error) {
+	log := d.logger.With("branch", branch, "sessionID", sessionID)
+
 	// Fetch latest from origin so the branch ref is up-to-date
 	d.sessionService.FetchOrigin(ctx, repoPath)
+
+	// Prune stale worktree entries (handles cases where the directory was
+	// deleted but git still tracks the worktree).
+	_ = osexec.CommandContext(ctx, "git", "-C", repoPath, "worktree", "prune").Run()
+
+	// Check if a worktree already has this branch checked out and remove it.
+	out, _ := osexec.CommandContext(ctx, "git", "-C", repoPath, "worktree", "list", "--porcelain").Output()
+	if wtPath := parseWorktreeForBranch(string(out), branch); wtPath != "" {
+		log.Info("removing stale worktree that holds branch", "stalePath", wtPath)
+		_ = osexec.CommandContext(ctx, "git", "-C", repoPath, "worktree", "remove", "--force", wtPath).Run()
+	}
 
 	worktreesDir, err := paths.WorktreesDir()
 	if err != nil {
@@ -621,9 +636,9 @@ func (d *Daemon) recreateWorktree(ctx context.Context, repoPath, branch, session
 	wtCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	out, err := osexec.CommandContext(wtCtx, "git", "-C", repoPath, "worktree", "add", worktreePath, branch).CombinedOutput()
+	addOut, err := osexec.CommandContext(wtCtx, "git", "-C", repoPath, "worktree", "add", worktreePath, branch).CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("git worktree add failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("git worktree add failed: %w (output: %s)", err, strings.TrimSpace(string(addOut)))
 	}
 
 	return worktreePath, nil
