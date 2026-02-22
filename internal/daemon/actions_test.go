@@ -1714,7 +1714,7 @@ func TestDaemon_RefreshStaleSession_ActiveWorker(t *testing.T) {
 	d.workers[item.ID] = &worker.SessionWorker{}
 	d.mu.Unlock()
 
-	result := d.refreshStaleSession(item, sess)
+	result := d.refreshStaleSession(context.Background(), item, sess)
 
 	if result.ID != "sess-real" {
 		t.Errorf("expected session ID unchanged, got %s", result.ID)
@@ -1749,7 +1749,7 @@ func TestDaemon_RefreshStaleSession_NoActiveWorker(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	result := d.refreshStaleSession(item, sess)
+	result := d.refreshStaleSession(context.Background(), item, sess)
 
 	// Should have a new session ID
 	if result.ID == "sess-stale" {
@@ -1809,7 +1809,7 @@ func TestDaemon_RefreshStaleSession_WorkTreeButNoWorker(t *testing.T) {
 
 	// No worker registered for this item — conversation is dead
 
-	result := d.refreshStaleSession(item, sess)
+	result := d.refreshStaleSession(context.Background(), item, sess)
 
 	// Should have a new session ID
 	if result.ID == "sess-done" {
@@ -1841,4 +1841,66 @@ func TestDaemon_RefreshStaleSession_WorkTreeButNoWorker(t *testing.T) {
 	if updatedItem.SessionID != result.ID {
 		t.Errorf("expected work item to reference new session %s, got %s", result.ID, updatedItem.SessionID)
 	}
+}
+
+func TestDaemon_RefreshStaleSession_RecreatesWorktree(t *testing.T) {
+	// Create a real git repo so worktree creation succeeds
+	repoDir := t.TempDir()
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := osexec.Command("git", append([]string{"-C", repoDir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v failed: %s (%v)", args, out, err)
+		}
+	}
+	runGit("init")
+	runGit("commit", "--allow-empty", "-m", "init")
+	runGit("checkout", "-b", "issue-42")
+	runGit("commit", "--allow-empty", "-m", "work on issue")
+	runGit("checkout", "-") // back to default branch
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Reconstructed session — no WorkTree (simulates daemon restart)
+	sess := &config.Session{
+		ID:            "sess-recovered",
+		RepoPath:      repoDir,
+		Branch:        "issue-42",
+		DaemonManaged: true,
+		Autonomous:    true,
+		Containerized: true,
+		Started:       true,
+		PRCreated:     true,
+	}
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-recovered",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-recovered",
+		Branch:    "issue-42",
+	}
+	d.state.AddWorkItem(item)
+
+	result := d.refreshStaleSession(context.Background(), item, sess)
+
+	// Should have a new session ID
+	if result.ID == "sess-recovered" {
+		t.Error("expected new session ID")
+	}
+
+	// Should have a worktree path set
+	if result.WorkTree == "" {
+		t.Fatal("expected WorkTree to be recreated, got empty string")
+	}
+
+	// Worktree directory should exist on disk
+	if _, err := osexec.Command("git", "-C", result.WorkTree, "rev-parse", "--git-dir").Output(); err != nil {
+		t.Errorf("expected worktree to be a valid git directory: %v", err)
+	}
+
+	// Clean up worktree
+	_ = osexec.Command("git", "-C", repoDir, "worktree", "remove", "--force", result.WorkTree).Run()
 }

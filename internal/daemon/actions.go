@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	osexec "os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/zhubert/plural-core/claude"
 	"github.com/zhubert/plural-core/config"
 	"github.com/zhubert/plural-core/issues"
+	"github.com/zhubert/plural-core/paths"
 	"github.com/zhubert/plural-core/session"
 )
 
@@ -362,11 +364,10 @@ func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem
 		return
 	}
 
-	// If the session was reconstructed after daemon restart (no worktree),
-	// the old Claude conversation is gone. Generate a new session ID so the
-	// runner starts a fresh conversation instead of failing with
-	// "No conversation found with session ID".
-	sess = d.refreshStaleSession(item, sess)
+	// If there's no active worker, the old Claude conversation is gone.
+	// Generate a new session ID (and recreate the worktree if missing) so
+	// the runner starts a fresh conversation.
+	sess = d.refreshStaleSession(ctx, item, sess)
 
 	// Fetch review comments
 	pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -557,8 +558,10 @@ func (d *Daemon) commentOnIssue(ctx context.Context, item *daemonstate.WorkItem,
 // alive by looking for an active worker. If no worker is running, the container
 // and conversation are gone and we generate a new session ID so the Claude runner
 // starts a fresh conversation instead of trying to resume a dead one.
+// If the session has no WorkTree (reconstructed after restart), a new worktree is
+// created for the existing branch so the container has a directory to mount.
 // Returns the (possibly new) session.
-func (d *Daemon) refreshStaleSession(item *daemonstate.WorkItem, sess *config.Session) *config.Session {
+func (d *Daemon) refreshStaleSession(ctx context.Context, item *daemonstate.WorkItem, sess *config.Session) *config.Session {
 	d.mu.Lock()
 	_, hasWorker := d.workers[item.ID]
 	d.mu.Unlock()
@@ -575,6 +578,18 @@ func (d *Daemon) refreshStaleSession(item *daemonstate.WorkItem, sess *config.Se
 	newSess := *sess
 	newSess.ID = newID
 
+	// If the session has no WorkTree (reconstructed after daemon restart),
+	// create one so the container has a directory to mount.
+	if newSess.WorkTree == "" && newSess.Branch != "" {
+		wt, err := d.recreateWorktree(ctx, newSess.RepoPath, newSess.Branch, newID)
+		if err != nil {
+			log.Error("failed to recreate worktree for stale session", "error", err)
+		} else {
+			newSess.WorkTree = wt
+			log.Info("recreated worktree for stale session", "worktree", wt)
+		}
+	}
+
 	// Swap in config
 	d.config.RemoveSession(oldID)
 	d.config.AddSession(newSess)
@@ -588,6 +603,30 @@ func (d *Daemon) refreshStaleSession(item *daemonstate.WorkItem, sess *config.Se
 
 	log.Info("refreshed stale session with new ID", "newSessionID", newID)
 	return &newSess
+}
+
+// recreateWorktree creates a git worktree for an existing branch.
+// This is used when recovering a session that lost its worktree after daemon restart.
+func (d *Daemon) recreateWorktree(ctx context.Context, repoPath, branch, sessionID string) (string, error) {
+	// Fetch latest from origin so the branch ref is up-to-date
+	d.sessionService.FetchOrigin(ctx, repoPath)
+
+	worktreesDir, err := paths.WorktreesDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktrees directory: %w", err)
+	}
+
+	worktreePath := filepath.Join(worktreesDir, sessionID)
+
+	wtCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	out, err := osexec.CommandContext(wtCtx, "git", "-C", repoPath, "worktree", "add", worktreePath, branch).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git worktree add failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+
+	return worktreePath, nil
 }
 
 // configureRunner explicitly configures a runner for daemon use.
@@ -941,7 +980,7 @@ func (a *fixCIAction) Execute(ctx context.Context, ac *workflow.ActionContext) w
 // startFixCI resumes the coding session with CI failure context.
 func (d *Daemon) startFixCI(ctx context.Context, item *daemonstate.WorkItem, sess *config.Session, round int, ciLogs string) error {
 	// Refresh stale session (same reason as addressFeedback)
-	sess = d.refreshStaleSession(item, sess)
+	sess = d.refreshStaleSession(ctx, item, sess)
 
 	prompt := formatCIFixPrompt(round, ciLogs)
 
