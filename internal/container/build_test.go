@@ -87,8 +87,17 @@ func TestGenerateDockerfile_AlwaysIncludesEntrypoint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			df := GenerateDockerfile(tt.langs, "0.2.11")
-			if !strings.Contains(df, `ENTRYPOINT ["claude"]`) {
-				t.Error("expected ENTRYPOINT for claude in every Dockerfile")
+			if !strings.Contains(df, "entrypoint.sh") {
+				t.Error("expected entrypoint script in every Dockerfile")
+			}
+			if !strings.Contains(df, "npm update -g @anthropic-ai/claude-code") {
+				t.Error("expected Claude Code update in entrypoint script")
+			}
+			if !strings.Contains(df, `exec claude`) {
+				t.Error("expected exec claude in entrypoint script")
+			}
+			if !strings.Contains(df, `ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]`) {
+				t.Error("expected ENTRYPOINT for entrypoint script in every Dockerfile")
 			}
 		})
 	}

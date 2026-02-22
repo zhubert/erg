@@ -83,7 +83,11 @@ func GenerateDockerfile(langs []DetectedLang, version string) string {
 			version, releaseArch())
 	}
 
-	b.WriteString("ENTRYPOINT [\"claude\"]\n")
+	// Entrypoint script: update Claude Code on boot (keeps cached image fresh),
+	// then exec into claude with all original arguments.
+	b.WriteString("RUN printf '#!/bin/sh\\nnpm update -g @anthropic-ai/claude-code 2>/dev/null\\nexec claude \"$@\"\\n' > /usr/local/bin/entrypoint.sh \\\n")
+	b.WriteString("    && chmod +x /usr/local/bin/entrypoint.sh\n")
+	b.WriteString("ENTRYPOINT [\"/usr/local/bin/entrypoint.sh\"]\n")
 
 	return b.String()
 }
