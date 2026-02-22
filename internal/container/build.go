@@ -76,11 +76,16 @@ func GenerateDockerfile(langs []DetectedLang, version string) string {
 		}
 	}
 
-	// Download the plural-agent binary from GitHub releases
+	// Install the plural-agent binary from GitHub releases.
+	// Pinned versions use an exact tag; otherwise grab the latest release.
 	if version != "" && version != "dev" {
 		fmt.Fprintf(&b, "RUN curl -fsSL https://github.com/zhubert/plural-agent/releases/download/v%s/plural-agent_Linux_%s.tar.gz"+
 			" | tar -xz -C /tmp && mv /tmp/plural-agent /usr/local/bin/plural\n",
 			version, releaseArch())
+	} else {
+		fmt.Fprintf(&b, "RUN curl -fsSL -L https://github.com/zhubert/plural-agent/releases/latest/download/plural-agent_Linux_%s.tar.gz"+
+			" | tar -xz -C /tmp && mv /tmp/plural-agent /usr/local/bin/plural\n",
+			releaseArch())
 	}
 
 	// Entrypoint script: update Claude Code on boot (keeps cached image fresh),
@@ -173,7 +178,7 @@ func dockerCommand(ctx context.Context, stdin string, args ...string) ([]byte, e
 
 // EnsureImage generates a Dockerfile for the detected languages, builds it if
 // not already cached, and returns the image tag. The plural-agent binary is
-// downloaded from the GitHub release inside the Dockerfile.
+// always installed from GitHub releases (pinned or latest).
 func EnsureImage(ctx context.Context, langs []DetectedLang, version string, logger *slog.Logger) (string, error) {
 	dockerfile := GenerateDockerfile(langs, version)
 	tag := ImageTag(dockerfile)

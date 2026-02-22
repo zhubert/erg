@@ -183,17 +183,20 @@ func TestGenerateDockerfile_IncludesPluralBinary(t *testing.T) {
 	}
 }
 
-func TestGenerateDockerfile_SkipsPluralForDevVersion(t *testing.T) {
-	df := GenerateDockerfile(nil, "dev")
-	if strings.Contains(df, "plural-agent/releases") {
-		t.Error("should not download plural binary for dev version")
-	}
-}
-
-func TestGenerateDockerfile_SkipsPluralForEmptyVersion(t *testing.T) {
-	df := GenerateDockerfile(nil, "")
-	if strings.Contains(df, "plural-agent/releases") {
-		t.Error("should not download plural binary for empty version")
+func TestGenerateDockerfile_DevVersionUsesLatestRelease(t *testing.T) {
+	for _, version := range []string{"dev", ""} {
+		t.Run("version="+version, func(t *testing.T) {
+			df := GenerateDockerfile(nil, version)
+			if strings.Contains(df, "/releases/download/v") {
+				t.Error("dev version should not use pinned release URL")
+			}
+			if !strings.Contains(df, "/releases/latest/download/") {
+				t.Error("dev version should use latest release URL")
+			}
+			if !strings.Contains(df, "/usr/local/bin/plural") {
+				t.Error("dev version should still install plural binary")
+			}
+		})
 	}
 }
 
@@ -346,5 +349,29 @@ func TestEnsureImage_BuildFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "docker build failed") {
 		t.Errorf("expected 'docker build failed' in error, got: %v", err)
+	}
+}
+
+func TestEnsureImage_DevUsesCaching(t *testing.T) {
+	orig := dockerCommandFunc
+	defer func() { dockerCommandFunc = orig }()
+
+	inspectCalled := false
+	dockerCommandFunc = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if args[0] == "image" && args[1] == "inspect" {
+			inspectCalled = true
+			return []byte("exists"), nil
+		}
+		t.Error("should not call docker build when image is cached")
+		return nil, fmt.Errorf("unexpected call")
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	_, err := EnsureImage(context.Background(), nil, "dev", logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !inspectCalled {
+		t.Error("dev builds should still check image cache")
 	}
 }
