@@ -17,25 +17,25 @@ Guidance for Claude Code when working with this repository.
 ## Build and Run
 
 ```bash
-go build -o plural-agent .       # Build
+go build -o erg .       # Build
 go test -p=1 -count=1 ./...     # Test (use -p=1 in containers to avoid Go toolchain segfaults)
 
-./plural-agent --version         # Show version
-./plural-agent --debug           # Enable debug logging (on by default)
-./plural-agent -q                # Quiet mode (info level only)
+./erg --version         # Show version
+./erg --debug           # Enable debug logging (on by default)
+./erg -q                # Quiet mode (info level only)
 
-./plural-agent --repo owner/repo         # Run headless daemon
-./plural-agent --repo owner/repo --once  # Process one tick and exit
-./plural-agent clean                     # Clear daemon state and lock files
-./plural-agent clean -y                  # Clear without confirmation prompt
+./erg --repo owner/repo         # Run headless daemon
+./erg --repo owner/repo --once  # Process one tick and exit
+./erg clean                     # Clear daemon state and lock files
+./erg clean -y                  # Clear without confirmation prompt
 ```
 
 ## Debug Logs
 
 ```bash
-tail -f ~/.plural/logs/plural.log      # Main app logs
-tail -f ~/.plural/logs/mcp-*.log       # MCP permission logs (per-session)
-tail -f ~/.plural/logs/stream-*.log    # Raw Claude stream messages (per-session)
+tail -f ~/.erg/logs/erg.log          # Main app logs
+tail -f ~/.erg/logs/mcp-*.log       # MCP permission logs (per-session)
+tail -f ~/.erg/logs/stream-*.log    # Raw Claude stream messages (per-session)
 ```
 
 ---
@@ -93,7 +93,7 @@ All sessions are containerized — the container IS the sandbox. Claude runs wit
 
 ### Workflow Configuration
 
-Per-repo workflow config via `.plural/workflow.yaml`. Override chain: CLI flag > workflow yaml > config.json > default.
+Per-repo workflow config via `.erg/workflow.yaml`. Override chain: CLI flag > workflow yaml > config.json > default.
 
 **State types**: `task` (execute action), `wait` (poll event with timeout), `choice` (conditional branch), `pass` (inject data), `succeed`/`fail` (terminal).
 
