@@ -32,7 +32,7 @@
           fill="url(#synthGradient)"
           letter-spacing="-2"
           text-anchor="middle">
-      plural agent
+      erg
     </text>
   </g>
 
@@ -44,7 +44,7 @@
         fill="url(#scanlines)"
         letter-spacing="-2"
         text-anchor="middle">
-    plural agent
+    erg
   </text>
 
   <!-- Subtitle -->

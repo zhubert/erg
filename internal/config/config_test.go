@@ -137,7 +137,7 @@ func TestConfig_AddSession(t *testing.T) {
 		ID:        "test-session-1",
 		RepoPath:  "/path/to/repo",
 		WorkTree:  "/path/to/worktree",
-		Branch:    "plural-test",
+		Branch:    "erg-test",
 		Name:      "test/session",
 		CreatedAt: time.Now(),
 	}
@@ -458,7 +458,7 @@ func TestConfig_ClearSessions(t *testing.T) {
 
 func TestSessionMessages(t *testing.T) {
 	// Create a temporary directory for test
-	tmpDir, err := os.MkdirTemp("", "plural-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -664,7 +664,7 @@ func TestMergeConversationHistory(t *testing.T) {
 
 func TestConfig_SaveAndLoad(t *testing.T) {
 	// Create a temporary directory for test
-	tmpDir, err := os.MkdirTemp("", "plural-config-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-config-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -680,7 +680,7 @@ func TestConfig_SaveAndLoad(t *testing.T) {
 				ID:        "session-1",
 				RepoPath:  "/path/to/repo1",
 				WorkTree:  "/path/to/worktree1",
-				Branch:    "plural-session-1",
+				Branch:    "erg-session-1",
 				Name:      "repo1/session1",
 				CreatedAt: time.Now(),
 				Started:   true,
@@ -1080,7 +1080,7 @@ func TestConfig_EnsureInitialized(t *testing.T) {
 
 func TestLoad_NewConfig(t *testing.T) {
 	// Create a temp directory to use as HOME
-	tmpDir, err := os.MkdirTemp("", "plural-load-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-load-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1122,7 +1122,7 @@ func TestLoad_NewConfig(t *testing.T) {
 
 func TestLoad_ExistingConfig(t *testing.T) {
 	// Create a temp directory
-	tmpDir, err := os.MkdirTemp("", "plural-load-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-load-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1138,9 +1138,9 @@ func TestLoad_ExistingConfig(t *testing.T) {
 	}()
 
 	// Create config directory and file
-	pluralDir := filepath.Join(tmpDir, ".plural")
-	if err := os.MkdirAll(pluralDir, 0755); err != nil {
-		t.Fatalf("Failed to create plural dir: %v", err)
+	ergDir := filepath.Join(tmpDir, ".erg")
+	if err := os.MkdirAll(ergDir, 0755); err != nil {
+		t.Fatalf("Failed to create erg dir: %v", err)
 	}
 
 	configData := `{
@@ -1149,13 +1149,13 @@ func TestLoad_ExistingConfig(t *testing.T) {
 			"id": "test-session",
 			"repo_path": "/path/to/repo",
 			"worktree": "/path/to/worktree",
-			"branch": "plural-test",
+			"branch": "erg-test",
 			"name": "test/session"
 		}],
 		"allowed_tools": ["Edit", "Write"]
 	}`
 
-	configFile := filepath.Join(pluralDir, "config.json")
+	configFile := filepath.Join(ergDir, "config.json")
 	if err := os.WriteFile(configFile, []byte(configData), 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
@@ -1188,7 +1188,7 @@ func TestLoad_ExistingConfig(t *testing.T) {
 
 func TestLoad_InvalidJSON(t *testing.T) {
 	// Create a temp directory
-	tmpDir, err := os.MkdirTemp("", "plural-load-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-load-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1204,12 +1204,12 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	}()
 
 	// Create config directory and invalid file
-	pluralDir := filepath.Join(tmpDir, ".plural")
-	if err := os.MkdirAll(pluralDir, 0755); err != nil {
-		t.Fatalf("Failed to create plural dir: %v", err)
+	ergDir := filepath.Join(tmpDir, ".erg")
+	if err := os.MkdirAll(ergDir, 0755); err != nil {
+		t.Fatalf("Failed to create erg dir: %v", err)
 	}
 
-	configFile := filepath.Join(pluralDir, "config.json")
+	configFile := filepath.Join(ergDir, "config.json")
 	if err := os.WriteFile(configFile, []byte("invalid json"), 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
@@ -1223,7 +1223,7 @@ func TestLoad_InvalidJSON(t *testing.T) {
 
 func TestLoad_InvalidConfig(t *testing.T) {
 	// Create a temp directory
-	tmpDir, err := os.MkdirTemp("", "plural-load-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-load-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1239,9 +1239,9 @@ func TestLoad_InvalidConfig(t *testing.T) {
 	}()
 
 	// Create config directory and file with duplicate session IDs
-	pluralDir := filepath.Join(tmpDir, ".plural")
-	if err := os.MkdirAll(pluralDir, 0755); err != nil {
-		t.Fatalf("Failed to create plural dir: %v", err)
+	ergDir := filepath.Join(tmpDir, ".erg")
+	if err := os.MkdirAll(ergDir, 0755); err != nil {
+		t.Fatalf("Failed to create erg dir: %v", err)
 	}
 
 	configData := `{
@@ -1252,7 +1252,7 @@ func TestLoad_InvalidConfig(t *testing.T) {
 		]
 	}`
 
-	configFile := filepath.Join(pluralDir, "config.json")
+	configFile := filepath.Join(ergDir, "config.json")
 	if err := os.WriteFile(configFile, []byte(configData), 0644); err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
@@ -1346,7 +1346,7 @@ func TestConfig_PreviewState(t *testing.T) {
 
 func TestConfig_PreviewState_Persistence(t *testing.T) {
 	// Create a temp directory for test config
-	tmpDir, err := os.MkdirTemp("", "plural-preview-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-preview-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1453,7 +1453,7 @@ func TestConfig_SquashOnMerge_NilMap(t *testing.T) {
 
 func TestConfig_SquashOnMerge_Persistence(t *testing.T) {
 	// Create a temp directory for test config
-	tmpDir, err := os.MkdirTemp("", "plural-squash-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-squash-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1566,7 +1566,7 @@ func TestConfig_SetSessionBroadcastGroup(t *testing.T) {
 
 func TestConfig_BroadcastGroupID_Persistence(t *testing.T) {
 	// Create a temp directory for test config
-	tmpDir, err := os.MkdirTemp("", "plural-broadcast-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-broadcast-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1582,7 +1582,7 @@ func TestConfig_BroadcastGroupID_Persistence(t *testing.T) {
 				ID:               "session-1",
 				RepoPath:         "/path/to/repo",
 				WorkTree:         "/path/to/worktree",
-				Branch:           "plural-session-1",
+				Branch:           "erg-session-1",
 				Name:             "session1",
 				BroadcastGroupID: "broadcast-group-123",
 			},
@@ -1783,9 +1783,9 @@ func TestConfig_ContainerImage(t *testing.T) {
 		Sessions: []Session{},
 	}
 
-	// Default should be "ghcr.io/zhubert/plural-claude"
-	if got := cfg.GetContainerImage(); got != "ghcr.io/zhubert/plural-claude" {
-		t.Errorf("GetContainerImage default = %q, want 'ghcr.io/zhubert/plural-claude'", got)
+	// Default should be "ghcr.io/zhubert/erg"
+	if got := cfg.GetContainerImage(); got != "ghcr.io/zhubert/erg" {
+		t.Errorf("GetContainerImage default = %q, want 'ghcr.io/zhubert/erg'", got)
 	}
 
 	// Set custom image
@@ -1798,14 +1798,14 @@ func TestConfig_ContainerImage(t *testing.T) {
 	// Set empty string should revert to default
 	cfg.SetContainerImage("")
 
-	if got := cfg.GetContainerImage(); got != "ghcr.io/zhubert/plural-claude" {
-		t.Errorf("GetContainerImage after clearing = %q, want 'ghcr.io/zhubert/plural-claude'", got)
+	if got := cfg.GetContainerImage(); got != "ghcr.io/zhubert/erg" {
+		t.Errorf("GetContainerImage after clearing = %q, want 'ghcr.io/zhubert/erg'", got)
 	}
 }
 
 func TestConfig_ContainerImage_Persistence(t *testing.T) {
 	// Create a temp directory for test config
-	tmpDir, err := os.MkdirTemp("", "plural-container-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-container-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -2002,7 +2002,7 @@ func TestSession_PRMergedClosed_JSON(t *testing.T) {
 }
 
 func TestConfig_Save_ConcurrentWrites(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "plural-config-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-config-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

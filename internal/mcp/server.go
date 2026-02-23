@@ -34,7 +34,7 @@ const (
 
 const (
 	ProtocolVersion = "2024-11-05"
-	ServerName      = "plural-permission"
+	ServerName      = "erg-permission"
 	ServerVersion   = "1.0.0"
 	ToolName        = "permission"
 )
@@ -744,19 +744,19 @@ func (s *Server) isToolAllowed(tool string) bool {
 }
 
 // supervisorMCPTools are the Claude CLI tool names for supervisor MCP tools.
-// Claude CLI prefixes MCP tools with "mcp__<server>__", so tools on the "plural"
-// server become "mcp__plural__<tool>".
+// Claude CLI prefixes MCP tools with "mcp__<server>__", so tools on the "erg"
+// server become "mcp__erg__<tool>".
 var supervisorMCPTools = []string{
-	"mcp__plural__create_child_session",
-	"mcp__plural__list_child_sessions",
-	"mcp__plural__merge_child_to_parent",
+	"mcp__erg__create_child_session",
+	"mcp__erg__list_child_sessions",
+	"mcp__erg__merge_child_to_parent",
 }
 
 // hostMCPTools are the Claude CLI tool names for host operation MCP tools.
 var hostMCPTools = []string{
-	"mcp__plural__create_pr",
-	"mcp__plural__push_branch",
-	"mcp__plural__get_review_comments",
+	"mcp__erg__create_pr",
+	"mcp__erg__push_branch",
+	"mcp__erg__get_review_comments",
 }
 
 // isOwnMCPTool returns true if the tool name is one of our own MCP tools that

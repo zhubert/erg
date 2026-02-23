@@ -141,7 +141,7 @@ func (s *SessionService) FetchOrigin(ctx context.Context, repoPath string) error
 
 // Create creates a new session with a git worktree for the given repo path.
 // If customBranch is provided, it will be used as the branch name; otherwise
-// a branch named "plural-<UUID>" will be created.
+// a branch named "erg-<UUID>" will be created.
 // The branchPrefix is prepended to auto-generated branch names (e.g., "zhubert/").
 // The basePoint specifies where to branch from:
 //   - BasePointOrigin: fetches from origin and branches from origin's default branch
@@ -162,13 +162,13 @@ func (s *SessionService) Create(ctx context.Context, repoPath string, customBran
 	// Get repo name from path
 	repoName := filepath.Base(repoPath)
 
-	// Branch name: use custom if provided, otherwise plural-<UUID>
+	// Branch name: use custom if provided, otherwise erg-<UUID>
 	// Apply branchPrefix to auto-generated branch names
 	var branch string
 	if customBranch != "" {
 		branch = branchPrefix + customBranch
 	} else {
-		branch = branchPrefix + fmt.Sprintf("plural-%s", id)
+		branch = branchPrefix + fmt.Sprintf("erg-%s", id)
 	}
 
 	// Worktree path: centralized under data directory
@@ -275,7 +275,7 @@ func (s *SessionService) Create(ctx context.Context, repoPath string, customBran
 // This is used when forking an existing session - the new worktree is created
 // from the source branch's current state rather than from origin/main.
 // If customBranch is provided, it will be used as the new branch name; otherwise
-// a branch named "plural-<UUID>" will be created.
+// a branch named "erg-<UUID>" will be created.
 func (s *SessionService) CreateFromBranch(ctx context.Context, repoPath string, sourceBranch string, customBranch string, branchPrefix string) (*config.Session, error) {
 	log := logger.WithComponent("session")
 	startTime := time.Now()
@@ -292,12 +292,12 @@ func (s *SessionService) CreateFromBranch(ctx context.Context, repoPath string, 
 	// Get repo name from path
 	repoName := filepath.Base(repoPath)
 
-	// Branch name: use custom if provided, otherwise plural-<UUID>
+	// Branch name: use custom if provided, otherwise erg-<UUID>
 	var branch string
 	if customBranch != "" {
 		branch = branchPrefix + customBranch
 	} else {
-		branch = branchPrefix + fmt.Sprintf("plural-%s", id)
+		branch = branchPrefix + fmt.Sprintf("erg-%s", id)
 	}
 
 	// Worktree path: centralized under data directory
@@ -430,12 +430,12 @@ func (s *SessionService) Delete(ctx context.Context, sess *config.Session) error
 // OrphanedWorktree represents a worktree that has no matching session
 type OrphanedWorktree struct {
 	Path     string // Full path to the worktree
-	RepoPath string // Parent repo path (derived from .plural-worktrees location)
+	RepoPath string // Parent repo path (derived from worktree .git file)
 	ID       string // Session ID (directory name)
 }
 
-// FindOrphanedWorktrees finds all worktrees in .plural-worktrees directories
-// that don't have a matching session in config.
+// FindOrphanedWorktrees finds all worktrees in the centralized worktrees directory
+// (and pre-rename legacy .plural-worktrees directories) that don't have a matching session in config.
 // Directory scans are parallelized for better performance with many repos.
 func FindOrphanedWorktrees(cfg *config.Config) ([]OrphanedWorktree, error) {
 	log := logger.WithComponent("session")
@@ -466,7 +466,7 @@ func FindOrphanedWorktrees(cfg *config.Config) ([]OrphanedWorktree, error) {
 
 	// Build list of directories to check for orphaned worktrees.
 	// Always check the centralized worktrees directory.
-	// Also check legacy .plural-worktrees sibling directories for transition period.
+	// Also check pre-rename legacy .plural-worktrees sibling directories for transition period.
 	checkedDirs := make(map[string]bool)
 	var dirsToCheck []string
 
@@ -476,7 +476,7 @@ func FindOrphanedWorktrees(cfg *config.Config) ([]OrphanedWorktree, error) {
 		dirsToCheck = append(dirsToCheck, centralDir)
 	}
 
-	// Legacy .plural-worktrees sibling directories (transition period)
+	// Pre-rename legacy .plural-worktrees sibling directories (transition period)
 	for _, repoPath := range repoPaths {
 		repoParent := filepath.Dir(repoPath)
 		worktreesDir := filepath.Join(repoParent, ".plural-worktrees")
@@ -603,7 +603,7 @@ func findOrphansInDir(worktreesDir string, knownSessions map[string]bool, repoPa
 
 // detectWorktreeBranch determines the actual branch name for a worktree by
 // running "git rev-parse --abbrev-ref HEAD" inside it. This handles all branch
-// naming patterns: default (plural-<UUID>), prefixed (user/plural-<UUID>), and
+// naming patterns: default (erg-<UUID>), prefixed (user/erg-<UUID>), and
 // renamed branches.
 func detectWorktreeBranch(ctx context.Context, s *SessionService, orphan OrphanedWorktree) string {
 	stdout, _, err := s.executor.Run(ctx, orphan.Path, "git", "rev-parse", "--abbrev-ref", "HEAD")
@@ -653,8 +653,8 @@ func (s *SessionService) PruneOrphanedWorktrees(ctx context.Context, cfg *config
 				log.Info("pruning orphaned worktree", "path", orphan.Path)
 
 				// Detect the actual branch name before removing the worktree.
-				// Sessions can have prefixed branches (e.g., "zhubert/plural-<UUID>")
-				// or custom names after rename, so we can't assume "plural-<UUID>".
+				// Sessions can have prefixed branches (e.g., "zhubert/erg-<UUID>")
+				// or custom names after rename, so we can't assume "erg-<UUID>".
 				branchName := detectWorktreeBranch(ctx, s, orphan)
 
 				// Try to remove via git worktree remove first
@@ -700,8 +700,8 @@ func (s *SessionService) PruneOrphanedWorktrees(ctx context.Context, cfg *config
 	return pruned, nil
 }
 
-// MigrateWorktrees moves worktrees from old .plural-worktrees sibling directories
-// to the centralized worktrees directory (~/.plural/worktrees/ or XDG equivalent).
+// MigrateWorktrees moves worktrees from pre-rename legacy .plural-worktrees sibling directories
+// to the centralized worktrees directory (~/.erg/worktrees/ or XDG equivalent).
 // This is safe to call on every startup — it only acts when old-style worktrees exist.
 func (s *SessionService) MigrateWorktrees(ctx context.Context, cfg *config.Config) error {
 	log := logger.WithComponent("session")
@@ -715,7 +715,7 @@ func (s *SessionService) MigrateWorktrees(ctx context.Context, cfg *config.Confi
 	migrated := 0
 
 	for _, sess := range sessions {
-		// Skip sessions that don't use the old .plural-worktrees pattern
+		// Skip sessions that don't use the pre-rename legacy .plural-worktrees pattern
 		if !strings.Contains(sess.WorkTree, ".plural-worktrees") {
 			continue
 		}
@@ -784,7 +784,7 @@ func (s *SessionService) MigrateWorktrees(ctx context.Context, cfg *config.Confi
 		}
 		log.Info("worktree migration complete", "migrated", migrated)
 
-		// Best-effort cleanup of empty old .plural-worktrees directories
+		// Best-effort cleanup of empty pre-rename legacy .plural-worktrees directories
 		cleanedDirs := make(map[string]bool)
 		for _, sess := range sessions {
 			if !strings.Contains(sess.WorkTree, ".plural-worktrees") {

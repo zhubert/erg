@@ -45,8 +45,8 @@ func FormatPRCommentsPrompt(comments []git.PRReviewComment) string {
 }
 
 // TranscriptMarker is the HTML marker used to identify session transcript comments
-// posted by UploadTranscriptToPR in plural-core. These are collapsible <details> blocks
-// containing the coding session transcript.
+// posted by the daemon. These are collapsible <details> blocks containing the
+// coding session transcript.
 const TranscriptMarker = "<summary>Session Transcript</summary>"
 
 // FilterTranscriptComments removes session transcript comments from a slice of PR review comments.

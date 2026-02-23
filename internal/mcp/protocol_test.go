@@ -136,7 +136,7 @@ func TestInitializeResult_Marshal(t *testing.T) {
 		ProtocolVersion: "2024-11-05",
 		Capabilities:    Capability{},
 		ServerInfo: ServerInfo{
-			Name:    "plural-permission",
+			Name:    "erg-permission",
 			Version: "1.0.0",
 		},
 		Instructions: "Handle permission prompts",
@@ -152,8 +152,8 @@ func TestInitializeResult_Marshal(t *testing.T) {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
 
-	if decoded.ServerInfo.Name != "plural-permission" {
-		t.Errorf("ServerInfo.Name = %q, want %q", decoded.ServerInfo.Name, "plural-permission")
+	if decoded.ServerInfo.Name != "erg-permission" {
+		t.Errorf("ServerInfo.Name = %q, want %q", decoded.ServerInfo.Name, "erg-permission")
 	}
 }
 

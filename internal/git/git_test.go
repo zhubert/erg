@@ -26,7 +26,7 @@ var ctx = context.Background()
 func createTestRepo(t *testing.T) string {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "plural-git-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-git-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1018,7 +1018,7 @@ func createTestRepoWithWorktree(t *testing.T) (repoPath, parentWorktree, childWo
 	}
 
 	// Create parent worktree - git worktree add needs the path to not exist
-	parentWorktree, _ = os.MkdirTemp("", "plural-parent-wt-*")
+	parentWorktree, _ = os.MkdirTemp("", "erg-parent-wt-*")
 	os.RemoveAll(parentWorktree) // Remove it so git worktree add can create it
 	cmd = exec.Command("git", "worktree", "add", parentWorktree, parentBranch)
 	cmd.Dir = repoPath
@@ -1028,7 +1028,7 @@ func createTestRepoWithWorktree(t *testing.T) (repoPath, parentWorktree, childWo
 	}
 
 	// Create child worktree - git worktree add needs the path to not exist
-	childWorktree, _ = os.MkdirTemp("", "plural-child-wt-*")
+	childWorktree, _ = os.MkdirTemp("", "erg-child-wt-*")
 	os.RemoveAll(childWorktree) // Remove it so git worktree add can create it
 	cmd = exec.Command("git", "worktree", "add", childWorktree, childBranch)
 	cmd.Dir = repoPath
@@ -1260,7 +1260,7 @@ func createTestRepoWithRemote(t *testing.T) (repoPath, remotePath string, cleanu
 	t.Helper()
 
 	// Create a bare "remote" repository
-	remotePath, err := os.MkdirTemp("", "plural-git-remote-*")
+	remotePath, err := os.MkdirTemp("", "erg-git-remote-*")
 	if err != nil {
 		t.Fatalf("Failed to create remote temp dir: %v", err)
 	}
@@ -1273,7 +1273,7 @@ func createTestRepoWithRemote(t *testing.T) (repoPath, remotePath string, cleanu
 	}
 
 	// Create the local repo
-	repoPath, err = os.MkdirTemp("", "plural-git-local-*")
+	repoPath, err = os.MkdirTemp("", "erg-git-local-*")
 	if err != nil {
 		os.RemoveAll(remotePath)
 		t.Fatalf("Failed to create local temp dir: %v", err)
@@ -1386,7 +1386,7 @@ func TestMergeToMain_PullFailsDiverged(t *testing.T) {
 
 	// Now simulate diverged history:
 	// Clone the remote to a second location, make a commit, push
-	tempClone, err := os.MkdirTemp("", "plural-git-clone-*")
+	tempClone, err := os.MkdirTemp("", "erg-git-clone-*")
 	if err != nil {
 		t.Fatalf("Failed to create clone temp dir: %v", err)
 	}
@@ -2736,23 +2736,23 @@ func TestExtractOwnerRepo(t *testing.T) {
 	}{
 		{
 			name:     "SSH format",
-			input:    "git@github.com:zhubert/plural.git",
-			expected: "zhubert/plural",
+			input:    "git@github.com:zhubert/erg.git",
+			expected: "zhubert/erg",
 		},
 		{
 			name:     "HTTPS format",
-			input:    "https://github.com/zhubert/plural.git",
-			expected: "zhubert/plural",
+			input:    "https://github.com/zhubert/erg.git",
+			expected: "zhubert/erg",
 		},
 		{
 			name:     "HTTP format",
-			input:    "http://github.com/zhubert/plural.git",
-			expected: "zhubert/plural",
+			input:    "http://github.com/zhubert/erg.git",
+			expected: "zhubert/erg",
 		},
 		{
 			name:     "no .git suffix",
-			input:    "https://github.com/zhubert/plural",
-			expected: "zhubert/plural",
+			input:    "https://github.com/zhubert/erg",
+			expected: "zhubert/erg",
 		},
 		{
 			name:     "empty string",
@@ -2795,7 +2795,7 @@ func TestGetRemoteOriginURL(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockExec := pexec.NewMockExecutor(nil)
 		mockExec.AddPrefixMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
-			Stdout: []byte("https://github.com/zhubert/plural.git\n"),
+			Stdout: []byte("https://github.com/zhubert/erg.git\n"),
 		})
 		gitSvc := NewGitServiceWithExecutor(mockExec)
 
@@ -2803,8 +2803,8 @@ func TestGetRemoteOriginURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if url != "https://github.com/zhubert/plural.git" {
-			t.Errorf("expected URL 'https://github.com/zhubert/plural.git', got %q", url)
+		if url != "https://github.com/zhubert/erg.git" {
+			t.Errorf("expected URL 'https://github.com/zhubert/erg.git', got %q", url)
 		}
 	})
 
@@ -2868,7 +2868,7 @@ func TestLoadTranscript_MissingSession(t *testing.T) {
 
 func TestLoadTranscript_ValidSession(t *testing.T) {
 	tmpDir := setupTranscriptPaths(t)
-	sessionsDir := filepath.Join(tmpDir, ".plural", "sessions")
+	sessionsDir := filepath.Join(tmpDir, ".erg", "sessions")
 
 	messages := []config.Message{
 		{Role: "user", Content: "Hello"},
@@ -2896,7 +2896,7 @@ func TestLoadTranscript_ValidSession(t *testing.T) {
 
 func TestLoadTranscript_EmptyMessages(t *testing.T) {
 	tmpDir := setupTranscriptPaths(t)
-	sessionsDir := filepath.Join(tmpDir, ".plural", "sessions")
+	sessionsDir := filepath.Join(tmpDir, ".erg", "sessions")
 
 	// Write session with no messages
 	writeSessionMessages(t, sessionsDir, "empty-session", []config.Message{})

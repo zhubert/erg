@@ -124,7 +124,7 @@ func (r *Runner) createMCPConfigLocked(socketPath string) (string, error) {
 		return "", err
 	}
 
-	// Start with the plural permission handler
+	// Start with the erg permission handler
 	mcpArgs := []string{"mcp-server", "--socket", socketPath}
 	if r.supervisor {
 		mcpArgs = append(mcpArgs, "--supervisor")
@@ -133,7 +133,7 @@ func (r *Runner) createMCPConfigLocked(socketPath string) (string, error) {
 		mcpArgs = append(mcpArgs, "--host-tools")
 	}
 	mcpServers := map[string]any{
-		"plural": map[string]any{
+		"erg": map[string]any{
 			"command": execPath,
 			"args":    mcpArgs,
 		},
@@ -156,7 +156,7 @@ func (r *Runner) createMCPConfigLocked(socketPath string) (string, error) {
 		return "", err
 	}
 
-	configPath := filepath.Join(os.TempDir(), fmt.Sprintf("plural-mcp-%s.json", r.sessionID))
+	configPath := filepath.Join(os.TempDir(), fmt.Sprintf("erg-mcp-%s.json", r.sessionID))
 	if err := os.WriteFile(configPath, configJSON, 0600); err != nil {
 		return "", err
 	}
@@ -165,7 +165,7 @@ func (r *Runner) createMCPConfigLocked(socketPath string) (string, error) {
 }
 
 // createContainerMCPConfigLocked creates the MCP config for containerized sessions.
-// The config points to the plural binary inside the container at /usr/local/bin/plural
+// The config points to the erg binary inside the container at /usr/local/bin/erg
 // with --auto-approve and --listen, which auto-approves all regular permissions while
 // routing AskUserQuestion and ExitPlanMode through the TUI via reverse TCP.
 // The MCP subprocess listens on containerPort and the host dials in.
@@ -180,8 +180,8 @@ func (r *Runner) createContainerMCPConfigLocked(containerPort int) (string, erro
 		args = append(args, "--host-tools")
 	}
 	mcpServers := map[string]any{
-		"plural": map[string]any{
-			"command": "/usr/local/bin/plural",
+		"erg": map[string]any{
+			"command": "/usr/local/bin/erg",
 			"args":    args,
 		},
 	}
@@ -195,7 +195,7 @@ func (r *Runner) createContainerMCPConfigLocked(containerPort int) (string, erro
 		return "", err
 	}
 
-	// Write to ~/.plural/ (under $HOME) instead of os.TempDir() (/var/folders/ on macOS).
+	// Write to ~/.erg/ (under $HOME) instead of os.TempDir() (/var/folders/ on macOS).
 	// Colima shares $HOME with the Docker VM by default, but /var/folders/ is NOT shared.
 	// When Docker can't access the host file, it creates an empty directory at the mount
 	// point inside the container, causing Claude CLI to hang trying to read a directory
@@ -208,7 +208,7 @@ func (r *Runner) createContainerMCPConfigLocked(containerPort int) (string, erro
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return "", fmt.Errorf("create config dir: %w", err)
 	}
-	configPath := filepath.Join(configDir, fmt.Sprintf("plural-mcp-%s.json", r.sessionID))
+	configPath := filepath.Join(configDir, fmt.Sprintf("erg-mcp-%s.json", r.sessionID))
 	if err := os.WriteFile(configPath, configJSON, 0600); err != nil {
 		return "", err
 	}

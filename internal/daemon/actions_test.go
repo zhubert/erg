@@ -2423,7 +2423,7 @@ func TestAddressFeedback_TranscriptOnlyResetsPhase(t *testing.T) {
 			Body   string                `json:"body"`
 			URL    string                `json:"url"`
 		}{
-			{Author: struct{ Login string }{Login: "plural-bot"}, Body: transcriptBody, URL: "https://example.com"},
+			{Author: struct{ Login string }{Login: "erg-bot"}, Body: transcriptBody, URL: "https://example.com"},
 		},
 		Reviews: []any{},
 	})

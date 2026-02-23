@@ -281,7 +281,7 @@ func extractSessionID(socketPath string) string {
 	base := filepath.Base(socketPath)
 	// Remove .sock extension
 	base = strings.TrimSuffix(base, ".sock")
-	// Remove pl- prefix (shortened from plural- to keep socket path under Unix limit)
+	// Remove pl- prefix (shortened to keep socket path under Unix limit)
 	if after, ok := strings.CutPrefix(base, "pl-"); ok {
 		return after
 	}
