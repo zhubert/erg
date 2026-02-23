@@ -162,7 +162,7 @@ func TestGenerateDockerfile_PHP(t *testing.T) {
 	}
 }
 
-func TestGenerateDockerfile_IncludesPluralBinary(t *testing.T) {
+func TestGenerateDockerfile_IncludesErgBinary(t *testing.T) {
 	expectedArch := releaseArch()
 	tests := []struct {
 		name  string
@@ -181,9 +181,6 @@ func TestGenerateDockerfile_IncludesPluralBinary(t *testing.T) {
 			}
 			if !strings.Contains(df, "/usr/local/bin/erg") {
 				t.Error("expected erg binary install path in Dockerfile")
-			}
-			if !strings.Contains(df, "ln -s /usr/local/bin/erg /usr/local/bin/plural") {
-				t.Error("expected plural -> erg symlink for MCP config backward compatibility")
 			}
 		})
 	}

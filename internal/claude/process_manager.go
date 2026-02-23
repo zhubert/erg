@@ -74,7 +74,7 @@ type ProcessConfig struct {
 	MCPConfigPath          string
 	ForkFromSessionID      string // When set, uses --resume <parentID> --fork-session to inherit parent conversation
 	Containerized          bool   // When true, wraps Claude CLI in a container
-	ContainerImage         string // Container image name (e.g., "ghcr.io/zhubert/plural-claude")
+	ContainerImage         string // Container image name (e.g., "ghcr.io/zhubert/erg")
 	ContainerMCPPort       int    // Port the MCP subprocess listens on inside the container (published via -p 0:port)
 	Supervisor               bool          // When true, adds --supervisor flag to Claude CLI args
 	DisableStreamingChunks   bool          // When true, omits --include-partial-messages for less verbose output (useful for agent mode)
@@ -275,7 +275,7 @@ func BuildCommandArgs(config ProcessConfig) []string {
 		if config.MCPConfigPath != "" {
 			args = append(args,
 				"--mcp-config", containerMCPConfigPath,
-				"--permission-prompt-tool", "mcp__plural__permission",
+				"--permission-prompt-tool", "mcp__erg__permission",
 			)
 		} else {
 			// Fallback if MCP server didn't start — use dangerously-skip-permissions
@@ -293,7 +293,7 @@ func BuildCommandArgs(config ProcessConfig) []string {
 		// Add MCP config and permission prompt tool
 		args = append(args,
 			"--mcp-config", config.MCPConfigPath,
-			"--permission-prompt-tool", "mcp__plural__permission",
+			"--permission-prompt-tool", "mcp__erg__permission",
 		)
 		if config.SystemPrompt != "" {
 			args = append(args, "--append-system-prompt", config.SystemPrompt)
@@ -338,7 +338,7 @@ func (pm *ProcessManager) Start() error {
 		// Remove any stale container with the same name from a previous crash.
 		// docker run --rm only cleans up on clean exit, so a crashed container
 		// may still be lingering and block the new docker run.
-		containerName := "plural-" + pm.config.SessionID
+		containerName := "erg-" + pm.config.SessionID
 		rmCmd := exec.Command("docker", "rm", "-f", containerName)
 		if rmOut, rmErr := rmCmd.CombinedOutput(); rmErr != nil {
 			pm.log.Debug("pre-start container cleanup (may not exist)", "name", containerName, "output", strings.TrimSpace(string(rmOut)))
@@ -504,7 +504,7 @@ func (pm *ProcessManager) Stop() {
 
 	// Defense-in-depth: force remove the container if we were running in container mode
 	if pm.config.Containerized {
-		containerName := "plural-" + pm.config.SessionID
+		containerName := "erg-" + pm.config.SessionID
 
 		// If the container never started successfully, capture docker logs
 		// for diagnostics before removing it. This helps debug startup
@@ -900,7 +900,7 @@ func (pm *ProcessManager) handleExit(err error) {
 		if containerLogs != "" {
 			errMsg += fmt.Sprintf("\n\nContainer logs:\n%s", containerLogs)
 		}
-		errMsg += "\n\nCheck the container logs above for update failures. If auto-update failed, try setting PLURAL_SKIP_UPDATE=1 and pulling the latest image manually."
+		errMsg += "\n\nCheck the container logs above for update failures. If auto-update failed, try setting ERG_SKIP_UPDATE=1 and pulling the latest image manually."
 
 		if pm.callbacks.OnFatalError != nil {
 			pm.callbacks.OnFatalError(fmt.Errorf("%s", errMsg))
@@ -1003,10 +1003,10 @@ func buildContainerRunArgs(config ProcessConfig, claudeArgs []string) (container
 		return containerRunResult{}, fmt.Errorf("failed to determine home directory: %w", err)
 	}
 
-	containerName := "plural-" + config.SessionID
+	containerName := "erg-" + config.SessionID
 	image := config.ContainerImage
 	if image == "" {
-		image = "ghcr.io/zhubert/plural-claude"
+		image = "ghcr.io/zhubert/erg"
 	}
 
 	args := []string{
@@ -1024,11 +1024,11 @@ func buildContainerRunArgs(config ProcessConfig, claudeArgs []string) (container
 		args = append(args, "-p", fmt.Sprintf("0:%d", config.ContainerMCPPort))
 	}
 
-	// Pass PLURAL_SKIP_UPDATE through to the container if set on the host.
+	// Pass ERG_SKIP_UPDATE through to the container if set on the host.
 	// This allows developers to skip the entrypoint auto-update when testing
 	// with a locally-built container image.
-	if os.Getenv("PLURAL_SKIP_UPDATE") != "" {
-		args = append(args, "-e", "PLURAL_SKIP_UPDATE=1")
+	if os.Getenv("ERG_SKIP_UPDATE") != "" {
+		args = append(args, "-e", "ERG_SKIP_UPDATE=1")
 	}
 
 	// Pass auth credentials via --env-file.
@@ -1087,7 +1087,7 @@ func containerAuthFilePath(sessionID string) string {
 	if dir == "" {
 		return ""
 	}
-	return filepath.Join(dir, fmt.Sprintf("plural-auth-%s", sessionID))
+	return filepath.Join(dir, fmt.Sprintf("erg-auth-%s", sessionID))
 }
 
 // ContainerAuthAvailable checks whether credentials are available for
@@ -1190,7 +1190,7 @@ type containerAuthResult struct {
 	Source string // Credential source description for logging
 }
 
-// writeContainerAuthFile writes credentials to a file in ~/.plural/ with
+// writeContainerAuthFile writes credentials to a file in ~/.erg/ with
 // restricted permissions (0600) and returns the file path and source.
 // The file is passed to Docker via --env-file, which sets the env var
 // directly in the container process.
@@ -1343,7 +1343,7 @@ func (pm *ProcessManager) containerStartupWatchdog() {
 	pm.log.Error("container startup watchdog fired - killing process", "timeout", startupTimeout)
 
 	// Capture docker logs before killing the process for diagnostics
-	containerName := "plural-" + pm.config.SessionID
+	containerName := "erg-" + pm.config.SessionID
 	logCmd := exec.Command("docker", "logs", "--tail", "50", containerName)
 	logOutput, logErr := logCmd.CombinedOutput()
 	var logs string
@@ -1389,7 +1389,7 @@ func friendlyContainerError(stderr string, containerized bool) string {
 
 	if strings.Contains(stderr, "container name") && strings.Contains(stderr, "already in use") {
 		return "A stale container could not be cleaned up automatically. " +
-			"Run 'plural clean' to remove orphaned containers."
+			"Run 'erg clean' to remove orphaned containers."
 	}
 
 	return stderr

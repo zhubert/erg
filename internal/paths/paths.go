@@ -1,15 +1,15 @@
-// Package paths provides centralized path resolution for Plural's data directories.
+// Package paths provides centralized path resolution for Erg's data directories.
 //
-// Plural supports the XDG Base Directory Specification for organizing files:
+// Erg supports the XDG Base Directory Specification for organizing files:
 //
 //   - Config (XDG_CONFIG_HOME): config.json — user settings worth syncing
 //   - Data (XDG_DATA_HOME): sessions/*.json — local session history
 //   - State (XDG_STATE_HOME): logs/ — transient log files
 //
 // Resolution order:
-//  1. If ~/.plural/ exists → use legacy flat layout (all paths under ~/.plural/)
+//  1. If ~/.erg/ exists → use legacy flat layout (all paths under ~/.erg/)
 //  2. If XDG env vars are set → use XDG layout with proper separation
-//  3. Fresh install, no XDG vars → default to ~/.plural/
+//  3. Fresh install, no XDG vars → default to ~/.erg/
 package paths
 
 import (
@@ -44,9 +44,9 @@ func resolve() (*resolvedPaths, error) {
 		return nil, err
 	}
 
-	legacyDir := filepath.Join(home, ".plural")
+	legacyDir := filepath.Join(home, ".erg")
 
-	// 1. If ~/.plural/ exists, use legacy layout
+	// 1. If ~/.erg/ exists, use legacy layout
 	if info, err := os.Stat(legacyDir); err == nil && info.IsDir() {
 		resolved = &resolvedPaths{
 			configDir: legacyDir,
@@ -74,9 +74,9 @@ func resolve() (*resolvedPaths, error) {
 			xdgState = filepath.Join(home, ".local", "state")
 		}
 		resolved = &resolvedPaths{
-			configDir: filepath.Join(xdgConfig, "plural"),
-			dataDir:   filepath.Join(xdgData, "plural"),
-			stateDir:  filepath.Join(xdgState, "plural"),
+			configDir: filepath.Join(xdgConfig, "erg"),
+			dataDir:   filepath.Join(xdgData, "erg"),
+			stateDir:  filepath.Join(xdgState, "erg"),
 			legacy:    false,
 		}
 		return resolved, nil
@@ -155,7 +155,7 @@ func WorktreesDir() (string, error) {
 	return filepath.Join(dir, "worktrees"), nil
 }
 
-// IsLegacyLayout returns true if using the ~/.plural/ flat layout.
+// IsLegacyLayout returns true if using the ~/.erg/ flat layout.
 func IsLegacyLayout() bool {
 	r, err := resolve()
 	if err != nil {

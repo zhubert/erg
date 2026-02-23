@@ -87,10 +87,6 @@ func GenerateDockerfile(langs []DetectedLang, version string) string {
 			" | tar -xz -C /tmp && mv /tmp/erg /usr/local/bin/erg\n",
 			releaseArch())
 	}
-	// Symlink plural -> erg for backward compatibility with plural-core's MCP config,
-	// which hardcodes /usr/local/bin/plural as the MCP server command.
-	b.WriteString("RUN ln -s /usr/local/bin/erg /usr/local/bin/plural\n")
-
 	// Entrypoint script: install latest Claude Code on boot (keeps cached image fresh),
 	// then exec into claude with all original arguments.
 	// Uses `npm install @latest` instead of `npm update` because npm update respects

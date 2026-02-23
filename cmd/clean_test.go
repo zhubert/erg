@@ -23,8 +23,8 @@ func setupAgentCleanTest(t *testing.T) (dataDir, stateDir string) {
 	paths.Reset()
 	t.Cleanup(func() { paths.Reset() })
 
-	dataDir = filepath.Join(tmpDir, "data", "plural")
-	stateDir = filepath.Join(tmpDir, "state", "plural")
+	dataDir = filepath.Join(tmpDir, "data", "erg")
+	stateDir = filepath.Join(tmpDir, "state", "erg")
 	os.MkdirAll(dataDir, 0o755)
 	os.MkdirAll(stateDir, 0o755)
 	return dataDir, stateDir

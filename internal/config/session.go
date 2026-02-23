@@ -318,7 +318,7 @@ func (c *Config) GetChildSessions(supervisorID string) []Session {
 }
 
 // UpdateSessionWorkTree updates the worktree path for a session.
-// Used during migration from legacy .plural-worktrees to centralized directory.
+// Used during migration from pre-rename legacy .plural-worktrees to centralized directory.
 func (c *Config) UpdateSessionWorkTree(sessionID string, workTree string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()

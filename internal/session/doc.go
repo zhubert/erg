@@ -2,7 +2,7 @@
 //
 // # Overview
 //
-// Each session in Plural runs in its own git worktree, allowing multiple
+// Each session in erg runs in its own git worktree, allowing multiple
 // parallel Claude Code conversations to work on the same repository without
 // conflicts. This package handles the creation and validation of these sessions.
 //
@@ -10,9 +10,9 @@
 //
 // 1. Create: When a new session is created:
 //   - A UUID is generated for the session ID
-//   - A new git branch is created: plural-<UUID>
+//   - A new git branch is created: erg-<UUID>
 //   - A worktree is created under the centralized data directory
-//     (~/.plural/worktrees/<UUID> or XDG_DATA_HOME/plural/worktrees/<UUID>)
+//     (~/.erg/worktrees/<UUID> or XDG_DATA_HOME/erg/worktrees/<UUID>)
 //   - The session is registered in the config
 //
 // 2. Resume: When resuming an existing session:
@@ -28,13 +28,13 @@
 //
 // Session worktrees are stored in a centralized location:
 //
-//	~/.plural/worktrees/<session-uuid>/
+//	~/.erg/worktrees/<session-uuid>/
 //
 // Or when using XDG Base Directory Specification:
 //
-//	$XDG_DATA_HOME/plural/worktrees/<session-uuid>/
+//	$XDG_DATA_HOME/erg/worktrees/<session-uuid>/
 //
-// This centralized location avoids scattering .plural-worktrees directories
+// This centralized location avoids scattering worktree directories
 // across the filesystem. Legacy worktrees from the old sibling-directory layout
 // are automatically migrated on startup.
 //
