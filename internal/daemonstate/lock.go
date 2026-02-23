@@ -47,9 +47,19 @@ func AcquireLock(repoPath string) (*DaemonLock, error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		f, err := os.OpenFile(fp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
-			// Successfully created lock file — write our PID and sync to disk
-			fmt.Fprintf(f, "%d", os.Getpid())
-			f.Sync() // ensure PID is on disk before returning, so crashes don't leave empty lock files
+			// Successfully created lock file — write our PID and sync to disk.
+			// Check both errors: a failed write or sync would leave a corrupt/empty
+			// lock file, defeating the purpose of this fix.
+			if _, writeErr := fmt.Fprintf(f, "%d", os.Getpid()); writeErr != nil {
+				f.Close()
+				os.Remove(fp) //nolint:errcheck
+				return nil, fmt.Errorf("failed to write PID to lock file: %w", writeErr)
+			}
+			if syncErr := f.Sync(); syncErr != nil {
+				f.Close()
+				os.Remove(fp) //nolint:errcheck
+				return nil, fmt.Errorf("failed to sync lock file: %w", syncErr)
+			}
 			return &DaemonLock{path: fp, file: f}, nil
 		}
 
