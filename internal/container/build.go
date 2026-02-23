@@ -88,9 +88,13 @@ func GenerateDockerfile(langs []DetectedLang, version string) string {
 			releaseArch())
 	}
 
-	// Entrypoint script: update Claude Code on boot (keeps cached image fresh),
+	// Entrypoint script: install latest Claude Code on boot (keeps cached image fresh),
 	// then exec into claude with all original arguments.
-	b.WriteString("RUN printf '#!/bin/sh\\nnpm update -g @anthropic-ai/claude-code 2>/dev/null\\nexec claude \"$@\"\\n' > /usr/local/bin/entrypoint.sh \\\n")
+	// Uses `npm install @latest` instead of `npm update` because npm update respects
+	// semver ranges and won't cross major version boundaries.
+	// Redirects both stdout and stderr to avoid polluting the JSON stream.
+	// Checks PLURAL_SKIP_UPDATE to allow developers to skip the update.
+	b.WriteString("RUN printf '#!/bin/sh\\nif [ -z \"$PLURAL_SKIP_UPDATE\" ]; then npm install -g @anthropic-ai/claude-code@latest >/dev/null 2>&1; fi\\nexec claude \"$@\"\\n' > /usr/local/bin/entrypoint.sh \\\n")
 	b.WriteString("    && chmod +x /usr/local/bin/entrypoint.sh\n")
 	b.WriteString("ENTRYPOINT [\"/usr/local/bin/entrypoint.sh\"]\n")
 
