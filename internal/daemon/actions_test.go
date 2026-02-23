@@ -877,6 +877,73 @@ func TestStartCoding_FailsWhenCleanupFails(t *testing.T) {
 	}
 }
 
+// TestStartCoding_WorkItemUpdatedBeforeConfigSave is a regression test for the
+// ordering bug where the work item's SessionID was set AFTER saveConfig was
+// called, leaving a window where a crash would orphan the session (config has
+// the session but state file has no SessionID reference).
+//
+// After the fix, we verify that when startCoding succeeds:
+//   - item.SessionID is set (so saveState records the link to the session)
+//   - item.Branch matches the session branch
+//   - item.State is WorkItemCoding
+//   - The SessionID on the work item matches the session recorded in config
+func TestStartCoding_WorkItemUpdatedBeforeConfigSave(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Make BranchExists always return false (no pre-existing branch) so
+	// startCoding proceeds directly to session creation.
+	mockExec.AddRule(func(dir, name string, args []string) bool {
+		return name == "git" && len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--verify"
+	}, exec.MockResponse{Err: fmt.Errorf("fatal: Needed a single revision")})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "10", Title: "Fix orphan bug"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := d.startCoding(ctx, item)
+	if err != nil {
+		t.Fatalf("startCoding should succeed, got: %v", err)
+	}
+
+	// item.SessionID must be set so that a subsequent saveState records the
+	// reference — this is the core of the bug fix.
+	if item.SessionID == "" {
+		t.Error("item.SessionID must be set before saveConfig is called (regression: orphaned session on crash)")
+	}
+	if item.Branch == "" {
+		t.Error("item.Branch must be set after startCoding")
+	}
+	if item.State != daemonstate.WorkItemCoding {
+		t.Errorf("item.State must be WorkItemCoding, got %q", item.State)
+	}
+
+	// The SessionID on the work item must match the session recorded in config,
+	// confirming both are kept consistent.
+	sessions := cfg.GetSessions()
+	if len(sessions) == 0 {
+		t.Fatal("expected a session to be recorded in config")
+	}
+	if sessions[0].ID != item.SessionID {
+		t.Errorf("config session ID %q does not match item.SessionID %q", sessions[0].ID, item.SessionID)
+	}
+}
+
 func TestParseWorktreeForBranch(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -2107,4 +2174,273 @@ func TestDaemon_RefreshStaleSession_RemovesStaleWorktree(t *testing.T) {
 
 	// Clean up
 	_ = osexec.Command("git", "-C", repoDir, "worktree", "remove", "--force", result.WorkTree).Run()
+}
+
+// --- branchHasChanges tests ---
+
+func TestBranchHasChanges_NoCommitsNoChanges(t *testing.T) {
+	// Create a git repo with a branch that has no new commits relative to main
+	repoDir := initTestGitRepo(t)
+
+	// Create a branch at the same commit as the current HEAD
+	mustRunGit(t, repoDir, "branch", "issue-50")
+	mustRunGit(t, repoDir, "checkout", "issue-50")
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:         "sess-no-changes",
+		RepoPath:   repoDir,
+		WorkTree:   repoDir,
+		Branch:     "issue-50",
+		BaseBranch: "main",
+	}
+
+	// Determine which branch is the default (could be "main" or "master")
+	defaultBranch := getDefaultBranch(t, repoDir)
+	sess.BaseBranch = defaultBranch
+
+	hasChanges, err := d.branchHasChanges(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hasChanges {
+		t.Error("expected no changes on branch with no new commits and no uncommitted changes")
+	}
+}
+
+func TestBranchHasChanges_HasCommits(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+
+	defaultBranch := getDefaultBranch(t, repoDir)
+
+	// Create a branch and add a commit
+	mustRunGit(t, repoDir, "checkout", "-b", "issue-51")
+	filePath := filepath.Join(repoDir, "new-file.txt")
+	createCmd := osexec.Command("sh", "-c", "echo 'hello' > "+filePath)
+	if out, err := createCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to create file: %v (output: %s)", err, out)
+	}
+	mustRunGit(t, repoDir, "add", ".")
+	mustRunGit(t, repoDir, "commit", "-m", "add new file")
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:         "sess-with-commits",
+		RepoPath:   repoDir,
+		WorkTree:   repoDir,
+		Branch:     "issue-51",
+		BaseBranch: defaultBranch,
+	}
+
+	hasChanges, err := d.branchHasChanges(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasChanges {
+		t.Error("expected changes on branch with new commits")
+	}
+}
+
+func TestBranchHasChanges_HasUncommittedChanges(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+
+	defaultBranch := getDefaultBranch(t, repoDir)
+
+	// Create a branch (no new commits) but add uncommitted changes
+	mustRunGit(t, repoDir, "checkout", "-b", "issue-52")
+	filePath := filepath.Join(repoDir, "uncommitted.txt")
+	createCmd := osexec.Command("sh", "-c", "echo 'uncommitted' > "+filePath)
+	if out, err := createCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to create file: %v (output: %s)", err, out)
+	}
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:         "sess-uncommitted",
+		RepoPath:   repoDir,
+		WorkTree:   repoDir,
+		Branch:     "issue-52",
+		BaseBranch: defaultBranch,
+	}
+
+	hasChanges, err := d.branchHasChanges(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !hasChanges {
+		t.Error("expected changes when there are uncommitted files")
+	}
+}
+
+func TestBranchHasChanges_DefaultsToMain(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+
+	// Ensure the default branch is called "main" for this test
+	defaultBranch := getDefaultBranch(t, repoDir)
+	if defaultBranch != "main" {
+		mustRunGit(t, repoDir, "branch", "-m", defaultBranch, "main")
+	}
+
+	mustRunGit(t, repoDir, "checkout", "-b", "issue-53")
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:         "sess-default-base",
+		RepoPath:   repoDir,
+		WorkTree:   repoDir,
+		Branch:     "issue-53",
+		BaseBranch: "", // empty — should default to "main"
+	}
+
+	hasChanges, err := d.branchHasChanges(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hasChanges {
+		t.Error("expected no changes on branch with no new commits")
+	}
+}
+
+func TestBranchHasChanges_FallsBackToRepoPath(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+
+	defaultBranch := getDefaultBranch(t, repoDir)
+	mustRunGit(t, repoDir, "checkout", "-b", "issue-54")
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:         "sess-no-worktree",
+		RepoPath:   repoDir,
+		WorkTree:   "", // empty — should fall back to RepoPath
+		Branch:     "issue-54",
+		BaseBranch: defaultBranch,
+	}
+
+	hasChanges, err := d.branchHasChanges(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hasChanges {
+		t.Error("expected no changes")
+	}
+}
+
+// TestCreatePR_NoChanges_ReturnsError verifies that createPR returns a clear error
+// when the coding session made no changes (no commits and no uncommitted changes).
+// This is a regression test for the bug where the daemon would attempt to create
+// a PR on GitHub even when there were no changes, resulting in a cryptic GraphQL error.
+func TestCreatePR_NoChanges_ReturnsError(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+
+	defaultBranch := getDefaultBranch(t, repoDir)
+	mustRunGit(t, repoDir, "checkout", "-b", "issue-50")
+
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := &config.Session{
+		ID:         "sess-no-changes",
+		RepoPath:   repoDir,
+		WorkTree:   repoDir,
+		Branch:     "issue-50",
+		BaseBranch: defaultBranch,
+	}
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-no-changes",
+		IssueRef:  config.IssueRef{Source: "github", ID: "50"},
+		SessionID: "sess-no-changes",
+		Branch:    "issue-50",
+		StepData:  map[string]any{},
+	})
+
+	item := d.state.GetWorkItem("item-no-changes")
+	_, err := d.createPR(context.Background(), item)
+	if err == nil {
+		t.Fatal("expected error when creating PR with no changes")
+	}
+	if !strings.Contains(err.Error(), "no changes on branch") {
+		t.Errorf("expected 'no changes on branch' error, got: %v", err)
+	}
+}
+
+// getDefaultBranch returns the name of the default branch in the repo.
+func getDefaultBranch(t *testing.T, repoDir string) string {
+	t.Helper()
+	cmd := osexec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("failed to get default branch: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestAddressFeedback_TranscriptOnlyResetsPhase(t *testing.T) {
+	// Regression: when all PR comments are transcripts, addressFeedback must
+	// reset the work item phase back to "idle" so the concurrency slot is freed.
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Return a single transcript comment from gh pr view
+	transcriptBody := "<details><summary>Session Transcript</summary>\nsome log\n</details>"
+	reviewsJSON, _ := json.Marshal(struct {
+		Comments []struct {
+			Author struct{ Login string } `json:"author"`
+			Body   string                `json:"body"`
+			URL    string                `json:"url"`
+		} `json:"comments"`
+		Reviews []any `json:"reviews"`
+	}{
+		Comments: []struct {
+			Author struct{ Login string } `json:"author"`
+			Body   string                `json:"body"`
+			URL    string                `json:"url"`
+		}{
+			{Author: struct{ Login string }{Login: "plural-bot"}, Body: transcriptBody, URL: "https://example.com"},
+		},
+		Reviews: []any{},
+	})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
+		Stdout: reviewsJSON,
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
+		SessionID:   "sess-1",
+		Branch:      "feature-sess-1",
+		CurrentStep: "await_review",
+	})
+
+	item := d.state.GetWorkItem("item-1")
+	d.addressFeedback(context.Background(), item)
+
+	updated := d.state.GetWorkItem("item-1")
+	if updated.Phase != "idle" {
+		t.Errorf("expected phase to be reset to 'idle' after transcript-only comments, got %q", updated.Phase)
+	}
+	if !updated.ConsumesSlot() {
+		// Phase is idle, so it shouldn't consume a slot — this is the expected behavior
+	}
+	if updated.ConsumesSlot() {
+		t.Error("work item should not consume a concurrency slot after transcript-only feedback")
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -1233,6 +1234,98 @@ func TestDaemon_SaveConfig_IncrementOnFailure(t *testing.T) {
 	}
 }
 
+func TestDaemon_SaveConfig_PausesAfterThreshold(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Point the config at an invalid path to force Save() to fail
+	cfg.SetFilePath("/nonexistent/path/config.json")
+
+	// Should not be paused yet
+	if d.configSavePaused {
+		t.Error("expected configSavePaused=false initially")
+	}
+
+	// Trigger 4 failures — still under threshold
+	for i := 0; i < 4; i++ {
+		d.saveConfig("test")
+	}
+	if d.configSavePaused {
+		t.Error("expected configSavePaused=false before threshold reached")
+	}
+
+	// 5th failure crosses the threshold
+	d.saveConfig("test")
+	if !d.configSavePaused {
+		t.Error("expected configSavePaused=true after 5 consecutive failures")
+	}
+	if d.configSaveFailures != 5 {
+		t.Errorf("expected configSaveFailures=5, got %d", d.configSaveFailures)
+	}
+}
+
+func TestDaemon_SaveConfig_RecoveryResumesPaused(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Simulate paused state from prior failures
+	d.configSavePaused = true
+	d.configSaveFailures = 7
+
+	// Point config at a valid temp file so Save() succeeds
+	tmpFile := filepath.Join(t.TempDir(), "config.json")
+	cfg.SetFilePath(tmpFile)
+
+	d.saveConfig("recovery")
+
+	if d.configSavePaused {
+		t.Error("expected configSavePaused=false after successful save")
+	}
+	if d.configSaveFailures != 0 {
+		t.Errorf("expected configSaveFailures=0 after recovery, got %d", d.configSaveFailures)
+	}
+}
+
+func TestDaemon_PollForNewIssues_SkipsWhenPaused(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.configSavePaused = true
+
+	// pollForNewIssues should return immediately without queuing anything
+	d.pollForNewIssues(context.Background())
+
+	if len(d.state.WorkItems) != 0 {
+		t.Errorf("expected 0 work items when paused, got %d", len(d.state.WorkItems))
+	}
+}
+
+func TestDaemon_StartQueuedItems_SkipsWhenPaused(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.configSavePaused = true
+
+	// Add a queued item
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "1"},
+	})
+
+	initialState := d.state.GetWorkItem("item-1").State
+
+	d.startQueuedItems(context.Background())
+
+	// Item should remain in its original queued state — not promoted to coding
+	item := d.state.GetWorkItem("item-1")
+	if item.State != initialState {
+		t.Errorf("expected state unchanged (%s) when paused, got %s", initialState, item.State)
+	}
+	if len(d.workers) != 0 {
+		t.Errorf("expected 0 workers when paused, got %d", len(d.workers))
+	}
+}
+
 func TestDaemon_CollectCompletedWorkers_WorkerError(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
@@ -1316,6 +1409,104 @@ func TestDaemon_CollectCompletedWorkers_FeedbackError(t *testing.T) {
 	// Error message should be persisted for operator visibility
 	if item.ErrorMessage == "" {
 		t.Error("expected error message to be set after failed feedback")
+	}
+}
+
+// mutexAcquiringAction is a workflow action that tries to acquire d.mu.
+// It is used to simulate the deadlock scenario: collectCompletedWorkers → executeSyncChain →
+// action → createWorkerWithPrompt/refreshStaleSession → d.mu.Lock().
+type mutexAcquiringAction struct {
+	mu       *sync.Mutex
+	acquired chan struct{}
+}
+
+func (a *mutexAcquiringAction) Execute(_ context.Context, _ *workflow.ActionContext) workflow.ActionResult {
+	a.mu.Lock()
+	select {
+	case a.acquired <- struct{}{}:
+	default:
+	}
+	a.mu.Unlock()
+	return workflow.ActionResult{Success: true}
+}
+
+func TestDaemon_CollectCompletedWorkers_NoDeadlockWhenHandlerAcquiresMutex(t *testing.T) {
+	// Regression test for issue #51: collectCompletedWorkers must release d.mu before
+	// calling handlers. Custom workflows that route the sync chain through an action
+	// that re-acquires d.mu (e.g., createWorkerWithPrompt, refreshStaleSession) would
+	// deadlock because sync.Mutex is not reentrant.
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
+		SessionID:   "sess-1",
+		Branch:      "feature-sess-1",
+		CurrentStep: "coding",
+	})
+	d.state.AdvanceWorkItem("item-1", "coding", "async_pending")
+
+	// Register a custom action that acquires d.mu. This simulates what
+	// createWorkerWithPrompt and refreshStaleSession do when called from
+	// executeSyncChain → action.Execute().
+	mutexAcquired := make(chan struct{}, 1)
+	lockAction := &mutexAcquiringAction{mu: &d.mu, acquired: mutexAcquired}
+
+	// Custom workflow: after coding (async) succeeds, run acquire_mutex (sync task) → done.
+	// In the default workflow executeSyncChain stops at wait states before reaching
+	// ai.code/ai.fix_ci, so the deadlock never triggers there. This custom workflow
+	// exercises the latent path.
+	customCfg := &workflow.Config{
+		Start: "coding",
+		States: map[string]*workflow.State{
+			"coding": {
+				Type:   workflow.StateTypeTask,
+				Action: "ai.code",
+				Next:   "acquire_mutex",
+				Error:  "failed",
+			},
+			"acquire_mutex": {
+				Type:   workflow.StateTypeTask,
+				Action: "test.acquire_mutex",
+				Next:   "done",
+			},
+			"done":   {Type: workflow.StateTypeSucceed},
+			"failed": {Type: workflow.StateTypeFail},
+		},
+	}
+	registry := d.buildActionRegistry()
+	registry.Register("test.acquire_mutex", lockAction)
+	engine := workflow.NewEngine(customCfg, registry, nil, d.logger)
+	d.engines = map[string]*workflow.Engine{sess.RepoPath: engine}
+
+	d.workers["item-1"] = newMockDoneWorker()
+
+	// Run collectCompletedWorkers in a goroutine with a timeout.
+	// Before the fix, this deadlocked because d.mu was held while calling
+	// handleAsyncComplete → executeSyncChain → acquire_mutex action → d.mu.Lock().
+	done := make(chan struct{})
+	go func() {
+		d.collectCompletedWorkers(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// success — no deadlock
+	case <-time.After(2 * time.Second):
+		t.Fatal("collectCompletedWorkers deadlocked: d.mu was held while calling handlers")
+	}
+
+	// Verify the mutex-acquiring action actually ran (i.e., executeSyncChain was called).
+	select {
+	case <-mutexAcquired:
+		// success
+	default:
+		t.Error("expected acquire_mutex action to be called, but it was not")
 	}
 }
 

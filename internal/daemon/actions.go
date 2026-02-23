@@ -329,13 +329,20 @@ func (d *Daemon) startCoding(ctx context.Context, item *daemonstate.WorkItem) er
 	}
 
 	d.config.AddSession(*sess)
-	d.saveConfig("startCoding")
 
-	// Update work item with session info.
+	// Update work item with session info BEFORE saving to disk so that both
+	// config and state are persisted atomically. If the daemon crashes between
+	// these two saves there is still a small window, but it is much smaller
+	// than the previous order (config saved, work item updated in memory only,
+	// state saved at end of tick). Recovery will detect the orphaned branch on
+	// the next start and clean it up.
 	item.SessionID = sess.ID
 	item.Branch = sess.Branch
 	item.State = daemonstate.WorkItemCoding
 	item.UpdatedAt = time.Now()
+
+	d.saveConfig("startCoding")
+	d.saveState()
 
 	// Build initial message using provider-aware formatting
 	issueBody, _ := item.StepData["issue_body"].(string)
@@ -408,6 +415,9 @@ func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem
 	reviewComments := worker.FilterTranscriptComments(comments)
 	if len(reviewComments) == 0 {
 		log.Debug("all comments are transcripts, nothing to address")
+		d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+			it.Phase = "idle"
+		})
 		return
 	}
 
@@ -442,6 +452,18 @@ func (d *Daemon) createPR(ctx context.Context, item *daemonstate.WorkItem) (stri
 	}
 
 	log := d.logger.With("workItem", item.ID, "branch", item.Branch)
+
+	// Check if there are any changes to create a PR for.
+	// If the coding session determined no changes were needed (e.g., the fix
+	// was already applied), there will be no commits on the branch and no
+	// uncommitted changes. Bail early with a clear error instead of letting
+	// the GitHub API reject the PR with a cryptic GraphQL error.
+	if hasChanges, err := d.branchHasChanges(ctx, sess); err != nil {
+		log.Warn("failed to check branch for changes, proceeding with PR creation", "error", err)
+	} else if !hasChanges {
+		return "", fmt.Errorf("no changes on branch %s — coding session made no commits", sess.Branch)
+	}
+
 	log.Info("creating PR")
 
 	prCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -472,6 +494,44 @@ func (d *Daemon) createPR(ctx context.Context, item *daemonstate.WorkItem) (stri
 	d.saveConfig("createPR")
 
 	return prURL, nil
+}
+
+// branchHasChanges returns true if the session's branch has new commits relative
+// to the base branch OR has uncommitted changes in the worktree. Returns false
+// when the coding session made no changes at all.
+func (d *Daemon) branchHasChanges(ctx context.Context, sess *config.Session) (bool, error) {
+	workDir := sess.WorkTree
+	if workDir == "" {
+		workDir = sess.RepoPath
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	// Check for uncommitted changes first (staged or unstaged).
+	statusCmd := osexec.CommandContext(checkCtx, "git", "status", "--porcelain")
+	statusCmd.Dir = workDir
+	statusOut, err := statusCmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git status failed: %w", err)
+	}
+	if len(strings.TrimSpace(string(statusOut))) > 0 {
+		return true, nil // Has uncommitted changes
+	}
+
+	// Check for new commits on the branch relative to the base branch.
+	baseBranch := sess.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	revListCmd := osexec.CommandContext(checkCtx, "git", "rev-list", "--count", baseBranch+"..HEAD")
+	revListCmd.Dir = workDir
+	revOut, err := revListCmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git rev-list failed: %w", err)
+	}
+	count := strings.TrimSpace(string(revOut))
+	return count != "0", nil
 }
 
 // pushChanges pushes changes for a work item's session.
