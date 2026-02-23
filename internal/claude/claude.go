@@ -1355,7 +1355,7 @@ func (r *Runner) connectToContainerMCP() {
 	port := mcp.ContainerMCPPort
 	r.mu.RUnlock()
 
-	containerName := "plural-" + sessionID
+	containerName := "erg-" + sessionID
 	portSpec := fmt.Sprintf("%d/tcp", port)
 
 	const maxAttempts = 30

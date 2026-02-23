@@ -37,22 +37,22 @@ func TestCreateContainerMCPConfigLocked(t *testing.T) {
 		t.Fatal("expected mcpServers key in config")
 	}
 
-	plural, ok := mcpServers["plural"].(map[string]any)
+	ergServer, ok := mcpServers["erg"].(map[string]any)
 	if !ok {
-		t.Fatal("expected 'plural' server in mcpServers")
+		t.Fatal("expected 'erg' server in mcpServers")
 	}
 
 	// Verify command points to in-container binary
-	command, ok := plural["command"].(string)
+	command, ok := ergServer["command"].(string)
 	if !ok {
 		t.Fatal("expected 'command' field")
 	}
-	if command != "/usr/local/bin/plural" {
-		t.Errorf("command = %q, want '/usr/local/bin/plural'", command)
+	if command != "/usr/local/bin/erg" {
+		t.Errorf("command = %q, want '/usr/local/bin/erg'", command)
 	}
 
 	// Verify args include --auto-approve and --listen (not --socket or --tcp)
-	argsRaw, ok := plural["args"].([]any)
+	argsRaw, ok := ergServer["args"].([]any)
 	if !ok {
 		t.Fatal("expected 'args' field to be array")
 	}
@@ -94,7 +94,7 @@ func TestCreateMCPConfigLocked_HostSession(t *testing.T) {
 		log:       pmTestLogger(),
 	}
 
-	socketPath := "/tmp/plural-test-host-mcp.sock"
+	socketPath := "/tmp/pl-test-host-mcp.sock"
 	configPath, err := r.createMCPConfigLocked(socketPath)
 	if err != nil {
 		t.Fatalf("createMCPConfigLocked() error = %v", err)
@@ -117,22 +117,22 @@ func TestCreateMCPConfigLocked_HostSession(t *testing.T) {
 		t.Fatal("expected mcpServers key in config")
 	}
 
-	plural, ok := mcpServers["plural"].(map[string]any)
+	ergServer, ok := mcpServers["erg"].(map[string]any)
 	if !ok {
-		t.Fatal("expected 'plural' server in mcpServers")
+		t.Fatal("expected 'erg' server in mcpServers")
 	}
 
-	// Host config should NOT use /usr/local/bin/plural
-	command, ok := plural["command"].(string)
+	// Host config should NOT use /usr/local/bin/erg
+	command, ok := ergServer["command"].(string)
 	if !ok {
 		t.Fatal("expected 'command' field")
 	}
-	if command == "/usr/local/bin/plural" {
-		t.Error("host MCP config should use the current executable, not /usr/local/bin/plural")
+	if command == "/usr/local/bin/erg" {
+		t.Error("host MCP config should use the current executable, not /usr/local/bin/erg")
 	}
 
 	// Host config should NOT include --auto-approve
-	argsRaw, ok := plural["args"].([]any)
+	argsRaw, ok := ergServer["args"].([]any)
 	if !ok {
 		t.Fatal("expected 'args' field to be array")
 	}

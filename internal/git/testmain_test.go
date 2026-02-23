@@ -8,7 +8,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Disable logging during tests to avoid polluting /tmp/plural-debug.log
+	// Disable logging during tests to avoid polluting /tmp/erg-debug.log
 	logger.Reset()
 	logger.Init(os.DevNull)
 

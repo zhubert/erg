@@ -23,7 +23,7 @@ func createTestConfig() *config.Config {
 				ID:        "session-1",
 				RepoPath:  "/test/repo",
 				WorkTree:  "/test/worktree",
-				Branch:    "plural-test",
+				Branch:    "erg-test",
 				Name:      "repo/session1",
 				CreatedAt: time.Now(),
 				Started:   false,
@@ -237,7 +237,7 @@ func TestSessionManager_Select_HeaderName(t *testing.T) {
 	cfg := createTestConfig()
 	sm := NewSessionManager(cfg, git.NewGitService())
 
-	// Session with auto-generated branch (plural-)
+	// Session with auto-generated branch (erg-)
 	sess := sm.GetSession("session-1")
 	result := sm.Select(sess, "", "", "")
 
@@ -254,8 +254,8 @@ func TestSessionManager_Select_HeaderName(t *testing.T) {
 	}
 }
 
-func TestSessionManager_Select_HeaderName_ExactPluralPrefix(t *testing.T) {
-	// Regression test: a branch named exactly "plural-" (7 chars) should
+func TestSessionManager_Select_HeaderName_ExactErgPrefix(t *testing.T) {
+	// Regression test: a branch named exactly "erg-" should
 	// use the session name, not the branch name as header.
 	cfg := &config.Config{
 		Repos: []string{"/test/repo"},
@@ -264,7 +264,7 @@ func TestSessionManager_Select_HeaderName_ExactPluralPrefix(t *testing.T) {
 				ID:        "session-exact-prefix",
 				RepoPath:  "/test/repo",
 				WorkTree:  "/test/worktree",
-				Branch:    "plural-",
+				Branch:    "erg-",
 				Name:      "repo/exact-prefix",
 				CreatedAt: time.Now(),
 				Started:   false,
@@ -279,7 +279,7 @@ func TestSessionManager_Select_HeaderName_ExactPluralPrefix(t *testing.T) {
 	result := sm.Select(sess, "", "", "")
 
 	if result.HeaderName != sess.Name {
-		t.Errorf("Expected header name %q for 'plural-' branch, got %q", sess.Name, result.HeaderName)
+		t.Errorf("Expected header name %q for 'erg-' branch, got %q", sess.Name, result.HeaderName)
 	}
 }
 
@@ -457,7 +457,7 @@ func TestSessionManager_Select_ForkedSession(t *testing.T) {
 				ID:       "parent-session",
 				RepoPath: "/test/repo",
 				WorkTree: parentWorktree,
-				Branch:   "plural-parent",
+				Branch:   "erg-parent",
 				Name:     "repo/parent",
 				Started:  true,
 			},
@@ -465,7 +465,7 @@ func TestSessionManager_Select_ForkedSession(t *testing.T) {
 				ID:       "child-session",
 				RepoPath: "/test/repo",
 				WorkTree: childWorktree,
-				Branch:   "plural-child",
+				Branch:   "erg-child",
 				Name:     "repo/child",
 				Started:  false, // Not started yet
 				ParentID: "parent-session",
@@ -507,7 +507,7 @@ func TestSessionManager_Select_ForkedSession_AlreadyStarted(t *testing.T) {
 				ID:       "parent-session",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree1",
-				Branch:   "plural-parent",
+				Branch:   "erg-parent",
 				Name:     "repo/parent",
 				Started:  true,
 			},
@@ -515,7 +515,7 @@ func TestSessionManager_Select_ForkedSession_AlreadyStarted(t *testing.T) {
 				ID:       "child-session",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree2",
-				Branch:   "plural-child",
+				Branch:   "erg-child",
 				Name:     "repo/child",
 				Started:  true, // Already started
 				ParentID: "parent-session",
@@ -551,7 +551,7 @@ func TestSessionManager_Select_NonForkedSession(t *testing.T) {
 				ID:       "session-1",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree1",
-				Branch:   "plural-test",
+				Branch:   "erg-test",
 				Name:     "repo/session1",
 				Started:  false,
 				ParentID: "", // No parent
@@ -588,7 +588,7 @@ func TestSessionManager_Select_ForkedSession_ParentNotStarted(t *testing.T) {
 				ID:       "parent-session",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree1",
-				Branch:   "plural-parent",
+				Branch:   "erg-parent",
 				Name:     "repo/parent",
 				Started:  false, // Parent NOT started - no Claude session to fork from
 			},
@@ -596,7 +596,7 @@ func TestSessionManager_Select_ForkedSession_ParentNotStarted(t *testing.T) {
 				ID:       "child-session",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree2",
-				Branch:   "plural-child",
+				Branch:   "erg-child",
 				Name:     "repo/child",
 				Started:  false,
 				ParentID: "parent-session",
@@ -633,7 +633,7 @@ func TestSessionManager_Select_ForkedSession_ParentNotFound(t *testing.T) {
 				ID:       "child-session",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree2",
-				Branch:   "plural-child",
+				Branch:   "erg-child",
 				Name:     "repo/child",
 				Started:  false,
 				ParentID: "nonexistent-parent", // Parent doesn't exist
@@ -742,7 +742,7 @@ func TestCopyClaudeSessionForFork_NoSessionFileCopyFallback(t *testing.T) {
 					ID:       "parent-session-1",
 					RepoPath: "/test/repo",
 					WorkTree: "/nonexistent/parent/worktree",
-					Branch:   "plural-parent",
+					Branch:   "erg-parent",
 					Name:     "repo/parent",
 					Started:  true,
 				},
@@ -750,7 +750,7 @@ func TestCopyClaudeSessionForFork_NoSessionFileCopyFallback(t *testing.T) {
 					ID:       "child-session-1",
 					RepoPath: "/test/repo",
 					WorkTree: "/nonexistent/child/worktree",
-					Branch:   "plural-child",
+					Branch:   "erg-child",
 					Name:     "repo/child",
 					Started:  false,
 					ParentID: "parent-session-1",
@@ -786,7 +786,7 @@ func TestCopyClaudeSessionForFork_NoSessionFileCopyFallback(t *testing.T) {
 					ID:       "parent-session-2",
 					RepoPath: "/test/repo",
 					WorkTree: "/nonexistent/parent/worktree2",
-					Branch:   "plural-parent",
+					Branch:   "erg-parent",
 					Name:     "repo/parent",
 					Started:  true,
 				},
@@ -794,7 +794,7 @@ func TestCopyClaudeSessionForFork_NoSessionFileCopyFallback(t *testing.T) {
 					ID:       "child-session-2",
 					RepoPath: "/test/repo",
 					WorkTree: "/nonexistent/child/worktree2",
-					Branch:   "plural-child",
+					Branch:   "erg-child",
 					Name:     "repo/child",
 					Started:  false,
 					ParentID: "parent-session-2",
@@ -1066,7 +1066,7 @@ func TestGetOrCreateRunner_BareRunner(t *testing.T) {
 				ID:       "bare-session",
 				RepoPath: "/test/repo",
 				WorkTree: "/test/worktree",
-				Branch:   "plural-test",
+				Branch:   "erg-test",
 				Name:     "repo/session1",
 				Started:  false,
 			},
@@ -1132,7 +1132,7 @@ func TestConfigureRunnerDefaults_DaemonManaged_SkipsHostTools(t *testing.T) {
 				ID:            "daemon-session",
 				RepoPath:      "/test/repo",
 				WorkTree:      "/test/worktree",
-				Branch:        "plural-test",
+				Branch:        "erg-test",
 				Name:          "repo/session1",
 				Started:       false,
 				Autonomous:    true,
@@ -1164,7 +1164,7 @@ func TestConfigureRunnerDefaults_NonDaemonManaged_GetsHostTools(t *testing.T) {
 				ID:            "normal-session",
 				RepoPath:      "/test/repo",
 				WorkTree:      "/test/worktree",
-				Branch:        "plural-test",
+				Branch:        "erg-test",
 				Name:          "repo/session1",
 				Started:       false,
 				Autonomous:    true,

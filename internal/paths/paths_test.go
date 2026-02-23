@@ -22,8 +22,8 @@ func setupTestHome(t *testing.T) string {
 
 func TestFreshInstallNoXDG(t *testing.T) {
 	home := setupTestHome(t)
-	// No ~/.plural/, no XDG vars → default to ~/.plural/
-	expected := filepath.Join(home, ".plural")
+	// No ~/.erg/, no XDG vars → default to ~/.erg/
+	expected := filepath.Join(home, ".erg")
 
 	configDir, err := ConfigDir()
 	if err != nil {
@@ -56,7 +56,7 @@ func TestFreshInstallNoXDG(t *testing.T) {
 
 func TestLegacyDirExists(t *testing.T) {
 	home := setupTestHome(t)
-	legacyDir := filepath.Join(home, ".plural")
+	legacyDir := filepath.Join(home, ".erg")
 	if err := os.MkdirAll(legacyDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -86,13 +86,13 @@ func TestLegacyDirExists(t *testing.T) {
 	}
 
 	if !IsLegacyLayout() {
-		t.Error("IsLegacyLayout should be true when ~/.plural/ exists")
+		t.Error("IsLegacyLayout should be true when ~/.erg/ exists")
 	}
 }
 
 func TestLegacyTakesPrecedenceOverXDG(t *testing.T) {
 	home := setupTestHome(t)
-	legacyDir := filepath.Join(home, ".plural")
+	legacyDir := filepath.Join(home, ".erg")
 	if err := os.MkdirAll(legacyDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -112,13 +112,13 @@ func TestLegacyTakesPrecedenceOverXDG(t *testing.T) {
 	}
 
 	if !IsLegacyLayout() {
-		t.Error("IsLegacyLayout should be true when ~/.plural/ exists, even with XDG vars")
+		t.Error("IsLegacyLayout should be true when ~/.erg/ exists, even with XDG vars")
 	}
 }
 
 func TestXDGAllVarsSet(t *testing.T) {
 	home := setupTestHome(t)
-	// No ~/.plural/ exists
+	// No ~/.erg/ exists
 
 	xdgConfig := filepath.Join(home, "my-config")
 	xdgData := filepath.Join(home, "my-data")
@@ -133,7 +133,7 @@ func TestXDGAllVarsSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigDir: %v", err)
 	}
-	if want := filepath.Join(xdgConfig, "plural"); configDir != want {
+	if want := filepath.Join(xdgConfig, "erg"); configDir != want {
 		t.Errorf("ConfigDir = %q, want %q", configDir, want)
 	}
 
@@ -141,7 +141,7 @@ func TestXDGAllVarsSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DataDir: %v", err)
 	}
-	if want := filepath.Join(xdgData, "plural"); dataDir != want {
+	if want := filepath.Join(xdgData, "erg"); dataDir != want {
 		t.Errorf("DataDir = %q, want %q", dataDir, want)
 	}
 
@@ -149,7 +149,7 @@ func TestXDGAllVarsSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StateDir: %v", err)
 	}
-	if want := filepath.Join(xdgState, "plural"); stateDir != want {
+	if want := filepath.Join(xdgState, "erg"); stateDir != want {
 		t.Errorf("StateDir = %q, want %q", stateDir, want)
 	}
 
@@ -160,7 +160,7 @@ func TestXDGAllVarsSet(t *testing.T) {
 
 func TestXDGPartialVars(t *testing.T) {
 	home := setupTestHome(t)
-	// No ~/.plural/ exists
+	// No ~/.erg/ exists
 
 	xdgConfig := filepath.Join(home, "my-config")
 	t.Setenv("XDG_CONFIG_HOME", xdgConfig)
@@ -171,7 +171,7 @@ func TestXDGPartialVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigDir: %v", err)
 	}
-	if want := filepath.Join(xdgConfig, "plural"); configDir != want {
+	if want := filepath.Join(xdgConfig, "erg"); configDir != want {
 		t.Errorf("ConfigDir = %q, want %q", configDir, want)
 	}
 
@@ -179,7 +179,7 @@ func TestXDGPartialVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DataDir: %v", err)
 	}
-	if want := filepath.Join(home, ".local", "share", "plural"); dataDir != want {
+	if want := filepath.Join(home, ".local", "share", "erg"); dataDir != want {
 		t.Errorf("DataDir = %q, want %q", dataDir, want)
 	}
 
@@ -187,7 +187,7 @@ func TestXDGPartialVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StateDir: %v", err)
 	}
-	if want := filepath.Join(home, ".local", "state", "plural"); stateDir != want {
+	if want := filepath.Join(home, ".local", "state", "erg"); stateDir != want {
 		t.Errorf("StateDir = %q, want %q", stateDir, want)
 	}
 
@@ -198,7 +198,7 @@ func TestXDGPartialVars(t *testing.T) {
 
 func TestDerivedPaths(t *testing.T) {
 	home := setupTestHome(t)
-	legacyDir := filepath.Join(home, ".plural")
+	legacyDir := filepath.Join(home, ".erg")
 	if err := os.MkdirAll(legacyDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestDerivedPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ConfigFilePath: %v", err)
 		}
-		if want := filepath.Join(xdgConfig, "plural", "config.json"); cfgPath != want {
+		if want := filepath.Join(xdgConfig, "erg", "config.json"); cfgPath != want {
 			t.Errorf("ConfigFilePath = %q, want %q", cfgPath, want)
 		}
 
@@ -253,7 +253,7 @@ func TestDerivedPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SessionsDir: %v", err)
 		}
-		if want := filepath.Join(xdgData, "plural", "sessions"); sessDir != want {
+		if want := filepath.Join(xdgData, "erg", "sessions"); sessDir != want {
 			t.Errorf("SessionsDir = %q, want %q", sessDir, want)
 		}
 
@@ -261,7 +261,7 @@ func TestDerivedPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogsDir: %v", err)
 		}
-		if want := filepath.Join(xdgState, "plural", "logs"); logsDir != want {
+		if want := filepath.Join(xdgState, "erg", "logs"); logsDir != want {
 			t.Errorf("LogsDir = %q, want %q", logsDir, want)
 		}
 	})
@@ -270,12 +270,12 @@ func TestDerivedPaths(t *testing.T) {
 func TestResetClearsCache(t *testing.T) {
 	home := setupTestHome(t)
 
-	// First resolve: no legacy, no XDG → defaults to ~/.plural/
+	// First resolve: no legacy, no XDG → defaults to ~/.erg/
 	dir1, err := ConfigDir()
 	if err != nil {
 		t.Fatalf("ConfigDir: %v", err)
 	}
-	expectedLegacy := filepath.Join(home, ".plural")
+	expectedLegacy := filepath.Join(home, ".erg")
 	if dir1 != expectedLegacy {
 		t.Errorf("ConfigDir = %q, want %q", dir1, expectedLegacy)
 	}
@@ -289,7 +289,7 @@ func TestResetClearsCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigDir after reset: %v", err)
 	}
-	expectedXDG := filepath.Join(xdgConfig, "plural")
+	expectedXDG := filepath.Join(xdgConfig, "erg")
 	if dir2 != expectedXDG {
 		t.Errorf("ConfigDir after reset = %q, want %q", dir2, expectedXDG)
 	}
@@ -297,8 +297,8 @@ func TestResetClearsCache(t *testing.T) {
 
 func TestLegacyFileNotDir(t *testing.T) {
 	home := setupTestHome(t)
-	// Create ~/.plural as a file, not a directory — should NOT be treated as legacy
-	legacyPath := filepath.Join(home, ".plural")
+	// Create ~/.erg as a file, not a directory — should NOT be treated as legacy
+	legacyPath := filepath.Join(home, ".erg")
 	if err := os.WriteFile(legacyPath, []byte("not a dir"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestLegacyFileNotDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigDir: %v", err)
 	}
-	if want := filepath.Join(xdgConfig, "plural"); configDir != want {
-		t.Errorf("ConfigDir = %q, want %q (file named .plural should not trigger legacy)", configDir, want)
+	if want := filepath.Join(xdgConfig, "erg"); configDir != want {
+		t.Errorf("ConfigDir = %q, want %q (file named .erg should not trigger legacy)", configDir, want)
 	}
 }

@@ -25,7 +25,7 @@ func DefaultLogPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "plural.log"), nil
+	return filepath.Join(dir, "erg.log"), nil
 }
 
 // MCPLogPath returns the log path for an MCP session
@@ -202,7 +202,7 @@ func Reset() {
 	levelVar = new(slog.LevelVar)
 }
 
-// ClearLogs removes all plural log files from ~/.plural/logs
+// ClearLogs removes all erg log files from ~/.erg/logs
 func ClearLogs() (int, error) {
 	count := 0
 

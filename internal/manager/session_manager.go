@@ -196,7 +196,7 @@ func (sm *SessionManager) Select(sess *config.Session, previousSessionID string,
 
 	// Determine header name (branch if custom, otherwise session name)
 	headerName := sess.Name
-	if sess.Branch != "" && !strings.HasPrefix(sess.Branch, "plural-") {
+	if sess.Branch != "" && !strings.HasPrefix(sess.Branch, "erg-") {
 		headerName = sess.Branch
 	}
 
@@ -333,7 +333,7 @@ func (sm *SessionManager) GetOrCreateRunner(sess *config.Session) claude.RunnerI
 			if err != nil {
 				log.Debug("Claude session file not found, trying to create synthetic session from messages", "error", err)
 
-				// Try to load the parent's Plural messages and create a synthetic Claude session file.
+				// Try to load the parent's erg messages and create a synthetic Claude session file.
 				// This handles cases where:
 				// - The parent session's Claude file doesn't exist (parent never interacted with Claude)
 				// - The Claude file was deleted or is inaccessible
@@ -548,7 +548,7 @@ func (sm *SessionManager) Shutdown() {
 	log.Info("shutdown complete")
 }
 
-// createSyntheticClaudeSessionFile creates a Claude session JSONL file from Plural messages.
+// createSyntheticClaudeSessionFile creates a Claude session JSONL file from erg messages.
 // This is used when forking a session but the parent's Claude session file doesn't exist
 // (e.g., parent never sent a message to Claude, or file was deleted).
 // The synthetic file allows --fork-session to work by providing the conversation history.

@@ -1199,7 +1199,7 @@ func TestBuildContainerRunArgs(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-session-123",
 		WorkingDir:     "/path/to/worktree",
-		ContainerImage: "ghcr.io/zhubert/plural-claude",
+		ContainerImage: "ghcr.io/zhubert/erg",
 	}
 
 	claudeArgs := []string{"--print", "--session-id", "test-session-123", "--dangerously-skip-permissions"}
@@ -1227,8 +1227,8 @@ func TestBuildContainerRunArgs(t *testing.T) {
 	}
 
 	// Verify container name
-	if got := getArgValue(args, "--name"); got != "plural-test-session-123" {
-		t.Errorf("Container name = %q, want 'plural-test-session-123'", got)
+	if got := getArgValue(args, "--name"); got != "erg-test-session-123" {
+		t.Errorf("Container name = %q, want 'erg-test-session-123'", got)
 	}
 
 	// Verify working directory mount
@@ -1245,7 +1245,7 @@ func TestBuildContainerRunArgs(t *testing.T) {
 	// Verify image name appears before claude args (entrypoint handles running claude)
 	foundImage := false
 	for i, arg := range args {
-		if arg == "ghcr.io/zhubert/plural-claude" {
+		if arg == "ghcr.io/zhubert/erg" {
 			// Next arg should be a claude flag (entrypoint invokes claude)
 			if i+1 < len(args) && args[i+1] == "--print" {
 				foundImage = true
@@ -1267,7 +1267,7 @@ func TestBuildContainerRunArgs_DefaultImage(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-session",
 		WorkingDir:     "/tmp",
-		ContainerImage: "", // Empty should default to "ghcr.io/zhubert/plural-claude"
+		ContainerImage: "", // Empty should default to "ghcr.io/zhubert/erg"
 	}
 
 	result, err := buildContainerRunArgs(config, []string{"--print"})
@@ -1276,8 +1276,8 @@ func TestBuildContainerRunArgs_DefaultImage(t *testing.T) {
 	}
 
 	// Check that the default image is in the args
-	if !containsArg(result.Args, "ghcr.io/zhubert/plural-claude") {
-		t.Error("Empty ContainerImage should default to 'ghcr.io/zhubert/plural-claude'")
+	if !containsArg(result.Args, "ghcr.io/zhubert/erg") {
+		t.Error("Empty ContainerImage should default to 'ghcr.io/zhubert/erg'")
 	}
 }
 
@@ -1288,7 +1288,7 @@ func TestBuildContainerRunArgs_ReportsAuthSource(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-auth-source",
 		WorkingDir:     "/tmp",
-		ContainerImage: "plural-claude",
+		ContainerImage: "erg",
 	}
 	defer os.Remove(containerAuthFilePath(config.SessionID))
 
@@ -1323,7 +1323,7 @@ func TestBuildContainerRunArgs_ErrorsOnMissingHome(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-no-home",
 		WorkingDir:     "/tmp",
-		ContainerImage: "plural-claude",
+		ContainerImage: "erg",
 	}
 
 	_, err := buildContainerRunArgs(config, []string{"--print"})
@@ -1706,7 +1706,7 @@ func TestProcessManager_Start_FailsWithoutAuthForContainerized(t *testing.T) {
 		SessionID:      "test-no-auth",
 		WorkingDir:     t.TempDir(),
 		Containerized:  true,
-		ContainerImage: "plural-claude",
+		ContainerImage: "erg",
 	}, ProcessCallbacks{}, log)
 
 	err := pm.Start()
@@ -1750,8 +1750,8 @@ func TestBuildContainerRunArgs_MountsMCPConfig(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-mount-session",
 		WorkingDir:     "/path/to/worktree",
-		ContainerImage: "plural-claude",
-		MCPConfigPath:  "/var/folders/xx/long-temp-path/T/plural-mcp-test-mount-session.json",
+		ContainerImage: "erg",
+		MCPConfigPath:  "/var/folders/xx/long-temp-path/T/erg-mcp-test-mount-session.json",
 	}
 
 	claudeArgs := []string{"--print", "--session-id", "test-mount-session"}
@@ -1763,7 +1763,7 @@ func TestBuildContainerRunArgs_MountsMCPConfig(t *testing.T) {
 
 	// Verify MCP config is mounted at the short container-side path (read-only)
 	foundConfigMount := false
-	expectedConfig := "/var/folders/xx/long-temp-path/T/plural-mcp-test-mount-session.json:" + containerMCPConfigPath + ":ro"
+	expectedConfig := "/var/folders/xx/long-temp-path/T/erg-mcp-test-mount-session.json:" + containerMCPConfigPath + ":ro"
 	if slices.Contains(args, expectedConfig) {
 		foundConfigMount = true
 	}
@@ -1783,7 +1783,7 @@ func TestBuildContainerRunArgs_NoMountsWithoutPaths(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-no-mount",
 		WorkingDir:     "/path/to/worktree",
-		ContainerImage: "plural-claude",
+		ContainerImage: "erg",
 		MCPConfigPath:  "", // No MCP config
 	}
 
@@ -1796,7 +1796,7 @@ func TestBuildContainerRunArgs_NoMountsWithoutPaths(t *testing.T) {
 
 	// Should NOT have MCP config mounts
 	for _, arg := range args {
-		if strings.Contains(arg, "plural-mcp-test-no-mount.json") {
+		if strings.Contains(arg, "erg-mcp-test-no-mount.json") {
 			t.Error("Should not mount MCP config when MCPConfigPath is empty")
 		}
 	}
@@ -1806,7 +1806,7 @@ func TestBuildContainerRunArgs_PublishesContainerMCPPort(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:        "test-mcp-port",
 		WorkingDir:       "/path/to/worktree",
-		ContainerImage:   "plural-claude",
+		ContainerImage:   "erg",
 		ContainerMCPPort: 21120,
 	}
 
@@ -1829,7 +1829,7 @@ func TestBuildContainerRunArgs_NoPortWithoutContainerMCPPort(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:        "test-no-port",
 		WorkingDir:       "/path/to/worktree",
-		ContainerImage:   "plural-claude",
+		ContainerImage:   "erg",
 		ContainerMCPPort: 0, // No port
 	}
 
@@ -2056,13 +2056,13 @@ func TestFriendlyContainerError(t *testing.T) {
 	}{
 		{
 			name:          "MCP tool not found in container",
-			stderr:        `Error: MCP tool mcp__plural__permission (passed via --permission-prompt-tool) not found. Available MCP tools: none`,
+			stderr:        `Error: MCP tool mcp__erg__permission (passed via --permission-prompt-tool) not found. Available MCP tools: none`,
 			containerized: true,
 			wantContains:  "Claude CLI in the container is outdated",
 		},
 		{
 			name:          "container name conflict",
-			stderr:        `docker: Error response from daemon: Conflict. The container name "/plural-abc123" is already in use by container "def456".`,
+			stderr:        `docker: Error response from daemon: Conflict. The container name "/erg-abc123" is already in use by container "def456".`,
 			containerized: true,
 			wantContains:  "could not be cleaned up automatically",
 		},
@@ -2074,9 +2074,9 @@ func TestFriendlyContainerError(t *testing.T) {
 		},
 		{
 			name:          "non-containerized passes through even with matching pattern",
-			stderr:        `Error: MCP tool mcp__plural__permission not found`,
+			stderr:        `Error: MCP tool mcp__erg__permission not found`,
 			containerized: false,
-			wantContains:  "MCP tool mcp__plural__permission not found",
+			wantContains:  "MCP tool mcp__erg__permission not found",
 		},
 	}
 
@@ -2717,7 +2717,7 @@ func TestBuildContainerRunArgs_CredentialsJsonAuthSource(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-cred-json",
 		WorkingDir:     "/tmp",
-		ContainerImage: "plural-claude",
+		ContainerImage: "erg",
 	}
 
 	result, err := buildContainerRunArgs(config, []string{"--print"})
@@ -2761,8 +2761,8 @@ func TestDrainStderr_ContainerStreamsLineByLine(t *testing.T) {
 
 	// Write stderr lines in a goroutine (pipe blocks until reader consumes)
 	go func() {
-		fmt.Fprintln(pw, "[plural-update] Checking for updates...")
-		fmt.Fprintln(pw, "[plural-update] Current version: unknown")
+		fmt.Fprintln(pw, "[erg-update] Checking for updates...")
+		fmt.Fprintln(pw, "[erg-update] Current version: unknown")
 		fmt.Fprintln(pw, "Error: something went wrong inside container")
 		pw.Close()
 	}()
@@ -2787,7 +2787,7 @@ func TestDrainStderr_ContainerStreamsLineByLine(t *testing.T) {
 	content := pm.stderrContent
 	pm.mu.Unlock()
 
-	if !strings.Contains(content, "[plural-update] Checking for updates...") {
+	if !strings.Contains(content, "[erg-update] Checking for updates...") {
 		t.Errorf("stderrContent missing first line, got: %q", content)
 	}
 	if !strings.Contains(content, "Error: something went wrong inside container") {

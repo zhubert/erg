@@ -22,7 +22,7 @@ var ctx = context.Background()
 func createTestRepo(t *testing.T) string {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "plural-session-test-*")
+	tmpDir, err := os.MkdirTemp("", "erg-session-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -76,9 +76,9 @@ func setupTestPaths(t *testing.T) string {
 	t.Setenv("XDG_STATE_HOME", "")
 	paths.Reset()
 	t.Cleanup(paths.Reset)
-	// Create ~/.plural so Config.Save() works in migration tests
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".plural"), 0755); err != nil {
-		t.Fatalf("Failed to create .plural dir: %v", err)
+	// Create ~/.erg so Config.Save() works in migration tests
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".erg"), 0755); err != nil {
+		t.Fatalf("Failed to create .erg dir: %v", err)
 	}
 	return tmpDir
 }
@@ -90,7 +90,7 @@ func cleanupWorktrees(t *testing.T, repoPath string) {
 	if worktreesDir, err := paths.WorktreesDir(); err == nil {
 		os.RemoveAll(worktreesDir)
 	}
-	// Clean legacy .plural-worktrees directory
+	// Clean pre-rename legacy .plural-worktrees directory
 	legacyDir := filepath.Join(filepath.Dir(repoPath), ".plural-worktrees")
 	os.RemoveAll(legacyDir)
 
@@ -124,8 +124,8 @@ func TestCreate(t *testing.T) {
 		t.Error("WorkTree should not be empty")
 	}
 
-	if !strings.HasPrefix(session.Branch, "plural-") {
-		t.Errorf("Branch = %q, should start with 'plural-'", session.Branch)
+	if !strings.HasPrefix(session.Branch, "erg-") {
+		t.Errorf("Branch = %q, should start with 'erg-'", session.Branch)
 	}
 
 	if session.Name == "" {
@@ -184,7 +184,7 @@ func TestCreate_MultipleSessions(t *testing.T) {
 
 func TestCreate_InvalidRepo(t *testing.T) {
 	setupTestPaths(t)
-	tmpDir, err := os.MkdirTemp("", "plural-session-invalid-*")
+	tmpDir, err := os.MkdirTemp("", "erg-session-invalid-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestValidateRepo_Valid(t *testing.T) {
 }
 
 func TestValidateRepo_Invalid(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "plural-validate-invalid-*")
+	tmpDir, err := os.MkdirTemp("", "erg-validate-invalid-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestGetGitRoot_Subdirectory(t *testing.T) {
 }
 
 func TestGetGitRoot_Invalid(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "plural-gitroot-invalid-*")
+	tmpDir, err := os.MkdirTemp("", "erg-gitroot-invalid-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -364,8 +364,8 @@ func TestBranchName_Format(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	// Branch should be "plural-<UUID>"
-	expectedPrefix := "plural-"
+	// Branch should be "erg-<UUID>"
+	expectedPrefix := "erg-"
 	if !strings.HasPrefix(session.Branch, expectedPrefix) {
 		t.Errorf("Branch %q should start with %q", session.Branch, expectedPrefix)
 	}
@@ -676,8 +676,8 @@ func TestPruneOrphanedWorktrees_PrefixedBranch(t *testing.T) {
 	}
 
 	// Verify the branch has the prefix
-	if !strings.HasPrefix(session.Branch, "zhubert/plural-") {
-		t.Fatalf("Expected branch to have prefix 'zhubert/plural-', got %q", session.Branch)
+	if !strings.HasPrefix(session.Branch, "zhubert/erg-") {
+		t.Fatalf("Expected branch to have prefix 'zhubert/erg-', got %q", session.Branch)
 	}
 
 	// Verify the prefixed branch exists
@@ -770,7 +770,7 @@ func TestPruneOrphanedWorktrees_RenamedBranch(t *testing.T) {
 		t.Error("Worktree should be removed after prune")
 	}
 
-	// Verify the renamed branch is deleted (not the old plural-<UUID> name)
+	// Verify the renamed branch is deleted (not the old erg-<UUID> name)
 	cmd = exec.Command("git", "branch", "--list", renamedBranch)
 	cmd.Dir = repoPath
 	out, err = cmd.Output()
@@ -842,14 +842,14 @@ func TestDetectWorktreeBranch_InvalidPath(t *testing.T) {
 }
 
 // TestFindOrphanedWorktrees_SharedParentDirectory tests the scenario from issue #148
-// where two repos share a parent directory (and thus .plural-worktrees).
+// where two repos share a parent directory.
 // The fix ensures orphaned worktrees are correctly attributed to their actual repo
 // by reading the .git file instead of assuming all worktrees in a directory belong
 // to the first repo encountered.
 func TestFindOrphanedWorktrees_SharedParentDirectory(t *testing.T) {
 	setupTestPaths(t)
 	// Create a shared parent directory
-	parentDir, err := os.MkdirTemp("", "plural-shared-parent-*")
+	parentDir, err := os.MkdirTemp("", "erg-shared-parent-*")
 	if err != nil {
 		t.Fatalf("Failed to create parent dir: %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestGetWorktreeRepoPath(t *testing.T) {
 // TestGetWorktreeRepoPath_InvalidGitFile tests error handling
 func TestGetWorktreeRepoPath_InvalidGitFile(t *testing.T) {
 	// Create a temp directory with invalid .git file
-	tmpDir, err := os.MkdirTemp("", "plural-invalid-git-*")
+	tmpDir, err := os.MkdirTemp("", "erg-invalid-git-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1064,7 +1064,7 @@ func TestGetWorktreeRepoPath_InvalidGitFile(t *testing.T) {
 
 // TestGetWorktreeRepoPath_MissingGitFile tests error handling for missing .git
 func TestGetWorktreeRepoPath_MissingGitFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "plural-missing-git-*")
+	tmpDir, err := os.MkdirTemp("", "erg-missing-git-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -1173,8 +1173,8 @@ func TestCreate_BranchPrefix(t *testing.T) {
 		t.Errorf("Branch %q should start with prefix %q", session.Branch, branchPrefix)
 	}
 
-	// Branch should still have plural- after prefix
-	expectedPrefix := branchPrefix + "plural-"
+	// Branch should still have erg- after prefix
+	expectedPrefix := branchPrefix + "erg-"
 	if !strings.HasPrefix(session.Branch, expectedPrefix) {
 		t.Errorf("Branch %q should start with %q", session.Branch, expectedPrefix)
 	}
@@ -1237,7 +1237,7 @@ func createTestRepoWithRemote(t *testing.T) (localPath string, remotePath string
 	t.Helper()
 
 	// Create the "remote" repository (bare repo to simulate GitHub)
-	remoteDir, err := os.MkdirTemp("", "plural-remote-test-*")
+	remoteDir, err := os.MkdirTemp("", "erg-remote-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create remote temp dir: %v", err)
 	}
@@ -1258,7 +1258,7 @@ func createTestRepoWithRemote(t *testing.T) (localPath string, remotePath string
 	}
 
 	// Create the "local" repository
-	localDir, err := os.MkdirTemp("", "plural-local-test-*")
+	localDir, err := os.MkdirTemp("", "erg-local-test-*")
 	if err != nil {
 		os.RemoveAll(remoteDir)
 		t.Fatalf("Failed to create local temp dir: %v", err)
@@ -1359,7 +1359,7 @@ func TestCreate_UsesOriginMain(t *testing.T) {
 
 	// Add a new commit to the "remote" (simulating someone else pushing)
 	// First clone the remote to make a change
-	cloneDir, err := os.MkdirTemp("", "plural-clone-test-*")
+	cloneDir, err := os.MkdirTemp("", "erg-clone-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create clone temp dir: %v", err)
 	}
@@ -1901,7 +1901,7 @@ func TestMigrateWorktrees(t *testing.T) {
 	repoPath := createTestRepo(t)
 	defer os.RemoveAll(repoPath)
 
-	// Create a worktree in the old .plural-worktrees location manually
+	// Create a worktree in the pre-rename legacy .plural-worktrees location manually
 	sessionID := "test-migrate-session-id"
 	oldWorktreesDir := filepath.Join(filepath.Dir(repoPath), ".plural-worktrees")
 	oldWorktreePath := filepath.Join(oldWorktreesDir, sessionID)
@@ -2043,7 +2043,7 @@ func TestFindOrphanedWorktrees_LegacyLocation(t *testing.T) {
 	repoPath := createTestRepo(t)
 	defer os.RemoveAll(repoPath)
 
-	// Create a worktree in the old .plural-worktrees location manually
+	// Create a worktree in the pre-rename legacy .plural-worktrees location manually
 	sessionID := "legacy-orphan-id"
 	oldWorktreesDir := filepath.Join(filepath.Dir(repoPath), ".plural-worktrees")
 	oldWorktreePath := filepath.Join(oldWorktreesDir, sessionID)
