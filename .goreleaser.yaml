@@ -1,6 +1,6 @@
 version: 2
 
-project_name: plural-agent
+project_name: erg
 
 before:
   hooks:
@@ -19,7 +19,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
 archives:
-  - formats: ['tar.gz']
+  - formats: ["tar.gz"]
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -28,10 +28,10 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
       - goos: windows
-        formats: ['zip']
+        formats: ["zip"]
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -40,16 +40,16 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
 
 brews:
   - repository:
       owner: zhubert
       name: homebrew-tap
     directory: Formula
-    homepage: "https://github.com/zhubert/plural-agent"
+    homepage: "https://github.com/zhubert/erg"
     description: "Autonomous headless daemon for Claude Code"
     license: "MIT"
     dependencies:
@@ -57,4 +57,4 @@ brews:
       - name: docker
         type: recommended
     install: |
-      bin.install "plural-agent"
+      bin.install "erg"
