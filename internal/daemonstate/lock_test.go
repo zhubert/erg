@@ -146,6 +146,52 @@ func TestLockFilePath_Deterministic(t *testing.T) {
 	}
 }
 
+func TestAcquireLock_CorruptPIDTreatedAsStale(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo-corrupt")
+
+	fp := LockFilePath(repoPath)
+	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+		t.Fatalf("failed to create lock directory: %v", err)
+	}
+
+	for _, corrupt := range []string{"", "not-a-pid", "12.34"} {
+		if err := os.WriteFile(fp, []byte(corrupt), 0o644); err != nil {
+			t.Fatalf("failed to write corrupt lock file: %v", err)
+		}
+
+		lock, err := AcquireLock(repoPath)
+		if err != nil {
+			t.Fatalf("corrupt PID %q should be treated as stale, got error: %v", corrupt, err)
+		}
+		if err := lock.Release(); err != nil {
+			t.Fatalf("failed to release lock: %v", err)
+		}
+	}
+}
+
+func TestAcquireLock_PIDFlushedToDisk(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo-pid-flush")
+
+	lock, err := AcquireLock(repoPath)
+	if err != nil {
+		t.Fatalf("failed to acquire lock: %v", err)
+	}
+	defer lock.Release()
+
+	// Read the lock file contents immediately — PID must be present (not empty/partial)
+	data, err := os.ReadFile(lock.path)
+	if err != nil {
+		t.Fatalf("failed to read lock file: %v", err)
+	}
+	pidStr := strings.TrimSpace(string(data))
+	expected := fmt.Sprintf("%d", os.Getpid())
+	if pidStr != expected {
+		t.Errorf("expected PID %s in lock file immediately after acquire, got %q", expected, pidStr)
+	}
+}
+
 func TestAcquireLock_StaleLockCleanup(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo-stale")

@@ -47,8 +47,9 @@ func AcquireLock(repoPath string) (*DaemonLock, error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		f, err := os.OpenFile(fp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
-			// Successfully created lock file — write our PID
+			// Successfully created lock file — write our PID and sync to disk
 			fmt.Fprintf(f, "%d", os.Getpid())
+			f.Sync() // ensure PID is on disk before returning, so crashes don't leave empty lock files
 			return &DaemonLock{path: fp, file: f}, nil
 		}
 
@@ -70,7 +71,12 @@ func AcquireLock(repoPath string) (*DaemonLock, error) {
 		pidStr := strings.TrimSpace(string(data))
 		pid, parseErr := strconv.Atoi(pidStr)
 		if parseErr != nil {
-			return nil, fmt.Errorf("daemon lock already held (corrupt PID in %s)", fp)
+			// Corrupt or empty PID means the previous owner crashed before finishing the write.
+			// Treat as stale: remove the lock and retry.
+			if removeErr := os.Remove(fp); removeErr != nil {
+				return nil, fmt.Errorf("daemon lock has corrupt PID in %s and could not be removed: %w", fp, removeErr)
+			}
+			continue
 		}
 
 		if processAlive(pid) {
