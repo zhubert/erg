@@ -823,6 +823,7 @@
                 <a href="#example-supervised" class="sidebar-link">Supervised</a>
                 <a href="#example-ci-gate" class="sidebar-link">CI gate</a>
                 <a href="#example-label-tracking" class="sidebar-link">Label tracking</a>
+                <a href="#example-asana" class="sidebar-link">Asana</a>
                 <a href="#example-linear" class="sidebar-link">Linear</a>
             </li>
             <li class="sidebar-section">
@@ -922,7 +923,7 @@
             <pre><span class="ck">source:</span>
   <span class="ck">provider:</span> <span class="cv">github</span>            <span class="cc"># github | asana | linear</span>
   <span class="ck">filter:</span>
-    <span class="ck">label:</span> <span class="cv">queued</span>
+    <span class="ck">label:</span> <span class="cv">queued</span>              <span class="cc"># matches labels (GitHub), tags (Asana), or labels (Linear)</span>
 
 <span class="ck">states:</span>
   <span class="ck">coding:</span>
@@ -1645,8 +1646,133 @@ states:
             </div>
         </div>
 
+        <h3 id="example-asana">Asana</h3>
+        <p>For teams that track work in Asana. Polls an Asana project for tasks with a specific tag, codes in a container, and opens a PR. The <code>label</code> filter matches Asana tag names (case-insensitive).</p>
+        <div class="example-tabs">
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab(this,'yaml')">yaml</button>
+                <button class="tab-btn" onclick="switchTab(this,'diagram')">diagram</button>
+            </div>
+            <div data-panel="yaml">
+        <div class="code-block">
+            <div class="code-header">
+                <span class="code-filename">examples/asana.yaml</span>
+            </div>
+            <pre># Asana integration — polls Asana tasks and processes them automatically.
+#
+# Use this for teams that track work in Asana instead of GitHub Issues.
+# Set your Asana project GID in source.filter.project. The label filter
+# narrows to only tasks tagged with a matching Asana tag (case-insensitive).
+#
+# Find your project GID in the Asana URL:
+#   https://app.asana.com/0/&lt;PROJECT_GID&gt;/...
+#
+# Requires: ASANA_PAT environment variable (Personal Access Token)
+#
+# Highlights:
+#   - asana provider with project + tag filter
+#   - label filter matches Asana tag names (case-insensitive)
+#   - squash merge for clean commit history
+
+workflow: asana-tasks
+start: coding
+
+source:
+  provider: asana
+  filter:
+    project: YOUR_ASANA_PROJECT_GID
+    label: queued                # Only pick up tasks with this Asana tag
+
+settings:
+  max_concurrent: 3
+  branch_prefix: asana/
+  cleanup_merged: true
+
+states:
+  coding:
+    type: task
+    action: ai.code
+    params:
+      max_turns: 50
+      max_duration: 30m
+    next: open_pr
+    error: failed
+
+  open_pr:
+    type: task
+    action: github.create_pr
+    params:
+      link_issue: true
+    next: await_ci
+    error: failed
+
+  await_ci:
+    type: wait
+    event: ci.complete
+    timeout: 2h
+    params:
+      on_failure: retry
+    next: await_review
+    error: failed
+
+  await_review:
+    type: wait
+    event: pr.reviewed
+    timeout: 48h
+    timeout_next: review_overdue
+    params:
+      auto_address: true
+      max_feedback_rounds: 3
+    next: merge
+    error: failed
+
+  review_overdue:
+    type: task
+    action: github.comment_pr
+    params:
+      body: "This PR has been awaiting review for 48h. Could a maintainer take a look?"
+    next: failed
+    error: failed
+
+  merge:
+    type: task
+    action: github.merge
+    params:
+      method: squash
+      cleanup: true
+    next: done
+
+  done:
+    type: succeed
+
+  failed:
+    type: fail</pre>
+        </div>
+            </div>
+            <div data-panel="diagram" style="display:none">
+                <div class="diagram-panel">
+                    <pre class="mermaid">stateDiagram-v2
+    [*] --> coding
+    coding --> open_pr : ai.code
+    coding --> failed : error
+    open_pr --> await_ci : github.create_pr
+    open_pr --> failed : error
+    await_ci --> await_review : ci.complete
+    await_ci --> failed : error
+    await_review --> merge : pr.reviewed
+    await_review --> review_overdue : timeout
+    await_review --> failed : error
+    review_overdue --> failed : github.comment_pr
+    review_overdue --> failed : error
+    merge --> done : github.merge
+    done --> [*]
+    failed --> [*]</pre>
+                </div>
+            </div>
+        </div>
+
         <h3 id="example-linear">Linear</h3>
-        <p>For teams that track work in Linear instead of GitHub Issues. Polls a Linear team for issues, runs an inline system prompt, auto-formats code before opening the PR, and posts a Slack notification after merge.</p>
+        <p>For teams that track work in Linear instead of GitHub Issues. Polls a Linear team for issues with a specific label, runs an inline system prompt, auto-formats code before opening the PR, and posts a Slack notification after merge.</p>
         <div class="example-tabs">
             <div class="tab-bar">
                 <button class="tab-btn active" onclick="switchTab(this,'yaml')">yaml</button>
@@ -1661,14 +1787,15 @@ states:
             <pre># Linear integration — polls Linear issues and processes them automatically.
 #
 # Use this for teams that track work in Linear instead of GitHub Issues.
-# Set your Linear team ID in source.filter.team. The agent polls for
-# issues assigned to that team and processes them through this workflow.
+# Set your Linear team ID in source.filter.team. The label filter narrows
+# to only issues with a matching Linear label (case-insensitive).
 #
 # Replace "YOUR_LINEAR_TEAM_ID" with your team ID from:
 #   Linear → Settings → Teams → &lt;Your Team&gt; → Team ID
 #
 # Highlights:
-#   - linear provider with team filter
+#   - linear provider with team + label filter
+#   - label filter narrows to Linear issues with the "queued" label
 #   - inline system_prompt to embed AI instructions directly in the config
 #   - git.format to auto-format code before opening a PR
 #   - squash merge for a clean, linear commit history
@@ -1681,6 +1808,7 @@ source:
   provider: linear
   filter:
     team: YOUR_LINEAR_TEAM_ID
+    label: queued                # Only pick up issues with this Linear label
 
 settings:
   max_concurrent: 3
