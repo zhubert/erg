@@ -1180,19 +1180,21 @@
         <p>After installation, start the daemon pointed at your repo:</p>
         <div class="install-block">
           <span class="prompt-char">$</span>
-          <code>erg --repo owner/repo</code>
+          <code>erg start --repo owner/repo</code>
           <button
             class="copy-btn"
-            onclick="copyCmd(this, 'erg --repo owner/repo')"
+            onclick="copyCmd(this, 'erg start --repo owner/repo')"
           >
             copy
           </button>
         </div>
         <p>
           This forks into the background, prints the daemon PID and log path,
-          and returns your terminal. Use <code>-f</code> to stay in the
-          foreground with a live status display, or <code>erg status</code> for
-          a one-shot summary.
+          and returns your terminal. Use <code>erg start -f</code> to stay in
+          the foreground with a live status display, <code>erg status</code> for
+          a one-shot summary, or <code>erg status --tail</code> for a live
+          split-screen view of active session logs. Use <code>erg stop</code> to
+          gracefully shut down the daemon.
         </p>
         <p>
           Label a GitHub issue with <code>queued</code> and the agent will pick
@@ -1398,20 +1400,32 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>erg --repo owner/repo</code></td>
+              <td><code>erg start --repo owner/repo</code></td>
               <td>Fork/detach daemon for a repository (prints PID and exits)</td>
             </tr>
             <tr>
-              <td><code>erg -f --repo owner/repo</code></td>
+              <td><code>erg start -f --repo owner/repo</code></td>
               <td>Run in foreground with live status display</td>
             </tr>
             <tr>
-              <td><code>erg --repo owner/repo --once</code></td>
+              <td><code>erg start --once --repo owner/repo</code></td>
               <td>Process one tick and exit (implies <code>-f</code>)</td>
             </tr>
             <tr>
+              <td><code>erg stop</code></td>
+              <td>Send SIGTERM to the running daemon for graceful shutdown</td>
+            </tr>
+            <tr>
               <td><code>erg status</code></td>
-              <td>One-shot daemon status summary (PID, uptime, counts)</td>
+              <td>One-shot daemon status summary (PID, uptime, counts, spend)</td>
+            </tr>
+            <tr>
+              <td><code>erg status --tail</code></td>
+              <td>Live split-screen log view — one column per active session, refreshes every second</td>
+            </tr>
+            <tr>
+              <td><code>erg status --repo owner/repo</code></td>
+              <td>Check status for a specific repository</td>
             </tr>
             <tr>
               <td><code>erg --debug</code></td>
