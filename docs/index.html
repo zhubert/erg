@@ -1606,6 +1606,28 @@
                   <td><em>built-in</em></td>
                   <td>Custom system prompt for the fix session.</td>
                 </tr>
+                <tr>
+                  <td>format_command</td>
+                  <td>string</td>
+                  <td><em>inherited</em></td>
+                  <td>
+                    Shell command to run as a formatter after each CI fix
+                    round (e.g. <code>go fmt ./...</code>). Overrides the
+                    value inherited from the <code>ai.code</code> step. Omit
+                    to keep the inherited formatter or skip formatting.
+                  </td>
+                </tr>
+                <tr>
+                  <td>format_message</td>
+                  <td>string</td>
+                  <td>Apply auto-formatting</td>
+                  <td>
+                    Commit message used when the daemon commits the
+                    post-fix-round format pass. Only used when
+                    <code>format_command</code> is set (directly or
+                    inherited).
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -2064,6 +2086,28 @@
                   <td>
                     Maximum number of feedback rounds before
                     auto-addressing stops.
+                  </td>
+                </tr>
+                <tr>
+                  <td>format_command</td>
+                  <td>string</td>
+                  <td><em>inherited</em></td>
+                  <td>
+                    Shell command to run as a formatter after each review
+                    feedback round (e.g. <code>go fmt ./...</code>). Overrides
+                    the value inherited from the <code>ai.code</code> step.
+                    Omit to keep the inherited formatter or skip formatting.
+                  </td>
+                </tr>
+                <tr>
+                  <td>format_message</td>
+                  <td>string</td>
+                  <td>Apply auto-formatting</td>
+                  <td>
+                    Commit message used when the daemon commits the
+                    post-feedback format pass. Only used when
+                    <code>format_command</code> is set (directly or
+                    inherited).
                   </td>
                 </tr>
               </tbody>
