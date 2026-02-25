@@ -8,12 +8,6 @@
       name="description"
       content="Label an issue and let erg code, review, and merge autonomously. Headless daemon for Claude Code."
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
     <style>
       :root {
         --bg: #141416;
@@ -49,8 +43,9 @@
 
       body {
         font-family:
-          "IBM Plex Sans",
           -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
           sans-serif;
         background: var(--bg);
         color: var(--text);
@@ -68,13 +63,13 @@
       h2,
       h3,
       h4 {
-        font-family: "Bricolage Grotesque", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: -0.02em;
       }
 
       code,
       pre {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
       }
 
       a {
@@ -115,7 +110,7 @@
       }
 
       .sidebar-logo a {
-        font-family: "Bricolage Grotesque", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 1.6rem;
         font-weight: 800;
         color: var(--text);
@@ -269,7 +264,7 @@
 
       .hero-badge {
         display: inline-block;
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.72rem;
         font-weight: 500;
         color: var(--accent);
@@ -282,7 +277,7 @@
       }
 
       .hero-tagline {
-        font-family: "Bricolage Grotesque", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 1.15rem;
         font-weight: 500;
         color: var(--text-dim);
@@ -301,7 +296,7 @@
         align-items: center;
         padding: 0.55rem 1.25rem;
         border-radius: 6px;
-        font-family: "IBM Plex Sans", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 0.85rem;
         font-weight: 500;
         text-decoration: none;
@@ -362,7 +357,7 @@
       }
 
       .feature-item .fi-icon {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.8rem;
         color: var(--accent);
         margin-bottom: 0.5rem;
@@ -410,7 +405,7 @@
         background: var(--accent-bg);
         border: 1px solid var(--accent-border);
         color: var(--accent);
-        font-family: "Bricolage Grotesque", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 0.78rem;
         font-weight: 700;
         flex-shrink: 0;
@@ -450,7 +445,7 @@
       }
 
       .sf-box {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.78rem;
         font-weight: 500;
         padding: 0.4rem 0.75rem;
@@ -472,7 +467,7 @@
       }
 
       .sf-type {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.65rem;
         color: var(--text-dim);
       }
@@ -516,7 +511,7 @@
       }
 
       .code-filename {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.75rem;
         color: var(--text-dim);
       }
@@ -565,7 +560,7 @@
         border-radius: 4px;
         color: var(--text-dim);
         padding: 0.3rem 0.8rem;
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.73rem;
         cursor: pointer;
         transition:
@@ -692,7 +687,7 @@
       .install-block .prompt-char {
         color: var(--accent);
         user-select: none;
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-weight: 500;
         font-size: 0.88rem;
       }
@@ -712,7 +707,7 @@
         color: var(--text-dim);
         padding: 0.3rem 0.65rem;
         border-radius: 4px;
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.7rem;
         cursor: pointer;
         transition: all 0.15s;
@@ -743,7 +738,7 @@
       }
 
       .mobile-header .logo-text {
-        font-family: "Bricolage Grotesque", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 1.1rem;
         font-weight: 800;
         color: var(--text);
@@ -759,7 +754,7 @@
         color: var(--text-muted);
         padding: 0.3rem 0.6rem;
         border-radius: 4px;
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.75rem;
         cursor: pointer;
       }
@@ -848,7 +843,7 @@
       }
 
       .action-title {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.95rem;
         font-weight: 600;
         color: var(--accent);
@@ -863,7 +858,7 @@
 
       .badge {
         display: inline-block;
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         font-size: 0.63rem;
         font-weight: 500;
         padding: 0.15rem 0.5rem;
@@ -925,14 +920,14 @@
       }
 
       .param-table td:first-child {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         color: var(--cyan);
         font-size: 0.8rem;
         white-space: nowrap;
       }
 
       .param-table td:nth-child(2) {
-        font-family: "IBM Plex Mono", monospace;
+        font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
         color: var(--text-dim);
         font-size: 0.78rem;
         white-space: nowrap;
@@ -1016,7 +1011,7 @@
         }
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script src="./mermaid.min.js"></script>
   </head>
   <body>
     <div class="mobile-header">
@@ -2381,7 +2376,7 @@
                 <a
                   href="https://github.com/zhubert/erg/blob/main/examples/minimal.yaml"
                   style="
-                    font-family: &quot;IBM Plex Mono&quot;, monospace;
+                    font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
                     font-size: 0.75rem;
                   "
                   >view on github</a
@@ -2514,7 +2509,7 @@ stateDiagram-v2
                 <a
                   href="https://github.com/zhubert/erg/blob/main/examples/supervised.yaml"
                   style="
-                    font-family: &quot;IBM Plex Mono&quot;, monospace;
+                    font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
                     font-size: 0.75rem;
                   "
                   >view on github</a
@@ -2697,7 +2692,7 @@ stateDiagram-v2
                 <a
                   href="https://github.com/zhubert/erg/blob/main/examples/ci-gate.yaml"
                   style="
-                    font-family: &quot;IBM Plex Mono&quot;, monospace;
+                    font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
                     font-size: 0.75rem;
                   "
                   >view on github</a
@@ -2906,7 +2901,7 @@ stateDiagram-v2
                 <a
                   href="https://github.com/zhubert/erg/blob/main/examples/label-tracking.yaml"
                   style="
-                    font-family: &quot;IBM Plex Mono&quot;, monospace;
+                    font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
                     font-size: 0.75rem;
                   "
                   >view on github</a
@@ -3240,7 +3235,7 @@ stateDiagram-v2
                 <a
                   href="https://github.com/zhubert/erg/blob/main/examples/linear.yaml"
                   style="
-                    font-family: &quot;IBM Plex Mono&quot;, monospace;
+                    font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
                     font-size: 0.75rem;
                   "
                   >view on github</a
