@@ -1214,3 +1214,224 @@ func TestUploadTranscriptToPR_Error(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
+
+func TestGetLinkedPRsForIssue_OpenAndMerged(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	// Mock git remote get-url origin
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	// Mock gh api graphql — returns two cross-referenced PRs (one open, one merged).
+	mock.AddPrefixMatch("gh", []string{"api", "graphql"}, pexec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": [
+								{"source": {"number": 10, "state": "OPEN", "url": "https://github.com/owner/repo/pull/10"}},
+								{"source": {"number": 5, "state": "MERGED", "url": "https://github.com/owner/repo/pull/5"}}
+							]
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	prs, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 42)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(prs) != 2 {
+		t.Fatalf("expected 2 linked PRs, got %d", len(prs))
+	}
+	if prs[0].Number != 10 || prs[0].State != PRStateOpen {
+		t.Errorf("expected first PR to be #10 OPEN, got #%d %s", prs[0].Number, prs[0].State)
+	}
+	if prs[1].Number != 5 || prs[1].State != PRStateMerged {
+		t.Errorf("expected second PR to be #5 MERGED, got #%d %s", prs[1].Number, prs[1].State)
+	}
+}
+
+func TestGetLinkedPRsForIssue_ExcludesClosed(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Stdout: []byte("https://github.com/owner/repo.git\n"),
+	})
+
+	// Returns one OPEN PR and one CLOSED PR — closed should be excluded.
+	mock.AddPrefixMatch("gh", []string{"api", "graphql"}, pexec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": [
+								{"source": {"number": 7, "state": "OPEN", "url": "https://github.com/owner/repo/pull/7"}},
+								{"source": {"number": 3, "state": "CLOSED", "url": "https://github.com/owner/repo/pull/3"}}
+							]
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	prs, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 99)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 linked PR (CLOSED excluded), got %d", len(prs))
+	}
+	if prs[0].Number != 7 {
+		t.Errorf("expected PR #7, got #%d", prs[0].Number)
+	}
+}
+
+func TestGetLinkedPRsForIssue_NoPRs(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	mock.AddPrefixMatch("gh", []string{"api", "graphql"}, pexec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": []
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	prs, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(prs) != 0 {
+		t.Errorf("expected 0 linked PRs, got %d", len(prs))
+	}
+}
+
+func TestGetLinkedPRsForIssue_DeduplicatesByNumber(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	// Same PR referenced twice (duplicate cross-references).
+	mock.AddPrefixMatch("gh", []string{"api", "graphql"}, pexec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": [
+								{"source": {"number": 10, "state": "OPEN", "url": "https://github.com/owner/repo/pull/10"}},
+								{"source": {"number": 10, "state": "OPEN", "url": "https://github.com/owner/repo/pull/10"}}
+							]
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	prs, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 5)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(prs) != 1 {
+		t.Errorf("expected 1 deduplicated PR, got %d", len(prs))
+	}
+}
+
+func TestGetLinkedPRsForIssue_RemoteURLError(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Err: fmt.Errorf("no remote origin"),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	_, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 1)
+	if err == nil {
+		t.Error("expected error when remote URL fails")
+	}
+}
+
+func TestGetLinkedPRsForIssue_GraphQLError(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	mock.AddPrefixMatch("gh", []string{"api", "graphql"}, pexec.MockResponse{
+		Err: fmt.Errorf("gh api failed"),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	_, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 1)
+	if err == nil {
+		t.Error("expected error when GraphQL call fails")
+	}
+}
+
+func TestGetLinkedPRsForIssue_SkipsNonPRNodes(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddExactMatch("git", []string{"remote", "get-url", "origin"}, pexec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	// One node with number=0 (non-PR cross-reference), one real PR.
+	mock.AddPrefixMatch("gh", []string{"api", "graphql"}, pexec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": [
+								{"source": {}},
+								{"source": {"number": 15, "state": "MERGED", "url": "https://github.com/owner/repo/pull/15"}}
+							]
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	prs, err := svc.GetLinkedPRsForIssue(context.Background(), "/repo", 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 PR (non-PR node excluded), got %d", len(prs))
+	}
+	if prs[0].Number != 15 {
+		t.Errorf("expected PR #15, got #%d", prs[0].Number)
+	}
+}

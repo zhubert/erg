@@ -67,6 +67,26 @@ func (p *GitHubProvider) GetPRLinkText(issue Issue) string {
 	return fmt.Sprintf("Fixes #%s", issue.ID)
 }
 
+// RemoveLabel removes a label from a GitHub issue.
+// Implements ProviderActions.
+func (p *GitHubProvider) RemoveLabel(ctx context.Context, repoPath string, issueID string, label string) error {
+	issueNum, err := strconv.Atoi(issueID)
+	if err != nil {
+		return fmt.Errorf("invalid GitHub issue ID %q: %w", issueID, err)
+	}
+	return p.gitService.RemoveIssueLabel(ctx, repoPath, issueNum, label)
+}
+
+// Comment adds a comment to a GitHub issue.
+// Implements ProviderActions.
+func (p *GitHubProvider) Comment(ctx context.Context, repoPath string, issueID string, body string) error {
+	issueNum, err := strconv.Atoi(issueID)
+	if err != nil {
+		return fmt.Errorf("invalid GitHub issue ID %q: %w", issueID, err)
+	}
+	return p.gitService.CommentOnIssue(ctx, repoPath, issueNum, body)
+}
+
 // GetIssueNumber returns the issue number as an int (for backwards compatibility).
 // Returns 0 if the ID is not a valid number.
 func GetIssueNumber(issue Issue) int {

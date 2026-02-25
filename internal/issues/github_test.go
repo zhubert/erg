@@ -1,7 +1,12 @@
 package issues
 
 import (
+	"context"
+	"fmt"
 	"testing"
+
+	"github.com/zhubert/erg/internal/exec"
+	"github.com/zhubert/erg/internal/git"
 )
 
 func TestGitHubProvider_Name(t *testing.T) {
@@ -64,6 +69,78 @@ func TestGitHubProvider_GetPRLinkText(t *testing.T) {
 			t.Errorf("GetPRLinkText(%v) = %s, expected %s", tc.issue.ID, result, tc.expected)
 		}
 	}
+}
+
+func TestGitHubProvider_RemoveLabel(t *testing.T) {
+	mock := exec.NewMockExecutor(nil)
+	mock.AddExactMatch("gh", []string{"issue", "edit", "42", "--remove-label", "queued"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mock)
+	p := NewGitHubProvider(gitSvc)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "42", "queued")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	calls := mock.GetCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+}
+
+func TestGitHubProvider_RemoveLabel_InvalidID(t *testing.T) {
+	p := NewGitHubProvider(nil)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "not-a-number", "queued")
+	if err == nil {
+		t.Error("expected error for invalid issue ID")
+	}
+}
+
+func TestGitHubProvider_RemoveLabel_CLIError(t *testing.T) {
+	mock := exec.NewMockExecutor(nil)
+	mock.AddExactMatch("gh", []string{"issue", "edit", "42", "--remove-label", "queued"},
+		exec.MockResponse{Err: fmt.Errorf("gh: failed")})
+
+	gitSvc := git.NewGitServiceWithExecutor(mock)
+	p := NewGitHubProvider(gitSvc)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "42", "queued")
+	if err == nil {
+		t.Error("expected error from CLI failure")
+	}
+}
+
+func TestGitHubProvider_Comment(t *testing.T) {
+	mock := exec.NewMockExecutor(nil)
+	mock.AddExactMatch("gh", []string{"issue", "comment", "42", "--body", "hello"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mock)
+	p := NewGitHubProvider(gitSvc)
+
+	err := p.Comment(context.Background(), "/repo", "42", "hello")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	calls := mock.GetCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+}
+
+func TestGitHubProvider_Comment_InvalidID(t *testing.T) {
+	p := NewGitHubProvider(nil)
+
+	err := p.Comment(context.Background(), "/repo", "not-a-number", "hello")
+	if err == nil {
+		t.Error("expected error for invalid issue ID")
+	}
+}
+
+func TestGitHubProvider_ImplementsProviderActions(t *testing.T) {
+	var _ ProviderActions = (*GitHubProvider)(nil)
 }
 
 func TestGetIssueNumber(t *testing.T) {
