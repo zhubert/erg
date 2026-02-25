@@ -9,6 +9,9 @@ import (
 	"github.com/zhubert/erg/internal/workflow"
 	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/exec"
+	"github.com/zhubert/erg/internal/git"
+	"github.com/zhubert/erg/internal/issues"
+	"github.com/zhubert/erg/internal/session"
 )
 
 func TestFetchIssuesForProvider_GitHub(t *testing.T) {
@@ -222,5 +225,162 @@ func TestStartQueuedItems_RespectsFullSlots(t *testing.T) {
 	// item-1 should still be queued
 	if d.state.GetWorkItem("item-1").State != daemonstate.WorkItemQueued {
 		t.Error("item-1 should still be queued when slots are full")
+	}
+}
+
+// TestCheckLinkedPRsAndUnqueue_WithLinkedPR verifies that when a GitHub issue has
+// an open linked PR, checkLinkedPRsAndUnqueue returns true and marks the item completed.
+func TestCheckLinkedPRsAndUnqueue_WithLinkedPR(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Mock git remote get-url origin
+	mockExec.AddExactMatch("git", []string{"remote", "get-url", "origin"}, exec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	// Mock gh api graphql — returns one OPEN linked PR.
+	mockExec.AddPrefixMatch("gh", []string{"api", "graphql"}, exec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": [
+								{"source": {"number": 10, "state": "OPEN", "url": "https://github.com/owner/repo/pull/10"}}
+							]
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	// Mock gh issue edit (remove label) and gh issue comment (best-effort).
+	mockExec.AddPrefixMatch("gh", []string{"issue", "edit"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("gh", []string{"issue", "comment"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	githubProvider := issues.NewGitHubProvider(gitSvc)
+	registry := issues.NewProviderRegistry(githubProvider)
+
+	d := New(cfg, gitSvc, sessSvc, registry, discardLogger())
+	d.sessionMgr.SetSkipMessageLoad(true)
+	d.state = daemonstate.NewDaemonState("/test/repo")
+	d.repoFilter = "/test/repo"
+
+	issue := issues.Issue{
+		ID:     "42",
+		Title:  "Fix the bug",
+		Source: issues.SourceGitHub,
+	}
+
+	skip := d.checkLinkedPRsAndUnqueue(context.Background(), "/test/repo", issue)
+
+	if !skip {
+		t.Error("expected checkLinkedPRsAndUnqueue to return true when linked PR exists")
+	}
+
+	// The work item should be created and marked completed.
+	itemID := "/test/repo-42"
+	item := d.state.GetWorkItem(itemID)
+	if item == nil {
+		t.Fatal("expected work item to be created in state")
+	}
+	if item.State != daemonstate.WorkItemCompleted {
+		t.Errorf("expected work item to be completed, got %s", item.State)
+	}
+}
+
+// TestCheckLinkedPRsAndUnqueue_NoPRs verifies that when no linked PRs exist,
+// checkLinkedPRsAndUnqueue returns false and does not create a work item.
+func TestCheckLinkedPRsAndUnqueue_NoPRs(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	mockExec := exec.NewMockExecutor(nil)
+
+	mockExec.AddExactMatch("git", []string{"remote", "get-url", "origin"}, exec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	mockExec.AddPrefixMatch("gh", []string{"api", "graphql"}, exec.MockResponse{
+		Stdout: []byte(`{
+			"data": {
+				"repository": {
+					"issue": {
+						"timelineItems": {
+							"nodes": []
+						}
+					}
+				}
+			}
+		}`),
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	issue := issues.Issue{
+		ID:     "99",
+		Title:  "Unrelated issue",
+		Source: issues.SourceGitHub,
+	}
+
+	skip := d.checkLinkedPRsAndUnqueue(context.Background(), "/test/repo", issue)
+
+	if skip {
+		t.Error("expected checkLinkedPRsAndUnqueue to return false when no linked PRs")
+	}
+}
+
+// TestCheckLinkedPRsAndUnqueue_GraphQLError verifies that when the GraphQL call
+// fails, checkLinkedPRsAndUnqueue returns false (fail open) and doesn't block polling.
+func TestCheckLinkedPRsAndUnqueue_GraphQLError(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	mockExec.AddExactMatch("git", []string{"remote", "get-url", "origin"}, exec.MockResponse{
+		Stdout: []byte("git@github.com:owner/repo.git\n"),
+	})
+
+	// Simulate GraphQL failure by not having a match for graphql — returns empty which fails JSON parse.
+	// With empty stdout and nil err, GetLinkedPRsForIssue will fail to unmarshal JSON.
+	mockExec.AddPrefixMatch("gh", []string{"api", "graphql"}, exec.MockResponse{
+		Stdout: []byte("invalid json"),
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+
+	issue := issues.Issue{ID: "1", Source: issues.SourceGitHub}
+
+	// When GetLinkedPRsForIssue fails (bad JSON), should return false (fail open).
+	skip := d.checkLinkedPRsAndUnqueue(context.Background(), "/test/repo", issue)
+
+	if skip {
+		t.Error("expected false (fail open) when API call fails")
+	}
+}
+
+// TestCheckLinkedPRsAndUnqueue_NonNumericID verifies that a non-numeric issue ID
+// causes checkLinkedPRsAndUnqueue to return false without calling the API.
+func TestCheckLinkedPRsAndUnqueue_NonNumericID(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	d := testDaemonWithExec(cfg, mockExec)
+
+	issue := issues.Issue{ID: "not-a-number", Source: issues.SourceGitHub}
+
+	skip := d.checkLinkedPRsAndUnqueue(context.Background(), "/test/repo", issue)
+
+	if skip {
+		t.Error("expected false for non-numeric issue ID")
+	}
+
+	// No calls should have been made.
+	if len(mockExec.GetCalls()) != 0 {
+		t.Errorf("expected no CLI calls for non-numeric ID, got %d", len(mockExec.GetCalls()))
 	}
 }

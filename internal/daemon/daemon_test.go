@@ -21,6 +21,11 @@ import (
 	"github.com/zhubert/erg/internal/session"
 )
 
+// discardLogger returns a slog.Logger that discards all output. Useful in tests.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 // testConfig creates a minimal config for testing.
 func testConfig() *config.Config {
 	return &config.Config{

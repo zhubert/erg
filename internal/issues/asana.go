@@ -357,3 +357,127 @@ func (p *AsanaProvider) GetPRLinkText(issue Issue) string {
 	// Users can manually link PRs in Asana or use the Asana GitHub integration.
 	return ""
 }
+
+// asanaTagsResponse represents the Asana API response for task tags.
+type asanaTagsResponse struct {
+	Data []asanaTag `json:"data"`
+}
+
+// asanaTagWithGID is a tag with both name and GID.
+type asanaTagWithGID struct {
+	GID  string `json:"gid"`
+	Name string `json:"name"`
+}
+
+// asanaTagsWithGIDResponse is the response for fetching tags with GIDs.
+type asanaTagsWithGIDResponse struct {
+	Data []asanaTagWithGID `json:"data"`
+}
+
+// RemoveLabel removes a tag from an Asana task by name.
+// It first fetches the task's tags to find the GID of the matching tag,
+// then removes it via the Asana API.
+// Implements ProviderActions.
+func (p *AsanaProvider) RemoveLabel(ctx context.Context, repoPath string, issueID string, label string) error {
+	pat := os.Getenv(asanaPATEnvVar)
+	if pat == "" {
+		return fmt.Errorf("ASANA_PAT environment variable not set")
+	}
+
+	// Fetch current tags on the task to find the GID for the target label.
+	tagsURL := fmt.Sprintf("%s/tasks/%s?opt_fields=tags.gid,tags.name", p.apiBase, issueID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tagsURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+pat)
+	req.Header.Set("Accept", "application/json")
+
+	type taskTagsResponse struct {
+		Data struct {
+			Tags []asanaTagWithGID `json:"tags"`
+		} `json:"data"`
+	}
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch task tags: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Asana API returned status %d fetching task tags", resp.StatusCode)
+	}
+
+	var tagsResp taskTagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
+		return fmt.Errorf("failed to parse task tags response: %w", err)
+	}
+
+	// Find the tag GID matching the label name.
+	tagGID := ""
+	for _, tag := range tagsResp.Data.Tags {
+		if strings.EqualFold(tag.Name, label) {
+			tagGID = tag.GID
+			break
+		}
+	}
+	if tagGID == "" {
+		// Tag not found on task — nothing to remove.
+		return nil
+	}
+
+	// Remove the tag from the task.
+	removeURL := fmt.Sprintf("%s/tasks/%s/removeTag", p.apiBase, issueID)
+	body := fmt.Sprintf(`{"data":{"tag":%q}}`, tagGID)
+	removeReq, err := http.NewRequestWithContext(ctx, http.MethodPost, removeURL, strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create remove tag request: %w", err)
+	}
+	removeReq.Header.Set("Authorization", "Bearer "+pat)
+	removeReq.Header.Set("Content-Type", "application/json")
+	removeReq.Header.Set("Accept", "application/json")
+
+	removeResp, err := p.httpClient.Do(removeReq)
+	if err != nil {
+		return fmt.Errorf("failed to remove tag: %w", err)
+	}
+	defer removeResp.Body.Close()
+
+	if removeResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Asana API returned status %d removing tag", removeResp.StatusCode)
+	}
+
+	return nil
+}
+
+// Comment adds a comment (story) to an Asana task.
+// Implements ProviderActions.
+func (p *AsanaProvider) Comment(ctx context.Context, repoPath string, issueID string, body string) error {
+	pat := os.Getenv(asanaPATEnvVar)
+	if pat == "" {
+		return fmt.Errorf("ASANA_PAT environment variable not set")
+	}
+
+	storiesURL := fmt.Sprintf("%s/tasks/%s/stories", p.apiBase, issueID)
+	reqBody := fmt.Sprintf(`{"data":{"text":%q}}`, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, storiesURL, strings.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+pat)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to create story: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Asana API returned status %d creating story", resp.StatusCode)
+	}
+
+	return nil
+}

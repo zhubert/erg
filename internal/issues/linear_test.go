@@ -440,6 +440,230 @@ func TestLinearProvider_FetchIssues_NoLabelOmitsFilter(t *testing.T) {
 	}
 }
 
+func TestLinearProvider_RemoveLabel(t *testing.T) {
+	requestCount := 0
+	var updateBody string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		body, _ := io.ReadAll(r.Body)
+		var req linearGraphQLRequest
+		json.Unmarshal(body, &req)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(req.Query, "labels") && strings.Contains(req.Query, "issue(id:") || (strings.Contains(req.Query, "issue(id:") && strings.Contains(req.Query, "nodes")) {
+			// First call: fetch issue labels
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"issue": map[string]any{
+						"id": "uuid-eng-123",
+						"labels": map[string]any{
+							"nodes": []map[string]any{
+								{"id": "label-uuid-queued", "name": "queued"},
+								{"id": "label-uuid-bug", "name": "bug"},
+							},
+						},
+					},
+				},
+			})
+		} else {
+			// Second call: update issue labels
+			updateBody = string(body)
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"issueUpdate": map[string]any{"success": true},
+				},
+			})
+		}
+	}))
+	defer server.Close()
+
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "lin_api_test")
+
+	p := NewLinearProviderWithClient(nil, server.Client(), server.URL)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "ENG-123", "queued")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Errorf("expected 2 GraphQL calls, got %d", requestCount)
+	}
+	// The update should only include the "bug" label UUID, not "queued".
+	if !strings.Contains(updateBody, "label-uuid-bug") {
+		t.Errorf("expected update to contain remaining label ID, got: %s", updateBody)
+	}
+	if strings.Contains(updateBody, "label-uuid-queued") {
+		t.Errorf("expected update to NOT contain removed label ID, got: %s", updateBody)
+	}
+}
+
+func TestLinearProvider_RemoveLabel_LabelNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Issue exists but has different labels.
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"issue": map[string]any{
+					"id": "uuid-eng-123",
+					"labels": map[string]any{
+						"nodes": []map[string]any{
+							{"id": "label-uuid-bug", "name": "bug"},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "lin_api_test")
+
+	p := NewLinearProviderWithClient(nil, server.Client(), server.URL)
+
+	// Should succeed (no-op) when label is not found.
+	err := p.RemoveLabel(context.Background(), "/repo", "ENG-123", "queued")
+	if err != nil {
+		t.Fatalf("unexpected error when label not found: %v", err)
+	}
+}
+
+func TestLinearProvider_RemoveLabel_IssueNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Issue not found — empty response.
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"issue": nil,
+			},
+		})
+	}))
+	defer server.Close()
+
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "lin_api_test")
+
+	p := NewLinearProviderWithClient(nil, server.Client(), server.URL)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "ENG-NOTFOUND", "queued")
+	if err == nil {
+		t.Error("expected error when issue not found")
+	}
+}
+
+func TestLinearProvider_RemoveLabel_NoAPIKey(t *testing.T) {
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "")
+
+	p := NewLinearProvider(nil)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "ENG-123", "queued")
+	if err == nil {
+		t.Error("expected error without API key")
+	}
+}
+
+func TestLinearProvider_Comment(t *testing.T) {
+	requestCount := 0
+	var commentBody string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		body, _ := io.ReadAll(r.Body)
+		var req linearGraphQLRequest
+		json.Unmarshal(body, &req)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(req.Query, "commentCreate") {
+			// Second call: create comment
+			commentBody = string(body)
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"commentCreate": map[string]any{"success": true},
+				},
+			})
+		} else {
+			// First call: lookup issue UUID
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"issue": map[string]any{"id": "uuid-eng-123"},
+				},
+			})
+		}
+	}))
+	defer server.Close()
+
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "lin_api_test")
+
+	p := NewLinearProviderWithClient(nil, server.Client(), server.URL)
+
+	err := p.Comment(context.Background(), "/repo", "ENG-123", "This is a comment.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Errorf("expected 2 GraphQL calls (lookup + comment), got %d", requestCount)
+	}
+	if !strings.Contains(commentBody, "This is a comment.") {
+		t.Errorf("expected comment body to contain message, got: %s", commentBody)
+	}
+	if !strings.Contains(commentBody, "uuid-eng-123") {
+		t.Errorf("expected comment to use issue UUID, got: %s", commentBody)
+	}
+}
+
+func TestLinearProvider_Comment_IssueNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"issue": nil,
+			},
+		})
+	}))
+	defer server.Close()
+
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "lin_api_test")
+
+	p := NewLinearProviderWithClient(nil, server.Client(), server.URL)
+
+	err := p.Comment(context.Background(), "/repo", "ENG-NOTFOUND", "Hello!")
+	if err == nil {
+		t.Error("expected error when issue not found")
+	}
+}
+
+func TestLinearProvider_Comment_NoAPIKey(t *testing.T) {
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "")
+
+	p := NewLinearProvider(nil)
+
+	err := p.Comment(context.Background(), "/repo", "ENG-123", "Hello!")
+	if err == nil {
+		t.Error("expected error without API key")
+	}
+}
+
+func TestLinearProvider_ImplementsProviderActions(t *testing.T) {
+	var _ ProviderActions = (*LinearProvider)(nil)
+}
+
 // contains checks if a string contains a substring.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
