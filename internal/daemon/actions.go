@@ -107,8 +107,8 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 	prURL, err := d.createPR(ctx, item)
 	if err != nil {
 		if errors.Is(err, errNoChanges) {
-			// Coding session made no changes — close the issue and skip to done.
-			d.closeIssueGracefully(ctx, item)
+			// Coding session made no changes — remove from queue but leave issue open.
+			d.unqueueIssue(ctx, item, "The coding session made no changes. Removing from the queue — re-add the 'queued' label if this still needs work.")
 			return workflow.ActionResult{Success: true, OverrideNext: "done"}
 		}
 		return workflow.ActionResult{Error: fmt.Errorf("PR creation failed: %v", err)}
@@ -1130,6 +1130,51 @@ func (d *Daemon) closeIssueGracefully(ctx context.Context, item *daemonstate.Wor
 	// Close the issue
 	if err := d.closeIssue(opCtx, item); err != nil {
 		log.Debug("failed to close issue during graceful close", "error", err)
+	}
+}
+
+// unqueueIssue removes the "queued" label and leaves an explanatory comment, but does NOT
+// close the issue. Use this when a work item should be skipped but the issue remains open
+// for humans to verify (e.g., existing PR already addresses it, or no changes were made).
+// All operations are best-effort — failures are logged but do not block the workflow.
+func (d *Daemon) unqueueIssue(ctx context.Context, item *daemonstate.WorkItem, reason string) {
+	log := d.logger.With("workItem", item.ID, "issue", item.IssueRef.ID, "source", item.IssueRef.Source)
+
+	repoPath := d.resolveRepoPath(ctx, item)
+	if repoPath == "" {
+		log.Debug("no repo path found, skipping unqueue operations")
+		return
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	// Use ProviderActions if the provider supports it.
+	provider := d.issueRegistry.GetProvider(issues.Source(item.IssueRef.Source))
+	if pa, ok := provider.(issues.ProviderActions); ok {
+		if err := pa.RemoveLabel(opCtx, repoPath, item.IssueRef.ID, autonomousFilterLabel); err != nil {
+			log.Debug("failed to remove queued label during unqueue", "error", err)
+		}
+		if err := pa.Comment(opCtx, repoPath, item.IssueRef.ID, reason); err != nil {
+			log.Debug("failed to comment during unqueue", "error", err)
+		}
+		return
+	}
+
+	// Fallback for GitHub (backward compatibility when not registered in registry)
+	if item.IssueRef.Source != "github" {
+		log.Debug("provider does not support ProviderActions, skipping unqueue operations")
+		return
+	}
+	issueNum, err := strconv.Atoi(item.IssueRef.ID)
+	if err != nil {
+		return
+	}
+	if err := d.gitService.RemoveIssueLabel(opCtx, repoPath, issueNum, autonomousFilterLabel); err != nil {
+		log.Debug("failed to remove queued label during unqueue (fallback)", "error", err)
+	}
+	if err := d.gitService.CommentOnIssue(opCtx, repoPath, issueNum, reason); err != nil {
+		log.Debug("failed to comment during unqueue (fallback)", "error", err)
 	}
 }
 

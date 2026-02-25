@@ -637,6 +637,72 @@ Diff:
 	return title, body, nil
 }
 
+// LinkedPR represents an open or merged pull request linked to an issue.
+type LinkedPR struct {
+	Number int
+	State  PRState
+	URL    string
+	Title  string
+}
+
+// GetLinkedPRsForIssue returns open or merged PRs that reference the given issue number.
+// It queries the issue timeline for cross-referenced events and filters to PRs.
+func (s *GitService) GetLinkedPRsForIssue(ctx context.Context, repoPath string, issueNumber int) ([]LinkedPR, error) {
+	// Use the GitHub API to query the issue timeline for cross-referenced events
+	output, err := s.executor.Output(ctx, repoPath,
+		"gh", "api",
+		fmt.Sprintf("repos/{owner}/{repo}/issues/%d/timeline", issueNumber),
+		"--paginate",
+		"--jq", `.[] | select(.event == "cross-referenced") | select(.source.issue.pull_request != null) | {number: .source.issue.number, state: .source.issue.state, url: .source.issue.html_url, title: .source.issue.title, merged: (.source.issue.pull_request.merged_at != null)}`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gh api timeline failed: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	var result []LinkedPR
+	// Output is one JSON object per line (jq streaming)
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry struct {
+			Number int    `json:"number"`
+			State  string `json:"state"`
+			URL    string `json:"url"`
+			Title  string `json:"title"`
+			Merged bool   `json:"merged"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue // skip unparseable lines
+		}
+		var state PRState
+		if entry.Merged {
+			state = PRStateMerged
+		} else if strings.EqualFold(entry.State, "open") {
+			state = PRStateOpen
+		} else {
+			state = PRStateClosed
+		}
+		// Only return open or merged PRs
+		if state == PRStateOpen || state == PRStateMerged {
+			result = append(result, LinkedPR{
+				Number: entry.Number,
+				State:  state,
+				URL:    entry.URL,
+				Title:  entry.Title,
+			})
+		}
+	}
+
+	return result, nil
+}
+
 // GetPRLinkText returns the appropriate text to add to a PR body based on the issue source.
 // For GitHub issues: returns "\n\nFixes #123"
 // For Asana tasks: returns "" (no auto-close support)

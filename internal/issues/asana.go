@@ -357,3 +357,169 @@ func (p *AsanaProvider) GetPRLinkText(issue Issue) string {
 	// Users can manually link PRs in Asana or use the Asana GitHub integration.
 	return ""
 }
+
+// asanaTagGIDResponse represents the Asana API response for a single tag.
+type asanaTagGIDResponse struct {
+	Data struct {
+		GID string `json:"gid"`
+	} `json:"data"`
+}
+
+// asanaTagsSearchResponse represents the Asana API response for searching tags.
+type asanaTagsSearchResponse struct {
+	Data []struct {
+		GID  string `json:"gid"`
+		Name string `json:"name"`
+	} `json:"data"`
+}
+
+// findTagGID looks up the GID of a tag by name in the workspace of the given task.
+func (p *AsanaProvider) findTagGID(ctx context.Context, pat, taskGID, tagName string) (string, error) {
+	// First, fetch the task to get its workspace
+	taskURL := fmt.Sprintf("%s/tasks/%s?opt_fields=workspace.gid", p.apiBase, taskGID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, taskURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create task request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+pat)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch task: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Asana API returned status %d for task lookup", resp.StatusCode)
+	}
+
+	var taskResp struct {
+		Data struct {
+			Workspace struct {
+				GID string `json:"gid"`
+			} `json:"workspace"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&taskResp); err != nil {
+		return "", fmt.Errorf("failed to parse task response: %w", err)
+	}
+
+	workspaceGID := taskResp.Data.Workspace.GID
+	if workspaceGID == "" {
+		return "", fmt.Errorf("could not determine workspace for task %s", taskGID)
+	}
+
+	// Search for tags in the workspace
+	tagsURL := fmt.Sprintf("%s/workspaces/%s/tags?opt_fields=gid,name", p.apiBase, workspaceGID)
+	req2, err := http.NewRequestWithContext(ctx, http.MethodGet, tagsURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create tags request: %w", err)
+	}
+	req2.Header.Set("Authorization", "Bearer "+pat)
+	req2.Header.Set("Accept", "application/json")
+
+	resp2, err := p.httpClient.Do(req2)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch tags: %w", err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Asana API returned status %d for tags", resp2.StatusCode)
+	}
+
+	var tagsResp asanaTagsSearchResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&tagsResp); err != nil {
+		return "", fmt.Errorf("failed to parse tags response: %w", err)
+	}
+
+	for _, tag := range tagsResp.Data {
+		if strings.EqualFold(tag.Name, tagName) {
+			return tag.GID, nil
+		}
+	}
+
+	return "", fmt.Errorf("tag %q not found in workspace", tagName)
+}
+
+// RemoveLabel removes a tag from an Asana task.
+// Implements ProviderActions.
+func (p *AsanaProvider) RemoveLabel(ctx context.Context, repoPath string, issueID string, label string) error {
+	pat := os.Getenv(asanaPATEnvVar)
+	if pat == "" {
+		return fmt.Errorf("ASANA_PAT environment variable not set")
+	}
+
+	tagGID, err := p.findTagGID(ctx, pat, issueID, label)
+	if err != nil {
+		return fmt.Errorf("failed to find tag %q: %w", label, err)
+	}
+
+	url := fmt.Sprintf("%s/tasks/%s/removeTag", p.apiBase, issueID)
+	payload := map[string]any{
+		"data": map[string]string{"tag": tagGID},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal removeTag request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("failed to create removeTag request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+pat)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to remove tag: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Asana API returned status %d for removeTag", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// Comment adds a story (comment) to an Asana task.
+// Implements ProviderActions.
+func (p *AsanaProvider) Comment(ctx context.Context, repoPath string, issueID string, body string) error {
+	pat := os.Getenv(asanaPATEnvVar)
+	if pat == "" {
+		return fmt.Errorf("ASANA_PAT environment variable not set")
+	}
+
+	url := fmt.Sprintf("%s/tasks/%s/stories", p.apiBase, issueID)
+	payload := map[string]any{
+		"data": map[string]string{"text": body},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal story request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(payloadBytes)))
+	if err != nil {
+		return fmt.Errorf("failed to create story request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+pat)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to create story: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Asana API returned status %d for story creation", resp.StatusCode)
+	}
+
+	return nil
+}

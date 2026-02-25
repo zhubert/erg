@@ -65,6 +65,16 @@ type Provider interface {
 	GetPRLinkText(issue Issue) string
 }
 
+// ProviderActions extends Provider with write operations for issue management.
+// Providers that support these operations should implement this interface.
+// Operations are best-effort — callers should log but not fail on errors.
+type ProviderActions interface {
+	// RemoveLabel removes a label/tag from an issue/task.
+	RemoveLabel(ctx context.Context, repoPath string, issueID string, label string) error
+	// Comment adds a comment/story to an issue/task.
+	Comment(ctx context.Context, repoPath string, issueID string, body string) error
+}
+
 // ProviderRegistry holds all available issue providers.
 type ProviderRegistry struct {
 	providers []Provider

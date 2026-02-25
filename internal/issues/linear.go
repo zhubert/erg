@@ -229,6 +229,146 @@ func (p *LinearProvider) GetPRLinkText(issue Issue) string {
 	return fmt.Sprintf("Fixes %s", issue.ID)
 }
 
+// RemoveLabel removes a label from a Linear issue using the GraphQL API.
+// The issueID should be the issue's UUID (not the identifier like ENG-123).
+// Implements ProviderActions.
+func (p *LinearProvider) RemoveLabel(ctx context.Context, repoPath string, issueID string, label string) error {
+	apiKey := os.Getenv(linearAPIKeyEnvVar)
+	if apiKey == "" {
+		return fmt.Errorf("LINEAR_API_KEY environment variable not set")
+	}
+
+	// First, find the label ID by name
+	findLabelQuery := `query($label: String!) {
+  issueLabels(filter: { name: { eqIgnoreCase: $label } }) {
+    nodes { id name }
+  }
+}`
+	findReq := linearGraphQLRequest{
+		Query:     findLabelQuery,
+		Variables: map[string]any{"label": label},
+	}
+	findBody, err := json.Marshal(findReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal label search request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/graphql", p.apiBase)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(findBody))
+	if err != nil {
+		return fmt.Errorf("failed to create label search request: %w", err)
+	}
+	req.Header.Set("Authorization", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to search for label: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Linear API returned status %d for label search", resp.StatusCode)
+	}
+
+	var labelResp struct {
+		Data struct {
+			IssueLabels struct {
+				Nodes []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"nodes"`
+			} `json:"issueLabels"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&labelResp); err != nil {
+		return fmt.Errorf("failed to parse label search response: %w", err)
+	}
+
+	if len(labelResp.Data.IssueLabels.Nodes) == 0 {
+		return fmt.Errorf("label %q not found in Linear", label)
+	}
+	labelID := labelResp.Data.IssueLabels.Nodes[0].ID
+
+	// Remove the label from the issue
+	removeMutation := `mutation($issueId: String!, $labelId: String!) {
+  issueLabelDisconnect(id: $issueId, labelId: $labelId) {
+    success
+  }
+}`
+	removeReq := linearGraphQLRequest{
+		Query:     removeMutation,
+		Variables: map[string]any{"issueId": issueID, "labelId": labelID},
+	}
+	removeBody, err := json.Marshal(removeReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal label removal request: %w", err)
+	}
+
+	req2, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(removeBody))
+	if err != nil {
+		return fmt.Errorf("failed to create label removal request: %w", err)
+	}
+	req2.Header.Set("Authorization", apiKey)
+	req2.Header.Set("Content-Type", "application/json")
+
+	resp2, err := p.httpClient.Do(req2)
+	if err != nil {
+		return fmt.Errorf("failed to remove label: %w", err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		return fmt.Errorf("Linear API returned status %d for label removal", resp2.StatusCode)
+	}
+
+	return nil
+}
+
+// Comment adds a comment to a Linear issue using the GraphQL API.
+// The issueID should be the issue's UUID (not the identifier like ENG-123).
+// Implements ProviderActions.
+func (p *LinearProvider) Comment(ctx context.Context, repoPath string, issueID string, body string) error {
+	apiKey := os.Getenv(linearAPIKeyEnvVar)
+	if apiKey == "" {
+		return fmt.Errorf("LINEAR_API_KEY environment variable not set")
+	}
+
+	mutation := `mutation($issueId: String!, $body: String!) {
+  commentCreate(input: { issueId: $issueId, body: $body }) {
+    success
+  }
+}`
+	gqlReq := linearGraphQLRequest{
+		Query:     mutation,
+		Variables: map[string]any{"issueId": issueID, "body": body},
+	}
+	reqBody, err := json.Marshal(gqlReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal comment request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/graphql", p.apiBase)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create comment request: %w", err)
+	}
+	req.Header.Set("Authorization", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to create comment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Linear API returned status %d for comment creation", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // FetchTeams retrieves all teams accessible to the user.
 func (p *LinearProvider) FetchTeams(ctx context.Context) ([]LinearTeam, error) {
 	apiKey := os.Getenv(linearAPIKeyEnvVar)
