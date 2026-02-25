@@ -86,6 +86,14 @@ func (d *Daemon) pollForNewIssues(ctx context.Context) {
 				continue
 			}
 
+			// Pre-flight: for GitHub issues, check if an open/merged PR already
+			// addresses this issue. If so, unqueue it without spawning a session.
+			if provider == issues.SourceGitHub {
+				if skip := d.checkLinkedPRsAndUnqueue(pollCtx, repoPath, issue); skip {
+					continue
+				}
+			}
+
 			item := &daemonstate.WorkItem{
 				ID: fmt.Sprintf("%s-%s", repoPath, issue.ID),
 				IssueRef: config.IssueRef{
@@ -214,6 +222,59 @@ func (d *Daemon) matchesRepoFilter(ctx context.Context, repoPath string) bool {
 		return ownerRepo == d.repoFilter
 	}
 	return false
+}
+
+// checkLinkedPRsAndUnqueue checks if a GitHub issue already has an open or merged PR
+// addressing it. If so, it unqueues the issue (removes the label + comments) and
+// returns true to indicate the issue should be skipped. Returns false otherwise.
+func (d *Daemon) checkLinkedPRsAndUnqueue(ctx context.Context, repoPath string, issue issues.Issue) bool {
+	log := d.logger.With("issue", issue.ID, "component", "pre-flight")
+
+	issueNum, err := strconv.Atoi(issue.ID)
+	if err != nil {
+		return false
+	}
+
+	linkedPRs, err := d.gitService.GetLinkedPRsForIssue(ctx, repoPath, issueNum)
+	if err != nil {
+		log.Debug("failed to check linked PRs, continuing with issue", "error", err)
+		return false
+	}
+
+	if len(linkedPRs) == 0 {
+		return false
+	}
+
+	// Use the first open/merged PR number in the comment.
+	pr := linkedPRs[0]
+	comment := fmt.Sprintf(
+		"An existing PR (#%d) appears to address this issue. Removing from the queue — re-add the 'queued' label if this still needs work.",
+		pr.Number,
+	)
+
+	log.Info("existing PR found for issue, unqueueing without spawning session",
+		"pr", pr.Number, "state", pr.State)
+
+	// Build a minimal WorkItem to pass to unqueueIssue (it doesn't need to be
+	// persisted — we just need IssueRef and a resolved repo path).
+	item := &daemonstate.WorkItem{
+		ID: fmt.Sprintf("%s-%s", repoPath, issue.ID),
+		IssueRef: config.IssueRef{
+			Source: string(issues.SourceGitHub),
+			ID:     issue.ID,
+			Title:  issue.Title,
+			URL:    issue.URL,
+		},
+	}
+	// Add to state, run unqueue operations, then mark completed so it
+	// doesn't re-appear on the next poll.
+	d.state.AddWorkItem(item)
+	d.unqueueIssue(ctx, item, comment)
+	if err := d.state.MarkWorkItemTerminal(item.ID, true); err != nil {
+		log.Debug("failed to mark pre-flight item terminal", "error", err)
+	}
+
+	return true
 }
 
 // hasExistingSession checks if a session already exists for the given issue.
