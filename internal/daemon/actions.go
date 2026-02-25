@@ -107,8 +107,9 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 	prURL, err := d.createPR(ctx, item)
 	if err != nil {
 		if errors.Is(err, errNoChanges) {
-			// Coding session made no changes — close the issue and skip to done.
-			d.closeIssueGracefully(ctx, item)
+			// Coding session made no changes — unqueue the issue (remove label +
+			// comment) but leave it open for humans to investigate.
+			d.unqueueIssue(ctx, item, "The coding session made no changes. Removing from the queue — re-add the 'queued' label if this still needs work.")
 			return workflow.ActionResult{Success: true, OverrideNext: "done"}
 		}
 		return workflow.ActionResult{Error: fmt.Errorf("PR creation failed: %v", err)}
@@ -1091,6 +1092,37 @@ func (d *Daemon) closeIssue(ctx context.Context, item *daemonstate.WorkItem) err
 		return fmt.Errorf("gh issue close failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// unqueueIssue removes the "queued" label and leaves a comment explaining why,
+// but does NOT close the issue. This is used when an existing PR already addresses
+// the issue, or when the coding session made no changes. All operations are
+// best-effort — failures are logged but do not block the workflow from advancing.
+func (d *Daemon) unqueueIssue(ctx context.Context, item *daemonstate.WorkItem, reason string) {
+	log := d.logger.With("workItem", item.ID, "issue", item.IssueRef.ID, "source", item.IssueRef.Source)
+
+	repoPath := d.resolveRepoPath(ctx, item)
+	if repoPath == "" {
+		log.Debug("no repo path found, skipping unqueue")
+		return
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	// Attempt to use the ProviderActions interface if the provider supports it.
+	src := issues.Source(item.IssueRef.Source)
+	p := d.issueRegistry.GetProvider(src)
+	if pa, ok := p.(issues.ProviderActions); ok {
+		if err := pa.RemoveLabel(opCtx, repoPath, item.IssueRef.ID, "queued"); err != nil {
+			log.Debug("failed to remove queued label during unqueue", "error", err)
+		}
+		if err := pa.Comment(opCtx, repoPath, item.IssueRef.ID, reason); err != nil {
+			log.Debug("failed to comment during unqueue", "error", err)
+		}
+	} else {
+		log.Debug("provider does not support ProviderActions, skipping label removal and comment")
+	}
 }
 
 // closeIssueGracefully removes the "queued" label and closes the issue with an

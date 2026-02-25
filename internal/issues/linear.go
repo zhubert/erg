@@ -229,6 +229,179 @@ func (p *LinearProvider) GetPRLinkText(issue Issue) string {
 	return fmt.Sprintf("Fixes %s", issue.ID)
 }
 
+// linearIssueLabelsResponse represents the Linear GraphQL response for issue labels.
+type linearIssueLabelsResponse struct {
+	Data struct {
+		Issue struct {
+			ID     string `json:"id"`
+			Labels struct {
+				Nodes []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"nodes"`
+			} `json:"labels"`
+		} `json:"issue"`
+	} `json:"data"`
+}
+
+// linearIssueLabelsQuery fetches a Linear issue's UUID and current labels by identifier.
+const linearIssueLabelsQuery = `query($id: String!) {
+  issue(id: $id) {
+    id
+    labels {
+      nodes {
+        id
+        name
+      }
+    }
+  }
+}`
+
+// linearCommentCreateMutation creates a comment on a Linear issue.
+const linearCommentCreateMutation = `mutation($issueId: String!, $body: String!) {
+  commentCreate(input: { issueId: $issueId, body: $body }) {
+    success
+  }
+}`
+
+// linearIssueUpdateMutation updates a Linear issue's labels.
+const linearIssueUpdateMutation = `mutation($id: String!, $labelIds: [String!]!) {
+  issueUpdate(id: $id, input: { labelIds: $labelIds }) {
+    success
+  }
+}`
+
+// linearGraphQL executes a GraphQL request and returns the response body.
+func (p *LinearProvider) linearGraphQL(ctx context.Context, query string, variables map[string]any, result any) error {
+	apiKey := os.Getenv(linearAPIKeyEnvVar)
+	if apiKey == "" {
+		return fmt.Errorf("LINEAR_API_KEY environment variable not set")
+	}
+
+	gqlReq := linearGraphQLRequest{
+		Query:     query,
+		Variables: variables,
+	}
+	body, err := json.Marshal(gqlReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal GraphQL request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/graphql", p.apiBase)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute GraphQL request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Linear API returned status %d", resp.StatusCode)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		return fmt.Errorf("failed to parse Linear response: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveLabel removes a label from a Linear issue by name.
+// It fetches the current labels to find the label ID, then updates the issue
+// with the label removed.
+// Implements ProviderActions.
+func (p *LinearProvider) RemoveLabel(ctx context.Context, repoPath string, issueID string, label string) error {
+	// Fetch the issue UUID and current labels.
+	var labelsResp linearIssueLabelsResponse
+	if err := p.linearGraphQL(ctx, linearIssueLabelsQuery, map[string]any{"id": issueID}, &labelsResp); err != nil {
+		return fmt.Errorf("failed to fetch issue labels: %w", err)
+	}
+
+	issueUUID := labelsResp.Data.Issue.ID
+	if issueUUID == "" {
+		return fmt.Errorf("issue %q not found in Linear", issueID)
+	}
+
+	// Build updated label list excluding the target label.
+	var updatedLabelIDs []string
+	found := false
+	for _, l := range labelsResp.Data.Issue.Labels.Nodes {
+		if strings.EqualFold(l.Name, label) {
+			found = true
+			continue
+		}
+		updatedLabelIDs = append(updatedLabelIDs, l.ID)
+	}
+	if !found {
+		// Label not on issue — nothing to do.
+		return nil
+	}
+
+	// Update the issue with the remaining labels.
+	if updatedLabelIDs == nil {
+		updatedLabelIDs = []string{}
+	}
+	var updateResp struct {
+		Data struct {
+			IssueUpdate struct {
+				Success bool `json:"success"`
+			} `json:"issueUpdate"`
+		} `json:"data"`
+	}
+	if err := p.linearGraphQL(ctx, linearIssueUpdateMutation, map[string]any{
+		"id":       issueUUID,
+		"labelIds": updatedLabelIDs,
+	}, &updateResp); err != nil {
+		return fmt.Errorf("failed to update issue labels: %w", err)
+	}
+
+	return nil
+}
+
+// Comment creates a comment on a Linear issue.
+// Implements ProviderActions.
+func (p *LinearProvider) Comment(ctx context.Context, repoPath string, issueID string, body string) error {
+	// First, look up the issue UUID by identifier since commentCreate requires it.
+	var issueResp struct {
+		Data struct {
+			Issue struct {
+				ID string `json:"id"`
+			} `json:"issue"`
+		} `json:"data"`
+	}
+	lookupQuery := `query($id: String!) { issue(id: $id) { id } }`
+	if err := p.linearGraphQL(ctx, lookupQuery, map[string]any{"id": issueID}, &issueResp); err != nil {
+		return fmt.Errorf("failed to look up issue UUID: %w", err)
+	}
+
+	issueUUID := issueResp.Data.Issue.ID
+	if issueUUID == "" {
+		return fmt.Errorf("issue %q not found in Linear", issueID)
+	}
+
+	var commentResp struct {
+		Data struct {
+			CommentCreate struct {
+				Success bool `json:"success"`
+			} `json:"commentCreate"`
+		} `json:"data"`
+	}
+	if err := p.linearGraphQL(ctx, linearCommentCreateMutation, map[string]any{
+		"issueId": issueUUID,
+		"body":    body,
+	}, &commentResp); err != nil {
+		return fmt.Errorf("failed to create comment: %w", err)
+	}
+
+	return nil
+}
+
 // FetchTeams retrieves all teams accessible to the user.
 func (p *LinearProvider) FetchTeams(ctx context.Context) ([]LinearTeam, error) {
 	apiKey := os.Getenv(linearAPIKeyEnvVar)

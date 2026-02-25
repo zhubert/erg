@@ -3,6 +3,7 @@ package issues
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -185,6 +186,145 @@ func TestAsanaProvider_FetchIssues_APIError(t *testing.T) {
 	if err == nil {
 		t.Error("expected error from API error response")
 	}
+}
+
+func TestAsanaProvider_RemoveLabel(t *testing.T) {
+	var removeTagReqBody string
+	requestCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/tasks/task-gid-123"):
+			// Return task tags including the one to remove.
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{
+					"tags": []map[string]any{
+						{"gid": "tag-gid-abc", "name": "queued"},
+						{"gid": "tag-gid-xyz", "name": "other-tag"},
+					},
+				},
+			})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/removeTag"):
+			body, _ := io.ReadAll(r.Body)
+			removeTagReqBody = string(body)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{}})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	p := NewAsanaProviderWithClient(nil, server.Client(), server.URL)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "task-gid-123", "queued")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Errorf("expected 2 requests (fetch tags + remove tag), got %d", requestCount)
+	}
+	if !strings.Contains(removeTagReqBody, "tag-gid-abc") {
+		t.Errorf("expected remove tag request to contain tag GID, got: %s", removeTagReqBody)
+	}
+}
+
+func TestAsanaProvider_RemoveLabel_TagNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Task has no matching tag.
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"tags": []map[string]any{
+					{"gid": "tag-gid-xyz", "name": "other-tag"},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	p := NewAsanaProviderWithClient(nil, server.Client(), server.URL)
+
+	// Should succeed (no-op) when tag is not found.
+	err := p.RemoveLabel(context.Background(), "/repo", "task-gid-123", "queued")
+	if err != nil {
+		t.Fatalf("unexpected error when tag not found: %v", err)
+	}
+}
+
+func TestAsanaProvider_RemoveLabel_NoPAT(t *testing.T) {
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "")
+
+	p := NewAsanaProvider(nil)
+
+	err := p.RemoveLabel(context.Background(), "/repo", "task-gid-123", "queued")
+	if err == nil {
+		t.Error("expected error without PAT")
+	}
+}
+
+func TestAsanaProvider_Comment(t *testing.T) {
+	var storyReqBody string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.Contains(r.URL.Path, "/stories") {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		storyReqBody = string(body)
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"gid": "story-123"}})
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	p := NewAsanaProviderWithClient(nil, server.Client(), server.URL)
+
+	err := p.Comment(context.Background(), "/repo", "task-gid-123", "Hello, world!")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(storyReqBody, "Hello, world!") {
+		t.Errorf("expected story body to contain message, got: %s", storyReqBody)
+	}
+}
+
+func TestAsanaProvider_Comment_NoPAT(t *testing.T) {
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "")
+
+	p := NewAsanaProvider(nil)
+
+	err := p.Comment(context.Background(), "/repo", "task-gid-123", "Hello!")
+	if err == nil {
+		t.Error("expected error without PAT")
+	}
+}
+
+func TestAsanaProvider_ImplementsProviderActions(t *testing.T) {
+	var _ ProviderActions = (*AsanaProvider)(nil)
 }
 
 func TestAsanaProvider_FetchProjects_NoPAT(t *testing.T) {

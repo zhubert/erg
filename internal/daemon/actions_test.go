@@ -19,6 +19,7 @@ import (
 	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/git"
+	"github.com/zhubert/erg/internal/issues"
 	"github.com/zhubert/erg/internal/session"
 )
 
@@ -3093,5 +3094,129 @@ func TestHandleAsyncComplete_NoFormatCommandSkipsFormatter(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) != 1 {
 		t.Errorf("expected only 1 commit (initial), got %d: %s", len(lines), out)
+	}
+}
+
+// TestUnqueueIssue_GitHub verifies that unqueueIssue calls RemoveLabel and Comment
+// via the GitHub provider, but does NOT close the issue.
+func TestUnqueueIssue_GitHub(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Mock label removal and comment — success responses.
+	mockExec.AddPrefixMatch("gh", []string{"issue", "edit"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("gh", []string{"issue", "comment"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	githubProvider := issues.NewGitHubProvider(gitSvc)
+	registry := issues.NewProviderRegistry(githubProvider)
+
+	d := New(cfg, gitSvc, sessSvc, registry, discardLogger())
+	d.sessionMgr.SetSkipMessageLoad(true)
+	d.state = daemonstate.NewDaemonState("/test/repo")
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-gh-42",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+	}
+	d.state.AddWorkItem(item)
+
+	d.unqueueIssue(context.Background(), item, "Test unqueue reason.")
+
+	calls := mockExec.GetCalls()
+
+	// Verify RemoveLabel was called (gh issue edit --remove-label).
+	foundRemoveLabel := false
+	for _, c := range calls {
+		if c.Name == "gh" && len(c.Args) >= 3 && c.Args[0] == "issue" && c.Args[1] == "edit" {
+			for _, arg := range c.Args {
+				if arg == "--remove-label" {
+					foundRemoveLabel = true
+					break
+				}
+			}
+		}
+	}
+	if !foundRemoveLabel {
+		t.Error("expected gh issue edit --remove-label to be called")
+	}
+
+	// Verify Comment was called (gh issue comment).
+	foundComment := false
+	for _, c := range calls {
+		if c.Name == "gh" && len(c.Args) >= 2 && c.Args[0] == "issue" && c.Args[1] == "comment" {
+			foundComment = true
+			break
+		}
+	}
+	if !foundComment {
+		t.Error("expected gh issue comment to be called")
+	}
+
+	// Verify gh issue close was NOT called.
+	for _, c := range calls {
+		if c.Name == "gh" && len(c.Args) >= 2 && c.Args[0] == "issue" && c.Args[1] == "close" {
+			t.Error("gh issue close should NOT be called by unqueueIssue")
+		}
+	}
+}
+
+// TestUnqueueIssue_NoProviderActions verifies that unqueueIssue is a no-op
+// when the provider doesn't implement ProviderActions.
+func TestUnqueueIssue_NoProviderActions(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Empty registry — no ProviderActions implementations.
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-asana-123",
+		IssueRef:  config.IssueRef{Source: "asana", ID: "task-gid-123"},
+		SessionID: "sess-1",
+	}
+	d.state.AddWorkItem(item)
+
+	// Should not panic or error — just a no-op.
+	d.unqueueIssue(context.Background(), item, "Test reason.")
+
+	calls := mockExec.GetCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected no CLI calls for provider without ProviderActions, got %d", len(calls))
+	}
+}
+
+// TestUnqueueIssue_NoRepoPath verifies that unqueueIssue is a no-op
+// when the repo path cannot be resolved.
+func TestUnqueueIssue_NoRepoPath(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	d := testDaemonWithExec(cfg, mockExec)
+	// No repoFilter set, no sessions — resolveRepoPath returns ""
+
+	item := &daemonstate.WorkItem{
+		ID:       "item-gh-5",
+		IssueRef: config.IssueRef{Source: "github", ID: "5"},
+	}
+	d.state.AddWorkItem(item)
+
+	// Should return early without calling any CLI commands.
+	d.unqueueIssue(context.Background(), item, "No repo path.")
+
+	if len(mockExec.GetCalls()) != 0 {
+		t.Error("expected no CLI calls when repo path is empty")
 	}
 }

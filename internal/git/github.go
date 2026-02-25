@@ -98,6 +98,111 @@ func (s *GitService) GetBatchPRStates(ctx context.Context, repoPath string, bran
 	return result, nil
 }
 
+// LinkedPR represents a pull request that references a GitHub issue.
+type LinkedPR struct {
+	Number int
+	State  PRState
+	URL    string
+}
+
+// GetLinkedPRsForIssue returns open or merged pull requests that cross-reference the given issue.
+// It queries the GitHub GraphQL API for cross-referenced events in the issue timeline.
+// Only PRs in OPEN or MERGED state are included — CLOSED PRs are excluded.
+func (s *GitService) GetLinkedPRsForIssue(ctx context.Context, repoPath string, issueNumber int) ([]LinkedPR, error) {
+	// Resolve owner/repo from the remote URL so we can query the correct repo.
+	remoteURL, err := s.GetRemoteOriginURL(ctx, repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get remote origin URL: %w", err)
+	}
+	ownerRepo := ExtractOwnerRepo(remoteURL)
+	if ownerRepo == "" {
+		return nil, fmt.Errorf("could not extract owner/repo from remote URL %q", remoteURL)
+	}
+	parts := strings.SplitN(ownerRepo, "/", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid owner/repo format %q", ownerRepo)
+	}
+	owner, repo := parts[0], parts[1]
+
+	// Use gh api graphql to find cross-referenced PRs in the issue's timeline.
+	const query = `query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], first: 25) {
+        nodes {
+          ... on CrossReferencedEvent {
+            source {
+              ... on PullRequest {
+                number
+                state
+                url
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+
+	output, err := s.executor.Output(ctx, repoPath, "gh", "api", "graphql",
+		"-f", "query="+query,
+		"-f", "owner="+owner,
+		"-f", "repo="+repo,
+		"-F", fmt.Sprintf("number=%d", issueNumber),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gh api graphql failed: %w", err)
+	}
+
+	var gqlResp struct {
+		Data struct {
+			Repository struct {
+				Issue struct {
+					TimelineItems struct {
+						Nodes []struct {
+							Source struct {
+								Number int    `json:"number"`
+								State  string `json:"state"`
+								URL    string `json:"url"`
+							} `json:"source"`
+						} `json:"nodes"`
+					} `json:"timelineItems"`
+				} `json:"issue"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(output, &gqlResp); err != nil {
+		return nil, fmt.Errorf("failed to parse GraphQL response: %w", err)
+	}
+
+	var linked []LinkedPR
+	seen := make(map[int]bool)
+	for _, node := range gqlResp.Data.Repository.Issue.TimelineItems.Nodes {
+		src := node.Source
+		if src.Number == 0 {
+			// Node is not a PullRequest (e.g., a regular issue cross-reference).
+			continue
+		}
+		if seen[src.Number] {
+			continue
+		}
+		seen[src.Number] = true
+
+		state := PRState(src.State)
+		if state != PRStateOpen && state != PRStateMerged {
+			continue
+		}
+		linked = append(linked, LinkedPR{
+			Number: src.Number,
+			State:  state,
+			URL:    src.URL,
+		})
+	}
+
+	return linked, nil
+}
+
 // PRBatchResult holds the state and comment count for a PR from a batch query.
 type PRBatchResult struct {
 	State        PRState
