@@ -1290,6 +1290,180 @@ func TestEngine_ProcessStep_TaskSync_OverrideNext(t *testing.T) {
 	}
 }
 
+func TestEngine_ProcessStep_DefaultRetryOnNetworkAction(t *testing.T) {
+	// When a network-bound action fails with no explicit retry config,
+	// the engine should apply default retry automatically.
+	registry := NewActionRegistry()
+	registry.Register("github.create_pr", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("connection timeout")},
+	})
+
+	cfg := &Config{
+		Start: "open_pr",
+		States: map[string]*State{
+			"open_pr": {
+				Type:   StateTypeTask,
+				Action: "github.create_pr",
+				Next:   "done",
+				Error:  "failed",
+				// No Retry configured — engine should apply default
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "open_pr", Phase: "idle", StepData: map[string]any{}}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "open_pr" {
+		t.Errorf("expected to stay on open_pr for retry, got %q", result.NewStep)
+	}
+	if result.NewPhase != "retry_pending" {
+		t.Errorf("expected retry_pending phase, got %q", result.NewPhase)
+	}
+	if result.Data["_retry_count"] != 1 {
+		t.Errorf("expected retry count 1, got %v", result.Data["_retry_count"])
+	}
+}
+
+func TestEngine_ProcessStep_NoDefaultRetryOnAICode(t *testing.T) {
+	// ai.code is expensive and should NOT get default retry.
+	registry := NewActionRegistry()
+	registry.Register("ai.code", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("out of tokens")},
+	})
+
+	cfg := &Config{
+		Start: "coding",
+		States: map[string]*State{
+			"coding": {
+				Type:   StateTypeTask,
+				Action: "ai.code",
+				Next:   "done",
+				Error:  "failed",
+				// No Retry — and ai.code is not retryable by default
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "coding", Phase: "idle", StepData: map[string]any{}}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should go directly to error edge, no retry
+	if result.NewStep != "failed" {
+		t.Errorf("expected failed (no default retry for ai.code), got %q", result.NewStep)
+	}
+}
+
+func TestEngine_ProcessStep_ExplicitRetryOverridesDefault(t *testing.T) {
+	// When a state has explicit retry config, the default should not be used.
+	registry := NewActionRegistry()
+	registry.Register("github.create_pr", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("timeout")},
+	})
+
+	cfg := &Config{
+		Start: "open_pr",
+		States: map[string]*State{
+			"open_pr": {
+				Type:   StateTypeTask,
+				Action: "github.create_pr",
+				Next:   "done",
+				Error:  "failed",
+				Retry: []RetryConfig{
+					{MaxAttempts: 5, Interval: &Duration{60 * time.Second}, BackoffRate: 1.5},
+				},
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	view := &WorkItemView{CurrentStep: "open_pr", Phase: "idle", StepData: map[string]any{}}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "open_pr" {
+		t.Errorf("expected to stay on open_pr for retry, got %q", result.NewStep)
+	}
+	if result.NewPhase != "retry_pending" {
+		t.Errorf("expected retry_pending phase, got %q", result.NewPhase)
+	}
+	// Should use explicit max_attempts=5, so still retrying at count=1
+	if result.Data["_retry_count"] != 1 {
+		t.Errorf("expected retry count 1, got %v", result.Data["_retry_count"])
+	}
+
+	// At count=4, explicit retry (max_attempts=5) should still allow retry
+	view.StepData = map[string]any{"_retry_count": 4}
+	result, err = engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "open_pr" {
+		t.Errorf("expected to stay on open_pr at attempt 5 of 5, got %q", result.NewStep)
+	}
+
+	// At count=5, retries exhausted — should fall to error edge
+	view.StepData = map[string]any{"_retry_count": 5}
+	result, err = engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "failed" {
+		t.Errorf("expected failed after explicit retries exhausted, got %q", result.NewStep)
+	}
+}
+
+func TestEngine_ProcessStep_DefaultRetryExhaustedFallsToErrorEdge(t *testing.T) {
+	// After default retry attempts are exhausted, should fall through to error edge.
+	registry := NewActionRegistry()
+	registry.Register("github.merge", &mockAction{
+		result: ActionResult{Success: false, Error: fmt.Errorf("merge conflict")},
+	})
+
+	cfg := &Config{
+		Start: "merge",
+		States: map[string]*State{
+			"merge": {
+				Type:   StateTypeTask,
+				Action: "github.merge",
+				Next:   "done",
+				Error:  "failed",
+				// No explicit Retry — default retry (3 attempts) applies
+			},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, registry, nil, testLogger())
+
+	// Simulate 3 retries already used (default max_attempts=3)
+	view := &WorkItemView{
+		CurrentStep: "merge",
+		Phase:       "idle",
+		StepData:    map[string]any{"_retry_count": 3},
+	}
+	result, err := engine.ProcessStep(context.Background(), view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewStep != "failed" {
+		t.Errorf("expected failed after default retries exhausted, got %q", result.NewStep)
+	}
+}
+
 func TestEngine_ProcessStep_TaskSync_NoOverride(t *testing.T) {
 	// When OverrideNext is empty, the engine should use the state's Next edge as normal.
 	registry := NewActionRegistry()

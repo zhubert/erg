@@ -145,6 +145,44 @@ var ValidActions = map[string]bool{
 	"linear.comment":        true,
 }
 
+// RetryableActions is the set of network-bound actions that should be retried
+// by default when no explicit retry config is provided. These are actions that
+// make network calls and are susceptible to transient failures.
+var RetryableActions = map[string]bool{
+	"github.create_pr":      true,
+	"github.push":           true,
+	"github.merge":          true,
+	"github.comment_issue":  true,
+	"github.comment_pr":     true,
+	"github.add_label":      true,
+	"github.remove_label":   true,
+	"github.close_issue":    true,
+	"github.request_review": true,
+	"git.rebase":            true,
+	"asana.comment":         true,
+	"linear.comment":        true,
+}
+
+// DefaultRetryConfig returns a standard retry configuration for network-bound actions:
+// 3 attempts, 15s interval, 2.0x exponential backoff (delays: 15s, 30s, 60s).
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts: 3,
+		Interval:    &Duration{15 * time.Second},
+		BackoffRate: 2.0,
+	}
+}
+
+// DefaultRetryForAction returns a default retry config slice for the given action
+// if it is a known retryable (network-bound) action. Returns nil for non-retryable
+// actions like ai.code and ai.fix_ci (expensive) or git.format (local-only).
+func DefaultRetryForAction(action string) []RetryConfig {
+	if RetryableActions[action] {
+		return []RetryConfig{DefaultRetryConfig()}
+	}
+	return nil
+}
+
 // ValidEvents is the set of recognized event names for wait states.
 var ValidEvents = map[string]bool{
 	"pr.reviewed":  true,
