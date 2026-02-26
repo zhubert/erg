@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -64,6 +65,7 @@ func testDaemon(cfg *config.Config) *Daemon {
 	d := New(cfg, gitSvc, sessSvc, registry, logger)
 	d.sessionMgr.SetSkipMessageLoad(true)
 	d.state = daemonstate.NewDaemonState("/test/repo")
+	d.dockerHealthCheck = func() error { return nil } // tests assume Docker is available
 	return d
 }
 
@@ -77,6 +79,7 @@ func testDaemonWithExec(cfg *config.Config, mockExec *exec.MockExecutor) *Daemon
 	d := New(cfg, gitSvc, sessSvc, registry, logger)
 	d.sessionMgr.SetSkipMessageLoad(true)
 	d.state = daemonstate.NewDaemonState("/test/repo")
+	d.dockerHealthCheck = func() error { return nil } // tests assume Docker is available
 	return d
 }
 
@@ -1991,5 +1994,157 @@ func TestStartQueuedItems_TransitionsStateFromQueued(t *testing.T) {
 	item = d.state.GetWorkItem("item-1")
 	if item.State == daemonstate.WorkItemQueued {
 		t.Error("item State should no longer be WorkItemQueued after startQueuedItems processes it")
+	}
+}
+
+// TestTick_SkipsDispatchWhenDockerDown verifies that when Docker is unavailable,
+// tick() skips all dispatch methods (processRetryItems, processWorkItems, etc.)
+// but still collects completed workers and saves state.
+func TestTick_SkipsDispatchWhenDockerDown(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+
+	// Inject a health check that reports Docker as down
+	d.dockerHealthCheck = func() error {
+		return errors.New("docker not available")
+	}
+
+	// Add a queued work item
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-docker-down",
+		IssueRef: config.IssueRef{Source: "github", ID: "42"},
+		StepData: map[string]any{},
+	})
+
+	d.loadWorkflowConfigs()
+
+	// Verify the item starts queued
+	item := d.state.GetWorkItem("item-docker-down")
+	if item.State != daemonstate.WorkItemQueued {
+		t.Fatalf("expected initial state queued, got %s", item.State)
+	}
+
+	// Run a tick — Docker is down so dispatch should be skipped
+	d.tick(context.Background())
+
+	// Item should still be queued (startQueuedItems was not called)
+	item = d.state.GetWorkItem("item-docker-down")
+	if item.State != daemonstate.WorkItemQueued {
+		t.Errorf("expected item to remain queued when Docker is down, got state %s", item.State)
+	}
+
+	// dockerDown flag should be set
+	if !d.dockerDown {
+		t.Error("expected dockerDown to be true after failed health check")
+	}
+
+	// dockerDownLogged should be set (warning logged once)
+	if !d.dockerDownLogged {
+		t.Error("expected dockerDownLogged to be true after first failure")
+	}
+}
+
+// TestTick_ResumesWhenDockerRecovers verifies that after Docker goes down and
+// then recovers, the daemon resumes dispatching work and clears the dockerDown flag.
+func TestTick_ResumesWhenDockerRecovers(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+
+	// Start with Docker down
+	d.dockerHealthCheck = func() error {
+		return errors.New("docker not available")
+	}
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-recover",
+		IssueRef: config.IssueRef{Source: "github", ID: "99"},
+		StepData: map[string]any{},
+	})
+
+	d.loadWorkflowConfigs()
+
+	// First tick: Docker is down
+	d.tick(context.Background())
+
+	if !d.dockerDown {
+		t.Fatal("expected dockerDown=true after first tick with Docker down")
+	}
+
+	// Now Docker recovers
+	d.dockerHealthCheck = func() error { return nil }
+
+	// Second tick: Docker is back
+	d.tick(context.Background())
+
+	// dockerDown should be cleared
+	if d.dockerDown {
+		t.Error("expected dockerDown=false after Docker recovered")
+	}
+
+	// dockerDownLogged should also be cleared
+	if d.dockerDownLogged {
+		t.Error("expected dockerDownLogged=false after Docker recovered")
+	}
+}
+
+// TestCheckDockerHealth_LogsOnceWhenDown verifies that the warning is only logged
+// once during sustained Docker unavailability.
+func TestCheckDockerHealth_LogsOnceWhenDown(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.dockerHealthCheck = func() error {
+		return errors.New("docker daemon not running")
+	}
+
+	// First check — should set both flags
+	ok := d.checkDockerHealth()
+	if ok {
+		t.Error("expected checkDockerHealth to return false when Docker is down")
+	}
+	if !d.dockerDown {
+		t.Error("expected dockerDown=true")
+	}
+	if !d.dockerDownLogged {
+		t.Error("expected dockerDownLogged=true after first failure")
+	}
+
+	// Second check — flags should remain, no additional logging
+	ok = d.checkDockerHealth()
+	if ok {
+		t.Error("expected checkDockerHealth to still return false")
+	}
+	if !d.dockerDown {
+		t.Error("expected dockerDown to remain true")
+	}
+	if !d.dockerDownLogged {
+		t.Error("expected dockerDownLogged to remain true")
+	}
+}
+
+// TestCheckDockerHealth_ClearsFlagsOnRecovery verifies that both flags are
+// cleared when Docker becomes available after being down.
+func TestCheckDockerHealth_ClearsFlagsOnRecovery(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Simulate Docker down
+	d.dockerDown = true
+	d.dockerDownLogged = true
+	d.dockerHealthCheck = func() error { return nil }
+
+	ok := d.checkDockerHealth()
+	if !ok {
+		t.Error("expected checkDockerHealth to return true when Docker recovers")
+	}
+	if d.dockerDown {
+		t.Error("expected dockerDown=false after recovery")
+	}
+	if d.dockerDownLogged {
+		t.Error("expected dockerDownLogged=false after recovery")
 	}
 }
