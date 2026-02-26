@@ -2148,3 +2148,206 @@ func TestCheckDockerHealth_ClearsFlagsOnRecovery(t *testing.T) {
 		t.Error("expected dockerDownLogged=false after recovery")
 	}
 }
+
+// TestIsDockerError verifies the isDockerError helper correctly identifies Docker errors.
+func TestIsDockerError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"nil error", nil, false},
+		{"unrelated error", errors.New("something else"), false},
+		{"Cannot connect to Docker daemon", errors.New("Cannot connect to the Docker daemon"), true},
+		{"docker daemon not running", errors.New("docker daemon is not running"), true},
+		{"Is the docker daemon running", errors.New("Is the docker daemon running?"), true},
+		{"wrapped Docker error", fmt.Errorf("container failed: %w", errors.New("Cannot connect to the Docker daemon")), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isDockerError(tt.err)
+			if got != tt.expected {
+				t.Errorf("isDockerError(%v) = %v, want %v", tt.err, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestCollectCompletedWorkers_DockerErrorMarksDockerPending verifies that when
+// a worker fails with a Docker error, the work item is marked as docker_pending
+// instead of being permanently failed.
+func TestCollectCompletedWorkers_DockerErrorMarksDockerPending(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-docker")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-docker",
+		IssueRef:    config.IssueRef{Source: "github", ID: "70"},
+		SessionID:   "sess-docker",
+		Branch:      "feature-sess-docker",
+		CurrentStep: "coding",
+	})
+	d.state.AdvanceWorkItem("item-docker", "coding", "async_pending")
+	d.state.GetWorkItem("item-docker").State = daemonstate.WorkItemActive
+
+	// Create a done worker with a Docker error
+	dockerErr := fmt.Errorf("Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?")
+	mock := worker.NewDoneWorkerWithError(dockerErr)
+	d.workers["item-docker"] = mock
+
+	ctx := context.Background()
+	d.collectCompletedWorkers(ctx)
+
+	// Worker should be removed
+	if _, ok := d.workers["item-docker"]; ok {
+		t.Error("expected done worker to be removed")
+	}
+
+	// Item should be in docker_pending phase, NOT terminal
+	item := d.state.GetWorkItem("item-docker")
+	if item.Phase != "docker_pending" {
+		t.Errorf("expected docker_pending phase, got %s", item.Phase)
+	}
+	if item.IsTerminal() {
+		t.Error("expected non-terminal state — Docker errors should not permanently fail the item")
+	}
+	if item.ErrorMessage == "" {
+		t.Error("expected error message to be set")
+	}
+	if item.State != daemonstate.WorkItemActive {
+		t.Errorf("expected active state, got %s", item.State)
+	}
+}
+
+// TestResumeDockerPendingItems verifies that items in docker_pending phase
+// are reset to idle/active when resumeDockerPendingItems is called.
+func TestResumeDockerPendingItems(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Add two items: one docker_pending, one in a different phase
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-dp-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "80"},
+		SessionID:   "sess-dp-1",
+		Branch:      "feature-dp-1",
+		CurrentStep: "coding",
+	})
+	d.state.UpdateWorkItem("item-dp-1", func(it *daemonstate.WorkItem) {
+		it.Phase = "docker_pending"
+		it.State = daemonstate.WorkItemActive
+		it.ErrorMessage = "Docker unavailable: Cannot connect to the Docker daemon"
+	})
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-dp-2",
+		IssueRef:    config.IssueRef{Source: "github", ID: "81"},
+		SessionID:   "sess-dp-2",
+		Branch:      "feature-dp-2",
+		CurrentStep: "coding",
+	})
+	d.state.UpdateWorkItem("item-dp-2", func(it *daemonstate.WorkItem) {
+		it.Phase = "docker_pending"
+		it.State = daemonstate.WorkItemActive
+		it.ErrorMessage = "Docker unavailable: docker daemon is not running"
+	})
+
+	// Add an item that is NOT docker_pending — should be unaffected
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-normal",
+		IssueRef:    config.IssueRef{Source: "github", ID: "82"},
+		SessionID:   "sess-normal",
+		Branch:      "feature-normal",
+		CurrentStep: "coding",
+	})
+	d.state.AdvanceWorkItem("item-normal", "coding", "async_pending")
+
+	d.resumeDockerPendingItems()
+
+	// Docker-pending items should be reset
+	item1 := d.state.GetWorkItem("item-dp-1")
+	if item1.Phase != "idle" {
+		t.Errorf("expected idle phase for item-dp-1, got %s", item1.Phase)
+	}
+	if item1.State != daemonstate.WorkItemActive {
+		t.Errorf("expected active state for item-dp-1, got %s", item1.State)
+	}
+	if item1.ErrorMessage != "" {
+		t.Errorf("expected empty error message for item-dp-1, got %q", item1.ErrorMessage)
+	}
+
+	item2 := d.state.GetWorkItem("item-dp-2")
+	if item2.Phase != "idle" {
+		t.Errorf("expected idle phase for item-dp-2, got %s", item2.Phase)
+	}
+	if item2.State != daemonstate.WorkItemActive {
+		t.Errorf("expected active state for item-dp-2, got %s", item2.State)
+	}
+	if item2.ErrorMessage != "" {
+		t.Errorf("expected empty error message for item-dp-2, got %q", item2.ErrorMessage)
+	}
+
+	// Normal item should be unchanged
+	itemNormal := d.state.GetWorkItem("item-normal")
+	if itemNormal.Phase != "async_pending" {
+		t.Errorf("expected async_pending phase for item-normal, got %s", itemNormal.Phase)
+	}
+}
+
+// TestDockerRecovery_ResumesDockerPendingItems verifies the full flow:
+// Docker goes down, items get docker_pending, Docker recovers via
+// checkDockerHealth, and items are resumed to idle/active.
+func TestDockerRecovery_ResumesDockerPendingItems(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Add a docker_pending item (simulating a worker that failed due to Docker)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-recover",
+		IssueRef:    config.IssueRef{Source: "github", ID: "90"},
+		SessionID:   "sess-recover",
+		Branch:      "feature-recover",
+		CurrentStep: "coding",
+	})
+	d.state.UpdateWorkItem("item-recover", func(it *daemonstate.WorkItem) {
+		it.Phase = "docker_pending"
+		it.State = daemonstate.WorkItemActive
+		it.ErrorMessage = "Docker unavailable: Cannot connect to the Docker daemon"
+	})
+
+	// Simulate Docker was down
+	d.dockerDown = true
+	d.dockerDownLogged = true
+
+	// Docker recovers
+	d.dockerHealthCheck = func() error { return nil }
+
+	ok := d.checkDockerHealth()
+	if !ok {
+		t.Fatal("expected checkDockerHealth to return true when Docker recovers")
+	}
+
+	// Flags should be cleared
+	if d.dockerDown {
+		t.Error("expected dockerDown=false after recovery")
+	}
+	if d.dockerDownLogged {
+		t.Error("expected dockerDownLogged=false after recovery")
+	}
+
+	// Docker-pending item should be resumed
+	item := d.state.GetWorkItem("item-recover")
+	if item.Phase != "idle" {
+		t.Errorf("expected idle phase after Docker recovery, got %s", item.Phase)
+	}
+	if item.State != daemonstate.WorkItemActive {
+		t.Errorf("expected active state after Docker recovery, got %s", item.State)
+	}
+	if item.ErrorMessage != "" {
+		t.Errorf("expected empty error message after Docker recovery, got %q", item.ErrorMessage)
+	}
+}
