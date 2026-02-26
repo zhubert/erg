@@ -479,7 +479,9 @@ func (d *Daemon) startCoding(ctx context.Context, item *daemonstate.WorkItem) er
 }
 
 // addressFeedback resumes the Claude session to address review comments.
-func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem) {
+// batchCommentCount is the CommentCount from GetBatchPRStatesWithComments,
+// which must be used to update CommentsAddressed so the two stay in sync.
+func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem, batchCommentCount int) {
 	log := d.logger.With("workItem", item.ID, "branch", item.Branch)
 
 	sess := d.config.GetSession(item.SessionID)
@@ -508,11 +510,13 @@ func (d *Daemon) addressFeedback(ctx context.Context, item *daemonstate.WorkItem
 		return
 	}
 
-	// Mark ALL comments as addressed (including transcripts) so the count
-	// stays in sync with GetBatchPRStatesWithComments and doesn't re-trigger.
-	commentCount := len(comments)
+	// Set CommentsAddressed to the batch count from GetBatchPRStatesWithComments
+	// (the same source used for detection in checkPRReviewed) so the two stay
+	// in sync. Using len(comments) here would over-count because
+	// FetchPRReviewComments expands inline code review comments individually,
+	// while the batch API counts each review submission as one.
 	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
-		it.CommentsAddressed += commentCount
+		it.CommentsAddressed = batchCommentCount
 		it.Phase = "addressing_feedback"
 		it.UpdatedAt = time.Now()
 	})

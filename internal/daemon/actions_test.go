@@ -2447,7 +2447,8 @@ func TestAddressFeedback_TranscriptOnlyResetsPhase(t *testing.T) {
 	})
 
 	item := d.state.GetWorkItem("item-1")
-	d.addressFeedback(context.Background(), item)
+	// batchCommentCount=1: 1 top-level comment + 0 actionable reviews
+	d.addressFeedback(context.Background(), item, 1)
 
 	updated := d.state.GetWorkItem("item-1")
 	if updated.Phase != "idle" {
@@ -2458,6 +2459,61 @@ func TestAddressFeedback_TranscriptOnlyResetsPhase(t *testing.T) {
 	}
 	if updated.ConsumesSlot() {
 		t.Error("work item should not consume a concurrency slot after transcript-only feedback")
+	}
+}
+
+// TestAddressFeedback_CommentsAddressedMatchesBatchCount is a regression test
+// for a bug where addressFeedback used len(FetchPRReviewComments) to set
+// CommentsAddressed, which over-counts because inline code review comments are
+// expanded individually. The detection side (GetBatchPRStatesWithComments)
+// counts each review submission as 1. This mismatch caused CommentsAddressed
+// to permanently exceed CommentCount, preventing detection of new comments.
+func TestAddressFeedback_CommentsAddressedMatchesBatchCount(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	// Simulate a CHANGES_REQUESTED review with 4 inline comments.
+	// FetchPRReviewComments returns 5 items (1 review body + 4 inline),
+	// but GetBatchPRStatesWithComments would count this as 1 actionable review.
+	reviewJSON := `{
+		"reviews": [{
+			"author": {"login": "reviewer"},
+			"body": "Please fix the duplication",
+			"state": "CHANGES_REQUESTED",
+			"comments": [
+				{"author": {"login": "reviewer"}, "body": "Comment 1", "path": "file.go", "line": 10, "url": "https://example.com/1"},
+				{"author": {"login": "reviewer"}, "body": "Comment 2", "path": "file.go", "line": 20, "url": "https://example.com/2"},
+				{"author": {"login": "reviewer"}, "body": "Comment 3", "path": "file.go", "line": 30, "url": "https://example.com/3"},
+				{"author": {"login": "reviewer"}, "body": "Comment 4", "path": "file.go", "line": 40, "url": "https://example.com/4"}
+			]
+		}],
+		"comments": []
+	}`
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddExactMatch("gh", []string{"pr", "view", "feature-sess-1", "--json", "reviews,comments"},
+		exec.MockResponse{Stdout: []byte(reviewJSON)})
+
+	d := testDaemonWithExec(cfg, mockExec)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	// batchCommentCount=1: the batch API sees 0 top-level comments + 1 review
+	d.addressFeedback(context.Background(), item, 1)
+
+	updated := d.state.GetWorkItem("item-1")
+	// CommentsAddressed must equal the batchCommentCount (1), NOT the
+	// individual comment count from FetchPRReviewComments (5).
+	if updated.CommentsAddressed != 1 {
+		t.Errorf("CommentsAddressed = %d, want 1 (batch count); using individual comment count would over-count and break detection", updated.CommentsAddressed)
 	}
 }
 
@@ -3010,7 +3066,8 @@ func TestAddressFeedback_FormatCommandStoredInStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	d.addressFeedback(context.Background(), item)
+	// batchCommentCount=1: 0 top-level comments + 1 actionable review
+	d.addressFeedback(context.Background(), item, 1)
 
 	if got, _ := item.StepData["_format_command"].(string); got != "gofmt -l -w ." {
 		t.Errorf("expected _format_command=%q, got %q", "gofmt -l -w .", got)
@@ -3048,7 +3105,8 @@ func TestAddressFeedback_InheritsFormatCommandFromStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	d.addressFeedback(context.Background(), item)
+	// batchCommentCount=1: 0 top-level comments + 1 actionable review
+	d.addressFeedback(context.Background(), item, 1)
 
 	// Existing _format_command must not be cleared.
 	if got, _ := item.StepData["_format_command"].(string); got != "gofmt ./..." {
