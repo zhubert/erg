@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	osexec "os/exec"
 	"sync"
 	"time"
 
@@ -57,6 +58,11 @@ type Daemon struct {
 	pollInterval          time.Duration
 	reviewPollInterval    time.Duration
 	lastReviewPollAt      time.Time
+
+	// Docker health tracking
+	dockerDown        bool
+	dockerDownLogged  bool
+	dockerHealthCheck func() error // injectable for testing; nil means use default
 }
 
 // Option configures the daemon.
@@ -208,13 +214,16 @@ func (d *Daemon) notifyWorkerDone() {
 
 // tick performs one iteration of the daemon event loop.
 func (d *Daemon) tick(ctx context.Context) {
-	d.collectCompletedWorkers(ctx) // Detect finished Claude sessions
-	d.processRetryItems(ctx)       // Re-execute items whose retry delay has elapsed
-	d.processIdleSyncItems(ctx)    // Execute items idle on sync task steps (e.g. after recovery)
-	d.processWorkItems(ctx)        // Process active items via engine
-	d.pollForNewIssues(ctx)        // Find new issues (if slots available)
-	d.startQueuedItems(ctx)        // Start coding on queued items
-	d.saveState()                  // Persist
+	d.collectCompletedWorkers(ctx) // Always: detect finished sessions
+	dockerOK := d.checkDockerHealth()
+	if dockerOK {
+		d.processRetryItems(ctx)   // Re-execute items whose retry delay has elapsed
+		d.processIdleSyncItems(ctx) // Execute items idle on sync task steps (e.g. after recovery)
+		d.processWorkItems(ctx)    // Process active items via engine
+		d.pollForNewIssues(ctx)    // Find new issues (if slots available)
+		d.startQueuedItems(ctx)    // Start coding on queued items
+	}
+	d.saveState() // Always: persist
 }
 
 // collectCompletedWorkers checks for finished Claude sessions and advances work items.
@@ -821,6 +830,41 @@ func (d *Daemon) getEffectiveMergeMethod(repoPath string) string {
 		}
 	}
 	return d.config.GetAutoMergeMethod()
+}
+
+// checkDockerHealth probes Docker availability. Returns true if Docker is OK.
+// When Docker is down, it logs a warning once and returns false. When Docker
+// recovers after being down, it logs recovery and returns true.
+func (d *Daemon) checkDockerHealth() bool {
+	var err error
+	if d.dockerHealthCheck != nil {
+		err = d.dockerHealthCheck()
+	} else {
+		err = defaultDockerHealthCheck()
+	}
+
+	if err != nil {
+		d.dockerDown = true
+		if !d.dockerDownLogged {
+			d.logger.Warn("docker is unavailable, pausing work dispatch", "error", err)
+			d.dockerDownLogged = true
+		}
+		return false
+	}
+
+	if d.dockerDown {
+		d.logger.Info("docker recovered, resuming work dispatch")
+		d.dockerDown = false
+		d.dockerDownLogged = false
+	}
+	return true
+}
+
+// defaultDockerHealthCheck runs "docker version" with a 5-second timeout.
+func defaultDockerHealthCheck() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return osexec.CommandContext(ctx, "docker", "version").Run()
 }
 
 // runHooks runs the after-hooks for a given workflow step.
