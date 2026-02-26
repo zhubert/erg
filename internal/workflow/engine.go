@@ -383,9 +383,15 @@ func (e *Engine) AdvanceAfterAsync(item *WorkItemView, success bool) (*StepResul
 // handleFailure processes a failure in a task state, checking retry and catch rules
 // before falling back to the error edge.
 func (e *Engine) handleFailure(item *WorkItemView, state *State, errStr string, data map[string]any) (*StepResult, error) {
+	// Use explicit retry config, or fall back to default for retryable actions
+	retryRules := state.Retry
+	if len(retryRules) == 0 {
+		retryRules = DefaultRetryForAction(state.Action)
+	}
+
 	// Check retry rules first
 	retryCount := getRetryCount(item.StepData)
-	for _, retry := range state.Retry {
+	for _, retry := range retryRules {
 		if !matchesErrors(errStr, retry.Errors) {
 			continue
 		}

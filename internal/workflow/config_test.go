@@ -361,3 +361,71 @@ source:
 		t.Error("states should be nil for partial config")
 	}
 }
+
+func TestDefaultRetryForAction(t *testing.T) {
+	tests := []struct {
+		name       string
+		action     string
+		wantRetry  bool
+	}{
+		// Network-bound actions should get default retry
+		{"github.create_pr", "github.create_pr", true},
+		{"github.push", "github.push", true},
+		{"github.merge", "github.merge", true},
+		{"github.comment_issue", "github.comment_issue", true},
+		{"github.comment_pr", "github.comment_pr", true},
+		{"github.add_label", "github.add_label", true},
+		{"github.remove_label", "github.remove_label", true},
+		{"github.close_issue", "github.close_issue", true},
+		{"github.request_review", "github.request_review", true},
+		{"git.rebase", "git.rebase", true},
+		{"asana.comment", "asana.comment", true},
+		{"linear.comment", "linear.comment", true},
+		// Non-retryable actions should return nil
+		{"ai.code", "ai.code", false},
+		{"ai.fix_ci", "ai.fix_ci", false},
+		{"git.format", "git.format", false},
+		{"unknown action", "unknown.action", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DefaultRetryForAction(tt.action)
+			if tt.wantRetry {
+				if got == nil {
+					t.Fatal("expected retry config, got nil")
+				}
+				if len(got) != 1 {
+					t.Fatalf("expected 1 retry config, got %d", len(got))
+				}
+				if got[0].MaxAttempts != 3 {
+					t.Errorf("max_attempts: got %d, want 3", got[0].MaxAttempts)
+				}
+				if got[0].Interval == nil || got[0].Interval.Duration != 15*time.Second {
+					t.Error("interval: expected 15s")
+				}
+				if got[0].BackoffRate != 2.0 {
+					t.Errorf("backoff_rate: got %f, want 2.0", got[0].BackoffRate)
+				}
+			} else {
+				if got != nil {
+					t.Errorf("expected nil retry config, got %v", got)
+				}
+			}
+		})
+	}
+}
+
+func TestDefaultRetryConfig(t *testing.T) {
+	cfg := DefaultRetryConfig()
+	if cfg.MaxAttempts != 3 {
+		t.Errorf("max_attempts: got %d, want 3", cfg.MaxAttempts)
+	}
+	if cfg.Interval == nil || cfg.Interval.Duration != 15*time.Second {
+		t.Error("interval: expected 15s")
+	}
+	if cfg.BackoffRate != 2.0 {
+		t.Errorf("backoff_rate: got %f, want 2.0", cfg.BackoffRate)
+	}
+}

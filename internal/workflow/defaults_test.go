@@ -133,6 +133,47 @@ func TestDefaultWorkflowConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultWorkflowConfig_RetryOnNetworkStates(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+
+	// States that should have retry configured
+	retryStates := []string{"open_pr", "push_ci_fix", "rebase", "merge"}
+	for _, name := range retryStates {
+		state, ok := cfg.States[name]
+		if !ok {
+			t.Errorf("expected state %q to exist", name)
+			continue
+		}
+		if len(state.Retry) == 0 {
+			t.Errorf("state %q should have retry configured", name)
+			continue
+		}
+		r := state.Retry[0]
+		if r.MaxAttempts != 3 {
+			t.Errorf("state %q retry max_attempts: got %d, want 3", name, r.MaxAttempts)
+		}
+		if r.Interval == nil || r.Interval.Duration != 15*time.Second {
+			t.Errorf("state %q retry interval: expected 15s", name)
+		}
+		if r.BackoffRate != 2.0 {
+			t.Errorf("state %q retry backoff_rate: got %f, want 2.0", name, r.BackoffRate)
+		}
+	}
+
+	// States that should NOT have retry configured
+	noRetryStates := []string{"coding", "fix_ci"}
+	for _, name := range noRetryStates {
+		state, ok := cfg.States[name]
+		if !ok {
+			t.Errorf("expected state %q to exist", name)
+			continue
+		}
+		if len(state.Retry) > 0 {
+			t.Errorf("state %q should NOT have retry configured (expensive action)", name)
+		}
+	}
+}
+
 func TestMerge(t *testing.T) {
 	t.Run("empty partial gets all defaults", func(t *testing.T) {
 		partial := &Config{}
@@ -283,6 +324,63 @@ func TestMerge(t *testing.T) {
 
 		if result.Settings != nil {
 			t.Error("expected nil settings when both are nil")
+		}
+	})
+
+	t.Run("default retry configs deep copied not shared", func(t *testing.T) {
+		defaults := &Config{
+			Workflow: "test",
+			Start:   "s",
+			States: map[string]*State{
+				"s": {
+					Type:   StateTypeTask,
+					Action: "github.push",
+					Next:   "done",
+					Retry:  []RetryConfig{DefaultRetryConfig()},
+				},
+				"done": {Type: StateTypeSucceed},
+			},
+		}
+		partial := &Config{}
+		result := Merge(partial, defaults)
+
+		// Mutate the result's retry interval; should not affect defaults
+		result.States["s"].Retry[0].Interval.Duration = 99 * time.Second
+		if defaults.States["s"].Retry[0].Interval.Duration != 15*time.Second {
+			t.Error("merge should deep-copy retry interval from defaults")
+		}
+
+		// Mutate max_attempts
+		result.States["s"].Retry[0].MaxAttempts = 99
+		if defaults.States["s"].Retry[0].MaxAttempts != 3 {
+			t.Error("merge should deep-copy retry config from defaults")
+		}
+	})
+
+	t.Run("default catch configs deep copied not shared", func(t *testing.T) {
+		defaults := &Config{
+			Workflow: "test",
+			Start:   "s",
+			States: map[string]*State{
+				"s": {
+					Type:   StateTypeTask,
+					Action: "github.push",
+					Next:   "done",
+					Catch: []CatchConfig{
+						{Errors: []string{"*"}, Next: "recovery"},
+					},
+				},
+				"done":     {Type: StateTypeSucceed},
+				"recovery": {Type: StateTypeSucceed},
+			},
+		}
+		partial := &Config{}
+		result := Merge(partial, defaults)
+
+		// Mutate the result's catch errors; should not affect defaults
+		result.States["s"].Catch[0].Errors[0] = "mutated"
+		if defaults.States["s"].Catch[0].Errors[0] != "*" {
+			t.Error("merge should deep-copy catch errors from defaults")
 		}
 	})
 

@@ -44,6 +44,7 @@ func DefaultWorkflowConfig() *Config {
 				},
 				Next:  "await_ci",
 				Error: "failed",
+				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"await_ci": {
 				Type:    StateTypeWait,
@@ -73,6 +74,7 @@ func DefaultWorkflowConfig() *Config {
 				},
 				Next:  "await_ci",
 				Error: "failed",
+				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"fix_ci": {
 				Type:   StateTypeTask,
@@ -88,6 +90,7 @@ func DefaultWorkflowConfig() *Config {
 				Action: "github.push",
 				Next:   "await_ci",
 				Error:  "failed",
+				Retry:  []RetryConfig{DefaultRetryConfig()},
 			},
 			"await_review": {
 				Type:  StateTypeWait,
@@ -106,7 +109,8 @@ func DefaultWorkflowConfig() *Config {
 					"method":  "rebase",
 					"cleanup": true,
 				},
-				Next: "done",
+				Next:  "done",
+				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"done": {
 				Type: StateTypeSucceed,
@@ -168,6 +172,26 @@ func Merge(partial, defaults *Config) *Config {
 		if state.After != nil {
 			s.After = make([]HookConfig, len(state.After))
 			copy(s.After, state.After)
+		}
+		if state.Retry != nil {
+			s.Retry = make([]RetryConfig, len(state.Retry))
+			for i, r := range state.Retry {
+				s.Retry[i] = r
+				if r.Interval != nil {
+					intervalCopy := *r.Interval
+					s.Retry[i].Interval = &intervalCopy
+				}
+			}
+		}
+		if state.Catch != nil {
+			s.Catch = make([]CatchConfig, len(state.Catch))
+			for i, c := range state.Catch {
+				s.Catch[i] = c
+				if c.Errors != nil {
+					s.Catch[i].Errors = make([]string, len(c.Errors))
+					copy(s.Catch[i].Errors, c.Errors)
+				}
+			}
 		}
 		result.States[name] = &s
 	}
