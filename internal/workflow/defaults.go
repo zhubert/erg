@@ -7,7 +7,9 @@ import "time"
 //	coding → open_pr → await_ci → check_ci_result
 //	  → conflicting=true: rebase → await_ci (loop, bounded by max_rebase_rounds)
 //	    → rebase error: resolve_conflicts (Claude AI) → push_conflict_fix → await_ci
-//	  → ci_passed=true:   await_review → merge → done
+//	  → ci_passed=true:   await_review → check_review_result
+//	    → review_approved=true:    merge → done
+//	    → changes_requested=true: address_review → push_review_fix → await_review (loop)
 //	  → ci_failed=true:   fix_ci → push_ci_fix → await_ci (loop)
 //	  → fix_ci error (max rounds): → failed
 //
@@ -15,6 +17,7 @@ import "time"
 // The fix loop is bounded by max_ci_fix_rounds (default 3).
 // Merge conflicts are first rebased mechanically (bounded by max_rebase_rounds, default 3).
 // If rebase fails (real conflicts), Claude resolves them via ai.resolve_conflicts.
+// Review feedback is addressed via ai.address_review (bounded by max_review_rounds, default 3).
 func DefaultWorkflowConfig() *Config {
 	return &Config{
 		Workflow: "issue-to-merge",
@@ -114,11 +117,35 @@ func DefaultWorkflowConfig() *Config {
 				Type:  StateTypeWait,
 				Event: "pr.reviewed",
 				Params: map[string]any{
-					"auto_address":        true,
-					"max_feedback_rounds": 3,
+					"auto_address": false,
 				},
-				Next:  "merge",
+				Next:  "check_review_result",
 				Error: "failed",
+			},
+			"check_review_result": {
+				Type: StateTypeChoice,
+				Choices: []ChoiceRule{
+					{Variable: "review_approved", Equals: true, Next: "merge"},
+					{Variable: "changes_requested", Equals: true, Next: "address_review"},
+					{Variable: "pr_merged_externally", Equals: true, Next: "done"},
+				},
+				Default: "failed",
+			},
+			"address_review": {
+				Type:   StateTypeTask,
+				Action: "ai.address_review",
+				Params: map[string]any{
+					"max_review_rounds": 3,
+				},
+				Next:  "push_review_fix",
+				Error: "failed",
+			},
+			"push_review_fix": {
+				Type:   StateTypeTask,
+				Action: "github.push",
+				Next:   "await_review",
+				Error:  "failed",
+				Retry:  []RetryConfig{DefaultRetryConfig()},
 			},
 			"merge": {
 				Type:   StateTypeTask,

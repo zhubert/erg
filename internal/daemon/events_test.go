@@ -621,6 +621,156 @@ func TestCheckPRReviewed_AutoAddressDisabled(t *testing.T) {
 	}
 }
 
+// TestCheckPRReviewed_ChangesRequestedAutoAddressDisabled verifies that when
+// auto_address=false and the review decision is CHANGES_REQUESTED, the event
+// fires with changes_requested=true so the workflow can route to address_review.
+func TestCheckPRReviewed_ChangesRequestedAutoAddressDisabled(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// PR is OPEN with a CHANGES_REQUESTED review — use a combined JSON that
+	// satisfies both GetPRState (reads "state") and CheckPRReviewDecision (reads "reviews").
+	type reviewAuthor struct {
+		Login string `json:"login"`
+	}
+	type review struct {
+		Author   reviewAuthor `json:"author"`
+		State    string       `json:"state"`
+		Comments []any        `json:"comments"`
+	}
+	prViewJSON, _ := json.Marshal(struct {
+		State   string   `json:"state"`
+		Reviews []review `json:"reviews"`
+	}{
+		State: "OPEN",
+		Reviews: []review{{
+			Author:   reviewAuthor{Login: "reviewer1"},
+			State:    "CHANGES_REQUESTED",
+			Comments: []any{},
+		}},
+	})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
+		Stdout: prViewJSON,
+	})
+
+	// No new comments — CommentCount equals CommentsAddressed
+	prListJSON, _ := json.Marshal([]struct {
+		State       string        `json:"state"`
+		HeadRefName string        `json:"headRefName"`
+		Comments    []interface{} `json:"comments"`
+		Reviews     []interface{} `json:"reviews"`
+	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []interface{}{}, Reviews: []interface{}{}}})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
+		Stdout: prListJSON,
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
+		SessionID:   "sess-1",
+		Branch:      "feature-sess-1",
+		CurrentStep: "await_review",
+	})
+
+	checker := NewEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{"auto_address": false})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+
+	fired, data, err := checker.checkPRReviewed(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fired {
+		t.Error("expected fired=true when auto_address=false and review requests changes")
+	}
+	if data == nil || data["changes_requested"] != true {
+		t.Errorf("expected changes_requested=true in data, got %v", data)
+	}
+}
+
+// TestCheckPRReviewed_ChangesRequestedAutoAddressEnabled verifies that when
+// auto_address=true, a CHANGES_REQUESTED review does NOT fire the changes_requested
+// event (inline addressFeedback handles review comments via comment count instead).
+func TestCheckPRReviewed_ChangesRequestedAutoAddressEnabled(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// PR is OPEN with a CHANGES_REQUESTED review
+	type reviewAuthor struct {
+		Login string `json:"login"`
+	}
+	type review struct {
+		Author   reviewAuthor `json:"author"`
+		State    string       `json:"state"`
+		Comments []any        `json:"comments"`
+	}
+	prViewJSON, _ := json.Marshal(struct {
+		State   string   `json:"state"`
+		Reviews []review `json:"reviews"`
+	}{
+		State: "OPEN",
+		Reviews: []review{{
+			Author:   reviewAuthor{Login: "reviewer1"},
+			State:    "CHANGES_REQUESTED",
+			Comments: []any{},
+		}},
+	})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
+		Stdout: prViewJSON,
+	})
+
+	// No new comments
+	prListJSON, _ := json.Marshal([]struct {
+		State       string        `json:"state"`
+		HeadRefName string        `json:"headRefName"`
+		Comments    []interface{} `json:"comments"`
+		Reviews     []interface{} `json:"reviews"`
+	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []interface{}{}, Reviews: []interface{}{}}})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
+		Stdout: prListJSON,
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "1"},
+		SessionID:   "sess-1",
+		Branch:      "feature-sess-1",
+		CurrentStep: "await_review",
+	})
+
+	checker := NewEventChecker(d)
+	// auto_address=true: changes_requested event should NOT fire even with a
+	// CHANGES_REQUESTED review — the inline addressFeedback path handles it via
+	// comment count, not by firing the event.
+	params := workflow.NewParamHelper(map[string]any{"auto_address": true})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+
+	fired, data, err := checker.checkPRReviewed(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Errorf("expected fired=false when auto_address=true; data=%v", data)
+	}
+	if data != nil && data["changes_requested"] == true {
+		t.Error("expected no changes_requested event when auto_address=true")
+	}
+}
+
 func TestCheckPRMergeable_PRClosed(t *testing.T) {
 	cfg := testConfig()
 	mockExec := exec.NewMockExecutor(nil)
