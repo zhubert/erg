@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	osexec "os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -266,6 +267,18 @@ func (d *Daemon) collectCompletedWorkers(ctx context.Context) {
 
 		switch item.Phase {
 		case "async_pending":
+			// If the worker failed due to Docker being unavailable,
+			// mark for retry instead of permanent failure.
+			if cw.exitErr != nil && isDockerError(cw.exitErr) {
+				d.logger.Warn("worker failed due to Docker unavailability, will retry",
+					"workItem", cw.workItemID, "error", cw.exitErr)
+				d.state.UpdateWorkItem(cw.workItemID, func(it *daemonstate.WorkItem) {
+					it.Phase = "docker_pending"
+					it.UpdatedAt = time.Now()
+				})
+				d.state.SetErrorMessage(cw.workItemID, fmt.Sprintf("Docker unavailable: %v", cw.exitErr))
+				continue
+			}
 			// Main async action completed (e.g., coding)
 			d.handleAsyncComplete(ctx, item, cw.exitErr)
 
@@ -832,6 +845,36 @@ func (d *Daemon) getEffectiveMergeMethod(repoPath string) string {
 	return d.config.GetAutoMergeMethod()
 }
 
+// isDockerError returns true if the error indicates Docker/container runtime
+// is unavailable. These errors are transient and should trigger retry rather
+// than permanent failure.
+func isDockerError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Cannot connect to the Docker daemon") ||
+		strings.Contains(msg, "docker daemon is not running") ||
+		strings.Contains(msg, "Is the docker daemon running")
+}
+
+// resumeDockerPendingItems resets items that were paused due to Docker
+// unavailability back to a retryable state.
+func (d *Daemon) resumeDockerPendingItems() {
+	for _, item := range d.state.GetActiveWorkItems() {
+		if item.Phase != "docker_pending" {
+			continue
+		}
+		d.logger.Info("resuming Docker-pending item", "workItem", item.ID, "step", item.CurrentStep)
+		d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+			it.Phase = "idle"
+			it.State = daemonstate.WorkItemActive
+			it.UpdatedAt = time.Now()
+		})
+		d.state.SetErrorMessage(item.ID, "")
+	}
+}
+
 // checkDockerHealth probes Docker availability. Returns true if Docker is OK.
 // When Docker is down, it logs a warning once and returns false. When Docker
 // recovers after being down, it logs recovery and returns true.
@@ -856,6 +899,7 @@ func (d *Daemon) checkDockerHealth() bool {
 		d.logger.Info("docker recovered, resuming work dispatch")
 		d.dockerDown = false
 		d.dockerDownLogged = false
+		d.resumeDockerPendingItems()
 	}
 	return true
 }
