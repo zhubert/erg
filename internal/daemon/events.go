@@ -113,8 +113,10 @@ func (c *EventChecker) checkPRReviewed(ctx context.Context, params *workflow.Par
 			return false, nil, nil
 		}
 
-		// Start addressing feedback (this is an internal sub-action of the wait state)
-		d.addressFeedback(ctx, workItem)
+		// Start addressing feedback (this is an internal sub-action of the wait state).
+		// Pass the batch CommentCount so addressFeedback sets CommentsAddressed
+		// using the same counting source used for detection here.
+		d.addressFeedback(ctx, workItem, result.CommentCount)
 		return false, nil, nil
 	}
 
