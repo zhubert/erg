@@ -820,6 +820,7 @@ func (d *Daemon) buildActionRegistry() *workflow.ActionRegistry {
 	registry.Register("github.close_issue", &closeIssueAction{daemon: d})
 	registry.Register("github.request_review", &requestReviewAction{daemon: d})
 	registry.Register("ai.fix_ci", &fixCIAction{daemon: d})
+	registry.Register("ai.address_review", &addressReviewAction{daemon: d})
 	registry.Register("git.format", &formatAction{daemon: d})
 	registry.Register("git.rebase", &rebaseAction{daemon: d})
 	registry.Register("ai.resolve_conflicts", &resolveConflictsAction{daemon: d})

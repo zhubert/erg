@@ -331,7 +331,7 @@ func TestPrimaryWorkflowPath_Default(t *testing.T) {
 	cfg := workflow.DefaultWorkflowConfig()
 	path := primaryWorkflowPath(cfg)
 
-	// Default happy path: coding → open_pr → await_ci → check_ci_result → await_review → merge → done
+	// Default happy path: coding → open_pr → await_ci → check_ci_result → await_review → check_review_result → merge → done
 	expectedStart := "coding"
 	if len(path) == 0 || path[0] != expectedStart {
 		t.Errorf("expected path to start with %q, got %v", expectedStart, path)
@@ -348,7 +348,8 @@ func TestPrimaryWorkflowPath_Default(t *testing.T) {
 		{"open_pr", "await_ci"},
 		{"await_ci", "check_ci_result"},
 		{"check_ci_result", "await_review"},
-		{"await_review", "merge"},
+		{"await_review", "check_review_result"},
+		{"check_review_result", "merge"},
 		{"merge", "done"},
 	}
 	for _, c := range checkOrder {
@@ -442,7 +443,7 @@ func TestPrintMapView_DefaultConfig(t *testing.T) {
 	out := buf.String()
 
 	// All primary path states should appear
-	for _, state := range []string{"coding", "open_pr", "await_ci", "await_review", "merge", "done"} {
+	for _, state := range []string{"coding", "open_pr", "await_ci", "await_review", "check_review_result", "merge", "done"} {
 		if !strings.Contains(out, state) {
 			t.Errorf("expected state %q in map output: %q", state, out)
 		}

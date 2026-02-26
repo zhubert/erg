@@ -140,6 +140,7 @@ var ValidActions = map[string]bool{
 	"github.request_review": true,
 	"ai.fix_ci":             true,
 	"ai.resolve_conflicts":  true,
+	"ai.address_review":     true,
 	"git.format":            true,
 	"git.rebase":            true,
 	"asana.comment":         true,

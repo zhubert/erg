@@ -1810,6 +1810,146 @@ func getCIFixRounds(stepData map[string]any) int {
 	}
 }
 
+// addressReviewAction implements the ai.address_review action.
+type addressReviewAction struct {
+	daemon *Daemon
+}
+
+// Execute fetches PR review comments and resumes the coding session to address them.
+func (a *addressReviewAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	// Check max rounds
+	maxRounds := ac.Params.Int("max_review_rounds", 3)
+	rounds := getReviewRounds(item.StepData)
+	if rounds >= maxRounds {
+		return workflow.ActionResult{Error: fmt.Errorf("max review rounds exceeded (%d/%d)", rounds, maxRounds)}
+	}
+
+	sess := d.config.GetSession(item.SessionID)
+	if sess == nil {
+		return workflow.ActionResult{Error: fmt.Errorf("session not found")}
+	}
+
+	// Fetch review comments
+	pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	comments, err := d.gitService.FetchPRReviewComments(pollCtx, sess.RepoPath, item.Branch)
+	if err != nil {
+		d.logger.Warn("failed to fetch review comments, proceeding with generic message", "error", err)
+	}
+
+	// Filter out daemon transcript comments
+	reviewComments := worker.FilterTranscriptComments(comments)
+
+	// Increment rounds
+	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+		it.StepData["review_rounds"] = rounds + 1
+		it.UpdatedAt = time.Now()
+	})
+
+	// Resume session
+	if err := d.startAddressReview(ctx, item, sess, rounds+1, reviewComments); err != nil {
+		return workflow.ActionResult{Error: err}
+	}
+
+	return workflow.ActionResult{Success: true, Async: true}
+}
+
+// startAddressReview resumes the coding session with PR review feedback context.
+func (d *Daemon) startAddressReview(ctx context.Context, item daemonstate.WorkItem, sess *config.Session, round int, comments []git.PRReviewComment) error {
+	// Refresh stale session (handles daemon restarts where old session is gone)
+	sess = d.refreshStaleSession(ctx, item, sess)
+
+	var prompt string
+	if len(comments) > 0 {
+		prompt = worker.FormatPRCommentsPrompt(comments)
+	} else {
+		prompt = formatAddressReviewPrompt(round)
+	}
+
+	// Resolve system prompt and format_command from workflow config's address_review state.
+	wfCfg := d.getWorkflowConfig(sess.RepoPath)
+	reviewState := wfCfg.States["address_review"]
+	systemPrompt := ""
+	formatCommand := ""
+	if reviewState != nil {
+		p := workflow.NewParamHelper(reviewState.Params)
+		systemPrompt = p.String("system_prompt", "")
+		formatCommand = p.String("format_command", "")
+		if formatCommand != "" {
+			// address_review has its own format_command — update step data so
+			// handleAsyncComplete uses it as the formatter safety net after
+			// this round completes.
+			formatMessage := p.String("format_message", "Apply auto-formatting")
+			d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+				it.StepData["_format_command"] = formatCommand
+				it.StepData["_format_message"] = formatMessage
+			})
+			d.saveState()
+		}
+	}
+
+	resolvedPrompt, err := workflow.ResolveSystemPrompt(systemPrompt, sess.RepoPath)
+	if err != nil {
+		d.logger.Warn("failed to resolve address_review system prompt", "error", err)
+	}
+
+	if resolvedPrompt == "" {
+		resolvedPrompt = DefaultCodingSystemPrompt
+	}
+
+	// Inject formatting instructions if a format command is configured.
+	// If address_review has no format_command param, fall back to whatever the
+	// coding step stored in step data.
+	if formatCommand == "" {
+		formatCommand, _ = item.StepData["_format_command"].(string)
+	}
+	if formatCommand != "" {
+		resolvedPrompt = resolvedPrompt + "\n\nFORMATTING: Before committing any changes, run the following formatter command:\n  " + formatCommand + "\nStage and include all formatting changes in your commit."
+	}
+
+	d.startWorkerWithPrompt(ctx, item, sess, prompt, resolvedPrompt)
+	d.logger.Info("started address review session", "workItem", item.ID, "round", round, "commentCount", len(comments))
+	return nil
+}
+
+// formatAddressReviewPrompt formats a fallback prompt for Claude when review comments are unavailable.
+func formatAddressReviewPrompt(round int) string {
+	return fmt.Sprintf(`PR REVIEW — ADDRESS ROUND %d
+
+The PR has received review feedback requesting changes. Please review the PR comments and make the requested changes.
+
+INSTRUCTIONS:
+1. Review all open comments on this PR carefully
+2. Make the requested changes to address the feedback
+3. Run relevant tests locally to verify your changes
+4. Commit your changes locally — the system will push and re-request review automatically
+
+DO NOT push or create PRs — the system handles this.`, round)
+}
+
+// getReviewRounds extracts the review round counter from step data.
+func getReviewRounds(stepData map[string]any) int {
+	v, ok := stepData["review_rounds"]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	default:
+		return 0
+	}
+}
+
 // saveRunnerMessages saves messages for a session's runner.
 func (d *Daemon) saveRunnerMessages(sessionID string, runner claude.RunnerInterface) {
 	if err := d.sessionMgr.SaveRunnerMessages(sessionID, runner); err != nil {

@@ -45,14 +45,51 @@ func TestDefaultWorkflowConfig(t *testing.T) {
 		t.Error("coding supervisor: expected false")
 	}
 
-	// Review params
+	// await_review uses explicit address_review state (auto_address=false)
 	review := cfg.States["await_review"]
 	rp := NewParamHelper(review.Params)
-	if rp.Int("max_feedback_rounds", 0) != 3 {
-		t.Error("review max_feedback_rounds: expected 3")
+	if rp.Bool("auto_address", true) {
+		t.Error("review auto_address: expected false (explicit address_review state used instead)")
 	}
-	if !rp.Bool("auto_address", false) {
-		t.Error("review auto_address: expected true")
+	if review.Next != "check_review_result" {
+		t.Errorf("await_review next: expected check_review_result, got %s", review.Next)
+	}
+
+	// check_review_result routes review_approved → merge and changes_requested → address_review
+	checkReview := cfg.States["check_review_result"]
+	if checkReview == nil {
+		t.Fatal("expected check_review_result state")
+	}
+	if checkReview.Type != StateTypeChoice {
+		t.Errorf("check_review_result type: expected choice, got %s", checkReview.Type)
+	}
+
+	// address_review state
+	addressReview := cfg.States["address_review"]
+	if addressReview == nil {
+		t.Fatal("expected address_review state")
+	}
+	if addressReview.Action != "ai.address_review" {
+		t.Errorf("address_review action: expected ai.address_review, got %s", addressReview.Action)
+	}
+	arp := NewParamHelper(addressReview.Params)
+	if arp.Int("max_review_rounds", 0) != 3 {
+		t.Error("address_review max_review_rounds: expected 3")
+	}
+	if addressReview.Next != "push_review_fix" {
+		t.Errorf("address_review next: expected push_review_fix, got %s", addressReview.Next)
+	}
+
+	// push_review_fix loops back to await_review
+	pushReviewFix := cfg.States["push_review_fix"]
+	if pushReviewFix == nil {
+		t.Fatal("expected push_review_fix state")
+	}
+	if pushReviewFix.Action != "github.push" {
+		t.Errorf("push_review_fix action: expected github.push, got %s", pushReviewFix.Action)
+	}
+	if pushReviewFix.Next != "await_review" {
+		t.Errorf("push_review_fix next: expected await_review, got %s", pushReviewFix.Next)
 	}
 
 	// CI params — on_failure should be "fix" for the CI fix loop
@@ -165,7 +202,7 @@ func TestDefaultWorkflowConfig_RetryOnNetworkStates(t *testing.T) {
 	cfg := DefaultWorkflowConfig()
 
 	// States that should have retry configured
-	retryStates := []string{"open_pr", "push_ci_fix", "push_conflict_fix", "rebase", "merge"}
+	retryStates := []string{"open_pr", "push_ci_fix", "push_conflict_fix", "push_review_fix", "rebase", "merge"}
 	for _, name := range retryStates {
 		state, ok := cfg.States[name]
 		if !ok {
