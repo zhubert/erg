@@ -4180,6 +4180,320 @@ func TestLinearCommentAction_ProviderError(t *testing.T) {
 	}
 }
 
+// --- addressReviewAction tests ---
+
+func TestAddressReviewAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &addressReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_review_rounds": 3})
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestAddressReviewAction_Execute_MaxRoundsExceeded(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{"review_rounds": 3},
+	})
+
+	action := &addressReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_review_rounds": 3})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when max rounds exceeded")
+	}
+	if result.Error == nil || !strings.Contains(result.Error.Error(), "max review rounds exceeded") {
+		t.Errorf("expected 'max review rounds exceeded' error, got: %v", result.Error)
+	}
+}
+
+func TestAddressReviewAction_Execute_MaxRoundsFloat64(t *testing.T) {
+	// JSON deserialization produces float64 for numbers
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{"review_rounds": float64(3)},
+	})
+
+	action := &addressReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_review_rounds": 3})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected error when max rounds exceeded (float64)")
+	}
+}
+
+func TestAddressReviewAction_Execute_NoSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42"},
+		Branch:   "feature-1",
+		StepData: map[string]any{},
+	})
+
+	action := &addressReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_review_rounds": 3})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when session not found")
+	}
+	if result.Error == nil {
+		t.Error("expected error when session not found")
+	}
+}
+
+func TestGetReviewRounds(t *testing.T) {
+	tests := []struct {
+		name     string
+		stepData map[string]any
+		want     int
+	}{
+		{"missing", map[string]any{}, 0},
+		{"int zero", map[string]any{"review_rounds": 0}, 0},
+		{"int one", map[string]any{"review_rounds": 1}, 1},
+		{"int three", map[string]any{"review_rounds": 3}, 3},
+		{"float64 zero", map[string]any{"review_rounds": float64(0)}, 0},
+		{"float64 two", map[string]any{"review_rounds": float64(2)}, 2},
+		{"wrong type", map[string]any{"review_rounds": "oops"}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := getReviewRounds(tc.stepData)
+			if got != tc.want {
+				t.Errorf("getReviewRounds(%v) = %d, want %d", tc.stepData, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatAddressReviewPrompt(t *testing.T) {
+	prompt := formatAddressReviewPrompt(2)
+	if !strings.Contains(prompt, "ROUND 2") {
+		t.Error("expected prompt to contain round number")
+	}
+	if !strings.Contains(prompt, "DO NOT push") {
+		t.Error("expected prompt to contain DO NOT push instruction")
+	}
+}
+
+// --- startAddressReview format_command tests ---
+
+// testAddressReviewJSON is a minimal CHANGES_REQUESTED review that passes
+// FilterTranscriptComments so startAddressReview reaches the format_command logic.
+const testAddressReviewJSON = `{"reviews":[{"author":{"login":"reviewer1"},"body":"Please fix the issue","state":"CHANGES_REQUESTED","comments":[]}],"comments":[]}`
+
+// TestStartAddressReview_FormatCommandStoredInStepData verifies that when the
+// address_review workflow state has a format_command param, it is stored in
+// item.StepData.
+func TestStartAddressReview_FormatCommandStoredInStepData(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"address_review": {
+					Params: map[string]any{
+						"format_command": "gofmt -l -w .",
+						"format_message": "style: gofmt",
+					},
+				},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	comments := worker.FilterTranscriptComments([]git.PRReviewComment{
+		{Author: "reviewer1", Body: "Please fix the issue"},
+	})
+	_ = d.startAddressReview(context.Background(), *item, sess, 1, comments)
+
+	updatedItem, _ := d.state.GetWorkItem(item.ID)
+	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt -l -w ." {
+		t.Errorf("expected _format_command=%q, got %q", "gofmt -l -w .", got)
+	}
+	if got, _ := updatedItem.StepData["_format_message"].(string); got != "style: gofmt" {
+		t.Errorf("expected _format_message=%q, got %q", "style: gofmt", got)
+	}
+}
+
+// TestStartAddressReview_FormatCommandDefaultMessage verifies that when address_review has
+// format_command but no format_message, the default message is used.
+func TestStartAddressReview_FormatCommandDefaultMessage(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"address_review": {
+					Params: map[string]any{
+						"format_command": "gofmt -l -w .",
+						// no format_message
+					},
+				},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+
+	updatedItem, _ := d.state.GetWorkItem(item.ID)
+	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt -l -w ." {
+		t.Errorf("expected _format_command=%q, got %q", "gofmt -l -w .", got)
+	}
+	if got, _ := updatedItem.StepData["_format_message"].(string); got != "Apply auto-formatting" {
+		t.Errorf("expected default _format_message=%q, got %q", "Apply auto-formatting", got)
+	}
+}
+
+// TestStartAddressReview_InheritsFormatCommandFromStepData verifies that when
+// address_review has no format_command param, the existing _format_command in
+// step data (from the coding step) is preserved.
+func TestStartAddressReview_InheritsFormatCommandFromStepData(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	// Use default workflow config — address_review state has no format_command param.
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		// _format_command already set by the coding step.
+		StepData: map[string]any{
+			"_format_command": "gofmt ./...",
+			"_format_message": "style: format",
+		},
+	}
+	d.state.AddWorkItem(item)
+
+	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+
+	// Existing _format_command must not be cleared.
+	updatedItem, _ := d.state.GetWorkItem(item.ID)
+	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt ./..." {
+		t.Errorf("expected _format_command=%q, got %q", "gofmt ./...", got)
+	}
+}
+
+// TestStartAddressReview_FormatCommandOverridesStepData verifies that an
+// address_review-specific format_command replaces whatever the coding step stored.
+func TestStartAddressReview_FormatCommandOverridesStepData(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"address_review": {
+					Params: map[string]any{
+						"format_command": "prettier --write .",
+						"format_message": "style: prettier",
+					},
+				},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData: map[string]any{
+			"_format_command": "gofmt ./...",
+			"_format_message": "style: gofmt",
+		},
+	}
+	d.state.AddWorkItem(item)
+
+	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+
+	updatedItem, _ := d.state.GetWorkItem(item.ID)
+	if got, _ := updatedItem.StepData["_format_command"].(string); got != "prettier --write ." {
+		t.Errorf("expected _format_command=%q, got %q", "prettier --write .", got)
+	}
+	if got, _ := updatedItem.StepData["_format_message"].(string); got != "style: prettier" {
+		t.Errorf("expected _format_message=%q, got %q", "style: prettier", got)
+	}
+}
+
 func TestLinearCommentAction_NoProvider(t *testing.T) {
 	cfg := testConfig()
 	// Registry with no Linear provider registered.

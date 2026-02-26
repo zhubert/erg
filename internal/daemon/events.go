@@ -89,39 +89,36 @@ func (c *EventChecker) checkPRReviewed(ctx context.Context, params *workflow.Par
 		return false, nil, nil
 	}
 
+	autoAddress := params.Bool("auto_address", true)
+
 	if result.CommentCount > item.CommentsAddressed {
 		log.Debug("new comments detected, checking for review feedback",
 			"addressed", item.CommentsAddressed,
 			"current", result.CommentCount,
 		)
 
-		autoAddress := params.Bool("auto_address", true)
-		maxRounds := params.Int("max_feedback_rounds", 3)
+		if autoAddress {
+			maxRounds := params.Int("max_feedback_rounds", 3)
+			if item.FeedbackRounds >= maxRounds {
+				log.Warn("max feedback rounds reached",
+					"rounds", item.FeedbackRounds,
+					"max", maxRounds,
+				)
+				return false, nil, nil
+			}
 
-		if !autoAddress {
-			log.Debug("auto_address disabled, skipping feedback")
+			// Check concurrency before starting feedback
+			if d.activeSlotCount() >= d.getMaxConcurrent() {
+				log.Debug("no concurrency slot available for feedback, deferring")
+				return false, nil, nil
+			}
+
+			// Start addressing feedback (this is an internal sub-action of the wait state).
+			// Pass the batch CommentCount so addressFeedback sets CommentsAddressed
+			// using the same counting source used for detection here.
+			d.addressFeedback(ctx, workItem, result.CommentCount)
 			return false, nil, nil
 		}
-
-		if item.FeedbackRounds >= maxRounds {
-			log.Warn("max feedback rounds reached",
-				"rounds", item.FeedbackRounds,
-				"max", maxRounds,
-			)
-			return false, nil, nil
-		}
-
-		// Check concurrency before starting feedback
-		if d.activeSlotCount() >= d.getMaxConcurrent() {
-			log.Debug("no concurrency slot available for feedback, deferring")
-			return false, nil, nil
-		}
-
-		// Start addressing feedback (this is an internal sub-action of the wait state).
-		// Pass the batch CommentCount so addressFeedback sets CommentsAddressed
-		// using the same counting source used for detection here.
-		d.addressFeedback(ctx, workItem, result.CommentCount)
-		return false, nil, nil
 	}
 
 	// Check review decision
@@ -134,6 +131,13 @@ func (c *EventChecker) checkPRReviewed(ctx context.Context, params *workflow.Par
 	if reviewDecision == git.ReviewApproved {
 		log.Info("PR approved")
 		return true, map[string]any{"review_approved": true}, nil
+	}
+
+	// When auto_address is disabled, fire the event for changes_requested so
+	// the workflow engine can route to an explicit address_review state.
+	if !autoAddress && reviewDecision == git.ReviewChangesRequested {
+		log.Info("PR has changes requested, advancing for address_review")
+		return true, map[string]any{"changes_requested": true}, nil
 	}
 
 	return false, nil, nil
