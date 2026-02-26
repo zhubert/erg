@@ -777,8 +777,9 @@ func (pm *ProcessManager) drainStderr() {
 		if len(stderrBytes) > 0 {
 			pm.mu.Lock()
 			pm.stderrContent = strings.TrimSpace(string(stderrBytes))
+			content := pm.stderrContent
 			pm.mu.Unlock()
-			pm.log.Debug("captured stderr", "content", pm.stderrContent)
+			pm.log.Debug("captured stderr", "content", content)
 		}
 	}
 }
