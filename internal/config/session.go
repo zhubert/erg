@@ -38,10 +38,7 @@ type Session struct {
 	PRCommentCount            int       `json:"pr_comment_count,omitempty"`             // Last-seen PR comment count (comments + reviews)
 	PRCommentsAddressedCount  int       `json:"pr_comments_addressed_count,omitempty"`  // Comment count last addressed by Claude for merge
 	Autonomous       bool      `json:"autonomous,omitempty"`         // Whether this session runs in autonomous mode (no user prompts)
-	IsSupervisor     bool      `json:"is_supervisor,omitempty"`      // Whether this session is a supervisor session
-	DaemonManaged    bool      `json:"daemon_managed,omitempty"`     // Whether this session is managed by the daemon (suppresses host tools and supervisor prompt)
-	SupervisorID     string    `json:"supervisor_id,omitempty"`      // ID of supervisor session (for child sessions)
-	ChildSessionIDs  []string  `json:"child_session_ids,omitempty"`  // IDs of child sessions (for supervisor sessions)
+	DaemonManaged    bool      `json:"daemon_managed,omitempty"`     // Whether this session is managed by the daemon (suppresses host tools)
 }
 
 // GetIssueRef returns the IssueRef for this session, converting from legacy IssueNumber if needed.
@@ -287,34 +284,6 @@ func (c *Config) SetSessionAutonomous(sessionID string, autonomous bool) bool {
 		}
 	}
 	return false
-}
-
-// AddChildSession adds a child session ID to a supervisor session.
-func (c *Config) AddChildSession(supervisorID, childID string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for i := range c.Sessions {
-		if c.Sessions[i].ID == supervisorID {
-			c.Sessions[i].ChildSessionIDs = append(c.Sessions[i].ChildSessionIDs, childID)
-			return true
-		}
-	}
-	return false
-}
-
-// GetChildSessions returns all child sessions of a supervisor session.
-func (c *Config) GetChildSessions(supervisorID string) []Session {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	var children []Session
-	for _, sess := range c.Sessions {
-		if sess.SupervisorID == supervisorID {
-			children = append(children, sess)
-		}
-	}
-	return children
 }
 
 // UpdateSessionWorkTree updates the worktree path for a session.

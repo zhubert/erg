@@ -50,13 +50,6 @@ type Server struct {
 	planApprovalChan      chan<- PlanApprovalRequest       // Send plan approval requests to TUI
 	planResponseChan      <-chan PlanApprovalResponse      // Receive plan approval responses from TUI
 	allowedTools          []string                         // Pre-allowed tools for this session
-	isSupervisor          bool                             // Whether to expose supervisor tools
-	createChildChan       chan<- CreateChildRequest        // Send create child requests to TUI
-	createChildResp       <-chan CreateChildResponse       // Receive create child responses from TUI
-	listChildrenChan      chan<- ListChildrenRequest       // Send list children requests to TUI
-	listChildrenResp      <-chan ListChildrenResponse      // Receive list children responses from TUI
-	mergeChildChan        chan<- MergeChildRequest         // Send merge child requests to TUI
-	mergeChildResp        <-chan MergeChildResponse        // Receive merge child responses from TUI
 	hasHostTools          bool                             // Whether to expose host operation tools (create_pr, push_branch, get_review_comments)
 	createPRChan          chan<- CreatePRRequest           // Send create PR requests to TUI
 	createPRResp          <-chan CreatePRResponse          // Receive create PR responses from TUI
@@ -70,23 +63,6 @@ type Server struct {
 
 // ServerOption is a functional option for configuring Server
 type ServerOption func(*Server)
-
-// WithSupervisor enables supervisor tools and sets supervisor channels
-func WithSupervisor(
-	createChildChan chan<- CreateChildRequest, createChildResp <-chan CreateChildResponse,
-	listChildrenChan chan<- ListChildrenRequest, listChildrenResp <-chan ListChildrenResponse,
-	mergeChildChan chan<- MergeChildRequest, mergeChildResp <-chan MergeChildResponse,
-) ServerOption {
-	return func(s *Server) {
-		s.isSupervisor = true
-		s.createChildChan = createChildChan
-		s.createChildResp = createChildResp
-		s.listChildrenChan = listChildrenChan
-		s.listChildrenResp = listChildrenResp
-		s.mergeChildChan = mergeChildChan
-		s.mergeChildResp = mergeChildResp
-	}
-}
 
 // WithHostTools enables host operation tools (create_pr, push_branch, get_review_comments)
 func WithHostTools(
@@ -217,47 +193,6 @@ func (s *Server) handleToolsList(req *JSONRPCRequest) {
 		},
 	}
 
-	if s.isSupervisor {
-		tools = append(tools,
-			ToolDefinition{
-				Name:        "create_child_session",
-				Description: "Create an autonomous child session that works on a specific task. The child session runs independently and branches off the supervisor's branch.",
-				InputSchema: InputSchema{
-					Type: "object",
-					Properties: map[string]Property{
-						"task": {
-							Type:        "string",
-							Description: "Description of the task for the child session to work on",
-						},
-					},
-					Required: []string{"task"},
-				},
-			},
-			ToolDefinition{
-				Name:        "list_child_sessions",
-				Description: "List all child sessions created by this supervisor session, including their current status.",
-				InputSchema: InputSchema{
-					Type:       "object",
-					Properties: map[string]Property{},
-				},
-			},
-			ToolDefinition{
-				Name:        "merge_child_to_parent",
-				Description: "Merge a completed child session's branch into the supervisor's branch.",
-				InputSchema: InputSchema{
-					Type: "object",
-					Properties: map[string]Property{
-						"child_session_id": {
-							Type:        "string",
-							Description: "The ID of the child session to merge",
-						},
-					},
-					Required: []string{"child_session_id"},
-				},
-			},
-		)
-	}
-
 	if s.hasHostTools {
 		tools = append(tools,
 			ToolDefinition{
@@ -311,12 +246,6 @@ func (s *Server) handleToolsCall(req *JSONRPCRequest) {
 	switch params.Name {
 	case ToolName:
 		s.handlePermissionToolCall(req, params)
-	case "create_child_session":
-		s.handleCreateChildSession(req, params)
-	case "list_child_sessions":
-		s.handleListChildSessions(req, params)
-	case "merge_child_to_parent":
-		s.handleMergeChildToParent(req, params)
 	case "create_pr":
 		s.handleCreatePR(req, params)
 	case "push_branch":
@@ -377,8 +306,8 @@ func (s *Server) handlePermissionToolCall(req *JSONRPCRequest, params ToolCallPa
 		return
 	}
 
-	// Auto-approve our own MCP supervisor/host tools — they already have their own
-	// access checks (isSupervisor/hasHostTools guards) so the permission prompt is redundant.
+	// Auto-approve our own MCP host tools — they already have their own
+	// access checks (hasHostTools guards) so the permission prompt is redundant.
 	if s.isOwnMCPTool(tool) {
 		s.log.Debug("auto-approving own MCP tool", "tool", tool)
 		s.sendPermissionResult(req.ID, true, arguments, "")
@@ -605,64 +534,10 @@ func (s *Server) handleExitPlanMode(reqID any, arguments map[string]any) {
 	}
 }
 
-// handleCreateChildSession handles the create_child_session supervisor tool
-func (s *Server) handleCreateChildSession(req *JSONRPCRequest, params ToolCallParams) {
-	if !s.isSupervisor || s.createChildChan == nil {
-		s.sendToolResult(req.ID, true, `{"error":"create_child_session is only available in supervisor sessions"}`)
-		return
-	}
-
-	task, _ := params.Arguments["task"].(string)
-	if task == "" {
-		s.sendToolResult(req.ID, true, `{"error":"task is required"}`)
-		return
-	}
-
-	s.log.Info("create_child_session called", "task", task)
-
-	handleToolChannelRequest(s, req.ID, CreateChildRequest{ID: req.ID, Task: task},
-		s.createChildChan, s.createChildResp, ChannelReceiveTimeout,
-		func(r CreateChildResponse) bool { return !r.Success }, "child session creation")
-}
-
-// handleListChildSessions handles the list_child_sessions supervisor tool
-func (s *Server) handleListChildSessions(req *JSONRPCRequest, params ToolCallParams) {
-	if !s.isSupervisor || s.listChildrenChan == nil {
-		s.sendToolResult(req.ID, true, `{"error":"list_child_sessions is only available in supervisor sessions"}`)
-		return
-	}
-
-	s.log.Info("list_child_sessions called")
-
-	handleToolChannelRequest(s, req.ID, ListChildrenRequest{ID: req.ID},
-		s.listChildrenChan, s.listChildrenResp, ChannelReceiveTimeout,
-		func(r ListChildrenResponse) bool { return false }, "child session list")
-}
-
-// handleMergeChildToParent handles the merge_child_to_parent supervisor tool
-func (s *Server) handleMergeChildToParent(req *JSONRPCRequest, params ToolCallParams) {
-	if !s.isSupervisor || s.mergeChildChan == nil {
-		s.sendToolResult(req.ID, true, `{"error":"merge_child_to_parent is only available in supervisor sessions"}`)
-		return
-	}
-
-	childSessionID, _ := params.Arguments["child_session_id"].(string)
-	if childSessionID == "" {
-		s.sendToolResult(req.ID, true, `{"error":"child_session_id is required"}`)
-		return
-	}
-
-	s.log.Info("merge_child_to_parent called", "childSessionID", childSessionID)
-
-	handleToolChannelRequest(s, req.ID, MergeChildRequest{ID: req.ID, ChildSessionID: childSessionID},
-		s.mergeChildChan, s.mergeChildResp, ChannelReceiveTimeout,
-		func(r MergeChildResponse) bool { return !r.Success }, "merge result")
-}
-
 // handleCreatePR handles the create_pr host tool
 func (s *Server) handleCreatePR(req *JSONRPCRequest, params ToolCallParams) {
 	if !s.hasHostTools || s.createPRChan == nil {
-		s.sendToolResult(req.ID, true, `{"error":"create_pr is only available in automated supervisor sessions"}`)
+		s.sendToolResult(req.ID, true, `{"error":"create_pr is only available in automated sessions"}`)
 		return
 	}
 
@@ -678,7 +553,7 @@ func (s *Server) handleCreatePR(req *JSONRPCRequest, params ToolCallParams) {
 // handlePushBranch handles the push_branch host tool
 func (s *Server) handlePushBranch(req *JSONRPCRequest, params ToolCallParams) {
 	if !s.hasHostTools || s.pushBranchChan == nil {
-		s.sendToolResult(req.ID, true, `{"error":"push_branch is only available in automated supervisor sessions"}`)
+		s.sendToolResult(req.ID, true, `{"error":"push_branch is only available in automated sessions"}`)
 		return
 	}
 
@@ -694,7 +569,7 @@ func (s *Server) handlePushBranch(req *JSONRPCRequest, params ToolCallParams) {
 // handleGetReviewComments handles the get_review_comments host tool
 func (s *Server) handleGetReviewComments(req *JSONRPCRequest, params ToolCallParams) {
 	if !s.hasHostTools || s.getReviewCommentsChan == nil {
-		s.sendToolResult(req.ID, true, `{"error":"get_review_comments is only available in automated supervisor sessions"}`)
+		s.sendToolResult(req.ID, true, `{"error":"get_review_comments is only available in automated sessions"}`)
 		return
 	}
 
@@ -706,7 +581,7 @@ func (s *Server) handleGetReviewComments(req *JSONRPCRequest, params ToolCallPar
 }
 
 // sendToolResult sends a tool call result with text content.
-// Supervisor/host tools return regular tool results (not PermissionResult format).
+// Host tools return regular tool results (not PermissionResult format).
 func (s *Server) sendToolResult(id any, isError bool, text string) {
 	toolResult := ToolCallResult{
 		Content: []ContentItem{
@@ -743,15 +618,6 @@ func (s *Server) isToolAllowed(tool string) bool {
 	return false
 }
 
-// supervisorMCPTools are the Claude CLI tool names for supervisor MCP tools.
-// Claude CLI prefixes MCP tools with "mcp__<server>__", so tools on the "erg"
-// server become "mcp__erg__<tool>".
-var supervisorMCPTools = []string{
-	"mcp__erg__create_child_session",
-	"mcp__erg__list_child_sessions",
-	"mcp__erg__merge_child_to_parent",
-}
-
 // hostMCPTools are the Claude CLI tool names for host operation MCP tools.
 var hostMCPTools = []string{
 	"mcp__erg__create_pr",
@@ -760,14 +626,8 @@ var hostMCPTools = []string{
 }
 
 // isOwnMCPTool returns true if the tool name is one of our own MCP tools that
-// should be auto-approved. Supervisor tools are approved when isSupervisor is true,
-// and host tools are approved when hasHostTools is true.
+// should be auto-approved. Host tools are approved when hasHostTools is true.
 func (s *Server) isOwnMCPTool(tool string) bool {
-	if s.isSupervisor {
-		if slices.Contains(supervisorMCPTools, tool) {
-			return true
-		}
-	}
 	if s.hasHostTools {
 		if slices.Contains(hostMCPTools, tool) {
 			return true

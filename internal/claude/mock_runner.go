@@ -34,11 +34,6 @@ type MockRunner struct {
 	question     *mcp.ChannelPair[mcp.QuestionRequest, mcp.QuestionResponse]
 	planApproval *mcp.ChannelPair[mcp.PlanApprovalRequest, mcp.PlanApprovalResponse]
 
-	// Supervisor tool channels
-	createChild  *mcp.ChannelPair[mcp.CreateChildRequest, mcp.CreateChildResponse]
-	listChildren *mcp.ChannelPair[mcp.ListChildrenRequest, mcp.ListChildrenResponse]
-	mergeChild   *mcp.ChannelPair[mcp.MergeChildRequest, mcp.MergeChildResponse]
-
 	// Host tool channels
 	createPR          *mcp.ChannelPair[mcp.CreatePRRequest, mcp.CreatePRResponse]
 	pushBranch        *mcp.ChannelPair[mcp.PushBranchRequest, mcp.PushBranchResponse]
@@ -124,42 +119,6 @@ func (m *MockRunner) SimulatePlanApprovalRequest(req mcp.PlanApprovalRequest) {
 		return
 	}
 	m.planApproval.Req <- req
-}
-
-// SimulateCreateChildRequest triggers a create child request that the UI will receive.
-func (m *MockRunner) SimulateCreateChildRequest(req mcp.CreateChildRequest) {
-	m.mu.RLock()
-	stopped := m.stopped
-	ch := m.createChild
-	m.mu.RUnlock()
-	if stopped || ch == nil {
-		return
-	}
-	ch.Req <- req
-}
-
-// SimulateListChildrenRequest triggers a list children request that the UI will receive.
-func (m *MockRunner) SimulateListChildrenRequest(req mcp.ListChildrenRequest) {
-	m.mu.RLock()
-	stopped := m.stopped
-	ch := m.listChildren
-	m.mu.RUnlock()
-	if stopped || ch == nil {
-		return
-	}
-	ch.Req <- req
-}
-
-// SimulateMergeChildRequest triggers a merge child request that the UI will receive.
-func (m *MockRunner) SimulateMergeChildRequest(req mcp.MergeChildRequest) {
-	m.mu.RLock()
-	stopped := m.stopped
-	ch := m.mergeChild
-	m.mu.RUnlock()
-	if stopped || ch == nil {
-		return
-	}
-	ch.Req <- req
 }
 
 // SimulateCreatePRRequest triggers a create PR request that the UI will receive.
@@ -480,86 +439,6 @@ func (m *MockRunner) SendPlanApprovalResponse(resp mcp.PlanApprovalResponse) {
 	}
 }
 
-// SetSupervisor implements RunnerConfig.
-func (m *MockRunner) SetSupervisor(supervisor bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if supervisor && m.createChild == nil {
-		m.createChild = mcp.NewChannelPair[mcp.CreateChildRequest, mcp.CreateChildResponse](1)
-		m.listChildren = mcp.NewChannelPair[mcp.ListChildrenRequest, mcp.ListChildrenResponse](1)
-		m.mergeChild = mcp.NewChannelPair[mcp.MergeChildRequest, mcp.MergeChildResponse](1)
-	}
-}
-
-// CreateChildRequestChan implements RunnerSession.
-func (m *MockRunner) CreateChildRequestChan() <-chan mcp.CreateChildRequest {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.stopped || m.createChild == nil {
-		return nil
-	}
-	return m.createChild.Req
-}
-
-// SendCreateChildResponse implements RunnerSession.
-func (m *MockRunner) SendCreateChildResponse(resp mcp.CreateChildResponse) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.stopped || m.createChild == nil {
-		return
-	}
-	select {
-	case m.createChild.Resp <- resp:
-	default:
-	}
-}
-
-// ListChildrenRequestChan implements RunnerSession.
-func (m *MockRunner) ListChildrenRequestChan() <-chan mcp.ListChildrenRequest {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.stopped || m.listChildren == nil {
-		return nil
-	}
-	return m.listChildren.Req
-}
-
-// SendListChildrenResponse implements RunnerSession.
-func (m *MockRunner) SendListChildrenResponse(resp mcp.ListChildrenResponse) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.stopped || m.listChildren == nil {
-		return
-	}
-	select {
-	case m.listChildren.Resp <- resp:
-	default:
-	}
-}
-
-// MergeChildRequestChan implements RunnerSession.
-func (m *MockRunner) MergeChildRequestChan() <-chan mcp.MergeChildRequest {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.stopped || m.mergeChild == nil {
-		return nil
-	}
-	return m.mergeChild.Req
-}
-
-// SendMergeChildResponse implements RunnerSession.
-func (m *MockRunner) SendMergeChildResponse(resp mcp.MergeChildResponse) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.stopped || m.mergeChild == nil {
-		return
-	}
-	select {
-	case m.mergeChild.Resp <- resp:
-	default:
-	}
-}
-
 // SetHostTools implements RunnerConfig.
 func (m *MockRunner) SetHostTools(hostTools bool) {
 	m.mu.Lock()
@@ -654,9 +533,6 @@ func (m *MockRunner) Stop() {
 	m.permission.Close()
 	m.question.Close()
 	m.planApproval.Close()
-	m.createChild.Close()
-	m.listChildren.Close()
-	m.mergeChild.Close()
 	m.createPR.Close()
 	m.pushBranch.Close()
 	m.getReviewComments.Close()

@@ -36,7 +36,6 @@ func DefaultWorkflowConfig() *Config {
 					"max_turns":     50,
 					"max_duration":  "30m",
 					"containerized": true,
-					"supervisor":    false,
 				},
 				Next:  "open_pr",
 				Error: "failed",

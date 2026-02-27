@@ -64,8 +64,6 @@ func (d *Daemon) startPlanning(ctx context.Context, item daemonstate.WorkItem) e
 	}
 
 	sess.Containerized = params.Bool("containerized", true)
-	sess.IsSupervisor = params.Bool("supervisor", false)
-
 	d.config.AddSession(*sess)
 
 	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
@@ -195,7 +193,6 @@ func (d *Daemon) startCoding(ctx context.Context, item daemonstate.WorkItem) err
 
 	sess.Autonomous = true
 	sess.Containerized = params.Bool("containerized", true)
-	sess.IsSupervisor = params.Bool("supervisor", false)
 	sess.DaemonManaged = true
 	sess.IssueRef = &config.IssueRef{
 		Source: item.IssueRef.Source,
@@ -469,11 +466,6 @@ func (d *Daemon) configureRunner(runner claude.RunnerConfig, sess *config.Sessio
 	// Container mode
 	if sess.Containerized {
 		runner.SetContainerized(true, d.config.GetContainerImage())
-	}
-
-	// Supervisor mode (if workflow config enables it)
-	if sess.IsSupervisor {
-		runner.SetSupervisor(true)
 	}
 
 	// No host tools — daemon manages push/PR/merge via workflow actions

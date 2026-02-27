@@ -1124,9 +1124,9 @@ func TestBuildCommandArgs_Containerized_NewSession(t *testing.T) {
 		t.Error("Containerized session must pre-authorize unrestricted Bash")
 	}
 
-	// Non-supervisor containerized session should not have --append-system-prompt
+	// Containerized session should not have --append-system-prompt
 	if containsArg(args, "--append-system-prompt") {
-		t.Error("Non-supervisor containerized session should NOT have --append-system-prompt")
+		t.Error("Containerized session should NOT have --append-system-prompt")
 	}
 }
 

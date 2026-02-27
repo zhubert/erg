@@ -73,7 +73,6 @@ states:
       max_turns: 100
       max_duration: "1h"
       containerized: true
-      supervisor: false
       system_prompt: "Be careful with tests"
     after:
       - run: "./scripts/post-code.sh"
@@ -167,9 +166,6 @@ states:
 	}
 	if p.Bool("containerized", false) != true {
 		t.Error("coding containerized: expected true")
-	}
-	if p.Bool("supervisor", true) != false {
-		t.Error("coding supervisor: expected false")
 	}
 	if p.String("system_prompt", "") != "Be careful with tests" {
 		t.Errorf("coding system_prompt: got %q", p.String("system_prompt", ""))

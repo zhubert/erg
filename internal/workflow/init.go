@@ -49,7 +49,6 @@ states:
       max_turns: 50            # Max autonomous turns per session
       max_duration: 30m        # Max wall-clock time per session
       # containerized: true    # Run sessions in Docker containers
-      # supervisor: true       # Use supervisor mode for coding
       # system_prompt: ""      # Custom system prompt (inline or file:path/to/prompt.md)
     # before:                  # Hooks to run before coding starts (failure blocks step)
     #   - run: "make deps"

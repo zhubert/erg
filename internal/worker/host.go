@@ -36,7 +36,6 @@ type Host interface {
 	AutoAddressPRComments() bool
 
 	// Operations
-	CreateChildSession(ctx context.Context, supervisorID, taskDescription string) (SessionInfo, error)
 	CleanupSession(ctx context.Context, sessionID string) error
 	SaveRunnerMessages(sessionID string, runner claude.RunnerSession)
 	IsWorkerRunning(sessionID string) bool
@@ -46,8 +45,3 @@ type Host interface {
 	RecordSpend(costUSD float64, outputTokens, inputTokens int)
 }
 
-// SessionInfo holds the minimal info needed after creating a child session.
-type SessionInfo struct {
-	ID     string
-	Branch string
-}

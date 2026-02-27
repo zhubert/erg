@@ -190,35 +190,6 @@ func TestAgentConfig_MarkSessionMethods(t *testing.T) {
 	}
 }
 
-func TestAgentConfig_ChildSessions(t *testing.T) {
-	c := NewAgentConfig()
-	c.AddSession(config.Session{ID: "supervisor"})
-	c.AddSession(config.Session{ID: "child1"})
-	c.AddSession(config.Session{ID: "child2"})
-
-	// Add children
-	if !c.AddChildSession("supervisor", "child1") {
-		t.Error("expected true")
-	}
-	if !c.AddChildSession("supervisor", "child2") {
-		t.Error("expected true")
-	}
-	if c.AddChildSession("nonexistent", "child1") {
-		t.Error("expected false for nonexistent supervisor")
-	}
-
-	// Get children
-	children := c.GetChildSessions("supervisor")
-	if len(children) != 2 {
-		t.Fatalf("expected 2 children, got %d", len(children))
-	}
-
-	// No children for nonexistent
-	if children := c.GetChildSessions("nonexistent"); len(children) != 0 {
-		t.Errorf("expected no children, got %d", len(children))
-	}
-}
-
 func TestAgentConfig_ClearOrphanedParentIDs(t *testing.T) {
 	c := NewAgentConfig()
 	c.AddSession(config.Session{ID: "s1", ParentID: "deleted-parent"})

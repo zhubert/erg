@@ -1045,7 +1045,7 @@ func TestConfigureRunnerDefaults_SetsTools(t *testing.T) {
 }
 
 func TestConfigureRunnerDefaults_DaemonManaged_SkipsHostTools(t *testing.T) {
-	// A daemon-managed autonomous supervisor session should NOT get host tools
+	// A daemon-managed autonomous session should NOT get host tools
 	cfg := &config.Config{
 		Repos: []string{"/test/repo"},
 		Sessions: []config.Session{
@@ -1057,7 +1057,6 @@ func TestConfigureRunnerDefaults_DaemonManaged_SkipsHostTools(t *testing.T) {
 				Name:          "repo/session1",
 				Started:       false,
 				Autonomous:    true,
-				IsSupervisor:  true,
 				DaemonManaged: true,
 			},
 		},
@@ -1077,7 +1076,7 @@ func TestConfigureRunnerDefaults_DaemonManaged_SkipsHostTools(t *testing.T) {
 }
 
 func TestConfigureRunnerDefaults_NonDaemonManaged_GetsHostTools(t *testing.T) {
-	// A non-daemon-managed autonomous supervisor session SHOULD get host tools
+	// A non-daemon-managed autonomous session SHOULD get host tools
 	cfg := &config.Config{
 		Repos: []string{"/test/repo"},
 		Sessions: []config.Session{
@@ -1089,7 +1088,6 @@ func TestConfigureRunnerDefaults_NonDaemonManaged_GetsHostTools(t *testing.T) {
 				Name:          "repo/session1",
 				Started:       false,
 				Autonomous:    true,
-				IsSupervisor:  true,
 				DaemonManaged: false,
 			},
 		},
@@ -1102,8 +1100,8 @@ func TestConfigureRunnerDefaults_NonDaemonManaged_GetsHostTools(t *testing.T) {
 	sess := sm.GetSession("normal-session")
 	sm.ConfigureRunnerDefaults(runner, sess)
 
-	// Host tools SHOULD be enabled for non-daemon-managed autonomous supervisors
+	// Host tools SHOULD be enabled for non-daemon-managed autonomous sessions
 	if !runner.hostToolsEnabled {
-		t.Error("non-daemon-managed autonomous supervisor session SHOULD have host tools enabled")
+		t.Error("non-daemon-managed autonomous session SHOULD have host tools enabled")
 	}
 }

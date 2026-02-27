@@ -30,12 +30,11 @@ import (
 // trackingRunner wraps MockRunner to track Set* calls for configureRunner tests.
 type trackingRunner struct {
 	*claude.MockRunner
-	containerized         bool
-	containerImage        string
-	supervisorEnabled     bool
-	hostToolsEnabled      bool
-	streamingChunksOff    bool
-	systemPrompt          string
+	containerized      bool
+	containerImage     string
+	hostToolsEnabled   bool
+	streamingChunksOff bool
+	systemPrompt       string
 }
 
 func newTrackingRunner(id string) *trackingRunner {
@@ -47,11 +46,6 @@ func newTrackingRunner(id string) *trackingRunner {
 func (r *trackingRunner) SetContainerized(containerized bool, image string) {
 	r.containerized = containerized
 	r.containerImage = image
-}
-
-func (r *trackingRunner) SetSupervisor(supervisor bool) {
-	r.supervisorEnabled = supervisor
-	r.MockRunner.SetSupervisor(supervisor)
 }
 
 func (r *trackingRunner) SetHostTools(hostTools bool) {
@@ -289,7 +283,6 @@ func TestDaemon_CodingParamsDefaultsWhenAbsent(t *testing.T) {
 	// When max_turns and max_duration are not in params, defaults are returned.
 	params := workflow.NewParamHelper(map[string]any{
 		"containerized": true,
-		"supervisor":    true,
 	})
 
 	maxTurns := params.Int("max_turns", 0)
@@ -300,45 +293,6 @@ func TestDaemon_CodingParamsDefaultsWhenAbsent(t *testing.T) {
 	maxDuration := params.Duration("max_duration", 0)
 	if maxDuration != 0 {
 		t.Errorf("expected 0 when max_duration absent, got %v", maxDuration)
-	}
-}
-
-func TestDefaultWorkflowConfig_SupervisorFalse(t *testing.T) {
-	// The default workflow config should have supervisor: false for coding state
-	wfCfg := workflow.DefaultWorkflowConfig()
-	codingState := wfCfg.States["coding"]
-	if codingState == nil {
-		t.Fatal("expected coding state in default workflow config")
-	}
-
-	params := workflow.NewParamHelper(codingState.Params)
-	supervisor := params.Bool("supervisor", true) // pass true as default to test param value
-	if supervisor {
-		t.Error("default workflow config should have supervisor: false for coding state")
-	}
-}
-
-func TestSupervisorParamDefaultsFalseWhenAbsent(t *testing.T) {
-	// When supervisor is absent from params, it should default to false
-	params := workflow.NewParamHelper(map[string]any{
-		"containerized": true,
-	})
-
-	supervisor := params.Bool("supervisor", false)
-	if supervisor {
-		t.Error("supervisor should default to false when absent from params")
-	}
-}
-
-func TestSupervisorExplicitOptIn(t *testing.T) {
-	// Explicit supervisor: true should still work as opt-in
-	params := workflow.NewParamHelper(map[string]any{
-		"supervisor": true,
-	})
-
-	supervisor := params.Bool("supervisor", false)
-	if !supervisor {
-		t.Error("explicit supervisor: true should be respected")
 	}
 }
 
@@ -478,40 +432,6 @@ func TestConfigureRunner_ContainerMode_Disabled(t *testing.T) {
 	}
 }
 
-func TestConfigureRunner_SupervisorMode(t *testing.T) {
-	cfg := testConfig()
-	d := testDaemon(cfg)
-
-	runner := newTrackingRunner("test-session")
-	sess := &config.Session{
-		ID:           "test-session",
-		IsSupervisor: true,
-	}
-
-	d.configureRunner(runner, sess, "")
-
-	if !runner.supervisorEnabled {
-		t.Error("expected SetSupervisor(true) to be called when IsSupervisor is true")
-	}
-}
-
-func TestConfigureRunner_SupervisorMode_Disabled(t *testing.T) {
-	cfg := testConfig()
-	d := testDaemon(cfg)
-
-	runner := newTrackingRunner("test-session")
-	sess := &config.Session{
-		ID:           "test-session",
-		IsSupervisor: false,
-	}
-
-	d.configureRunner(runner, sess, "")
-
-	if runner.supervisorEnabled {
-		t.Error("expected SetSupervisor NOT to be called when IsSupervisor is false")
-	}
-}
-
 func TestConfigureRunner_NoHostTools(t *testing.T) {
 	// Daemon should NEVER set host tools — workflow actions handle push/PR/merge
 	cfg := testConfig()
@@ -521,7 +441,6 @@ func TestConfigureRunner_NoHostTools(t *testing.T) {
 	sess := &config.Session{
 		ID:            "test-session",
 		Autonomous:    true,
-		IsSupervisor:  true,
 		DaemonManaged: true,
 	}
 

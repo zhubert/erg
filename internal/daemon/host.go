@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/zhubert/erg/internal/agentconfig"
@@ -34,12 +33,6 @@ func (d *Daemon) MaxDuration() int                       { return d.getMaxDurati
 func (d *Daemon) AutoMerge() bool                        { return d.autoMerge }
 func (d *Daemon) MergeMethod() string                    { return d.getMergeMethod() }
 func (d *Daemon) AutoAddressPRComments() bool            { return d.getAutoAddressPRComments() }
-
-func (d *Daemon) CreateChildSession(ctx context.Context, supervisorID, taskDescription string) (worker.SessionInfo, error) {
-	// Daemon doesn't directly support child sessions through Host interface;
-	// worker child creation goes through the Agent path. This is a no-op for daemon.
-	return worker.SessionInfo{}, fmt.Errorf("child sessions not supported in daemon mode")
-}
 
 func (d *Daemon) CleanupSession(ctx context.Context, sessionID string) error {
 	d.cleanupSession(ctx, sessionID)

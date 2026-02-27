@@ -197,44 +197,6 @@ func (c *AgentConfig) MarkSessionMergedToParent(sessionID string) bool {
 	return false
 }
 
-func (c *AgentConfig) AddChildSession(supervisorID, childID string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for i := range c.sessions {
-		if c.sessions[i].ID == supervisorID {
-			c.sessions[i].ChildSessionIDs = append(c.sessions[i].ChildSessionIDs, childID)
-			return true
-		}
-	}
-	return false
-}
-
-func (c *AgentConfig) GetChildSessions(supervisorID string) []config.Session {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	var childIDs []string
-	for i := range c.sessions {
-		if c.sessions[i].ID == supervisorID {
-			childIDs = c.sessions[i].ChildSessionIDs
-			break
-		}
-	}
-	if len(childIDs) == 0 {
-		return nil
-	}
-	idSet := make(map[string]bool, len(childIDs))
-	for _, id := range childIDs {
-		idSet[id] = true
-	}
-	var children []config.Session
-	for _, s := range c.sessions {
-		if idSet[s.ID] {
-			children = append(children, s)
-		}
-	}
-	return children
-}
-
 func (c *AgentConfig) UpdateSessionPRCommentsAddressedCount(sessionID string, count int) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()

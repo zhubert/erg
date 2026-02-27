@@ -41,9 +41,6 @@ func TestDefaultWorkflowConfig(t *testing.T) {
 	if !p.Bool("containerized", false) {
 		t.Error("coding containerized: expected true")
 	}
-	if p.Bool("supervisor", true) {
-		t.Error("coding supervisor: expected false")
-	}
 
 	// await_review uses explicit address_review state (auto_address=false)
 	review := cfg.States["await_review"]

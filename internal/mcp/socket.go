@@ -46,15 +46,12 @@ const (
 	MessageTypePermission        MessageType = "permission"
 	MessageTypeQuestion          MessageType = "question"
 	MessageTypePlanApproval      MessageType = "planApproval"
-	MessageTypeCreateChild       MessageType = "createChild"
-	MessageTypeListChildren      MessageType = "listChildren"
-	MessageTypeMergeChild        MessageType = "mergeChild"
 	MessageTypeCreatePR          MessageType = "createPR"
 	MessageTypePushBranch        MessageType = "pushBranch"
 	MessageTypeGetReviewComments MessageType = "getReviewComments"
 )
 
-// SocketMessage wraps permission, question, plan approval, or supervisor requests/responses
+// SocketMessage wraps permission, question, plan approval, or host tool requests/responses
 type SocketMessage struct {
 	Type                  MessageType                `json:"type"`
 	PermReq               *PermissionRequest         `json:"permReq,omitempty"`
@@ -63,12 +60,6 @@ type SocketMessage struct {
 	QuestResp             *QuestionResponse          `json:"questResp,omitempty"`
 	PlanReq               *PlanApprovalRequest       `json:"planReq,omitempty"`
 	PlanResp              *PlanApprovalResponse      `json:"planResp,omitempty"`
-	CreateChildReq        *CreateChildRequest        `json:"createChildReq,omitempty"`
-	CreateChildResp       *CreateChildResponse       `json:"createChildResp,omitempty"`
-	ListChildrenReq       *ListChildrenRequest       `json:"listChildrenReq,omitempty"`
-	ListChildrenResp      *ListChildrenResponse      `json:"listChildrenResp,omitempty"`
-	MergeChildReq         *MergeChildRequest         `json:"mergeChildReq,omitempty"`
-	MergeChildResp        *MergeChildResponse        `json:"mergeChildResp,omitempty"`
 	CreatePRReq           *CreatePRRequest           `json:"createPRReq,omitempty"`
 	CreatePRResp          *CreatePRResponse          `json:"createPRResp,omitempty"`
 	PushBranchReq         *PushBranchRequest         `json:"pushBranchReq,omitempty"`
@@ -88,12 +79,6 @@ type SocketServer struct {
 	answerCh              <-chan QuestionResponse
 	planReqCh             chan<- PlanApprovalRequest
 	planRespCh            <-chan PlanApprovalResponse
-	createChildReq        chan<- CreateChildRequest
-	createChildResp       <-chan CreateChildResponse
-	listChildrenReq       chan<- ListChildrenRequest
-	listChildrenResp      <-chan ListChildrenResponse
-	mergeChildReq         chan<- MergeChildRequest
-	mergeChildResp        <-chan MergeChildResponse
 	createPRReq           chan<- CreatePRRequest
 	createPRResp          <-chan CreatePRResponse
 	pushBranchReq         chan<- PushBranchRequest
@@ -151,22 +136,6 @@ func NewSocketServer(sessionID string, reqCh chan<- PermissionRequest, respCh <-
 
 // SocketServerOption is a functional option for configuring SocketServer
 type SocketServerOption func(*SocketServer)
-
-// WithSupervisorChannels sets the supervisor tool channels on a SocketServer
-func WithSupervisorChannels(
-	createChildReq chan<- CreateChildRequest, createChildResp <-chan CreateChildResponse,
-	listChildrenReq chan<- ListChildrenRequest, listChildrenResp <-chan ListChildrenResponse,
-	mergeChildReq chan<- MergeChildRequest, mergeChildResp <-chan MergeChildResponse,
-) SocketServerOption {
-	return func(s *SocketServer) {
-		s.createChildReq = createChildReq
-		s.createChildResp = createChildResp
-		s.listChildrenReq = listChildrenReq
-		s.listChildrenResp = listChildrenResp
-		s.mergeChildReq = mergeChildReq
-		s.mergeChildResp = mergeChildResp
-	}
-}
 
 // WithHostToolChannels sets the host tool channels on a SocketServer
 func WithHostToolChannels(
@@ -424,42 +393,6 @@ func (s *SocketServer) handleConnection(conn net.Conn) {
 				MessageTypePlanApproval,
 				func(m *SocketMessage, r *PlanApprovalResponse) { m.PlanResp = r },
 				"plan approval")
-		case MessageTypeCreateChild:
-			handleChannelMessage(s.log, conn, msg.CreateChildReq,
-				s.createChildReq, s.createChildResp,
-				PermissionResponseTimeout,
-				CreateChildResponse{Success: false, Error: "Supervisor tools not available"},
-				func(id any) CreateChildResponse {
-					return CreateChildResponse{ID: id, Success: false, Error: "Timeout"}
-				},
-				func(r *CreateChildRequest) any { return r.ID },
-				MessageTypeCreateChild,
-				func(m *SocketMessage, r *CreateChildResponse) { m.CreateChildResp = r },
-				"create child")
-		case MessageTypeListChildren:
-			handleChannelMessage(s.log, conn, msg.ListChildrenReq,
-				s.listChildrenReq, s.listChildrenResp,
-				PermissionResponseTimeout,
-				ListChildrenResponse{Children: []ChildSessionInfo{}},
-				func(id any) ListChildrenResponse {
-					return ListChildrenResponse{ID: id, Children: []ChildSessionInfo{}}
-				},
-				func(r *ListChildrenRequest) any { return r.ID },
-				MessageTypeListChildren,
-				func(m *SocketMessage, r *ListChildrenResponse) { m.ListChildrenResp = r },
-				"list children")
-		case MessageTypeMergeChild:
-			handleChannelMessage(s.log, conn, msg.MergeChildReq,
-				s.mergeChildReq, s.mergeChildResp,
-				PermissionResponseTimeout,
-				MergeChildResponse{Success: false, Error: "Supervisor tools not available"},
-				func(id any) MergeChildResponse {
-					return MergeChildResponse{ID: id, Success: false, Error: "Timeout"}
-				},
-				func(r *MergeChildRequest) any { return r.ID },
-				MessageTypeMergeChild,
-				func(m *SocketMessage, r *MergeChildResponse) { m.MergeChildResp = r },
-				"merge child")
 		case MessageTypeCreatePR:
 			handleChannelMessage(s.log, conn, msg.CreatePRReq,
 				s.createPRReq, s.createPRResp,
@@ -617,30 +550,6 @@ func (c *SocketClient) SendPlanApprovalRequest(req PlanApprovalRequest) (PlanApp
 		func(m *SocketMessage, r *PlanApprovalRequest) { m.PlanReq = r },
 		func(m *SocketMessage) *PlanApprovalResponse { return m.PlanResp },
 		0, "plan approval")
-}
-
-// SendCreateChildRequest sends a create child request and waits for response
-func (c *SocketClient) SendCreateChildRequest(req CreateChildRequest) (CreateChildResponse, error) {
-	return sendSocketRequest(c, req, MessageTypeCreateChild,
-		func(m *SocketMessage, r *CreateChildRequest) { m.CreateChildReq = r },
-		func(m *SocketMessage) *CreateChildResponse { return m.CreateChildResp },
-		0, "create child")
-}
-
-// SendListChildrenRequest sends a list children request and waits for response
-func (c *SocketClient) SendListChildrenRequest(req ListChildrenRequest) (ListChildrenResponse, error) {
-	return sendSocketRequest(c, req, MessageTypeListChildren,
-		func(m *SocketMessage, r *ListChildrenRequest) { m.ListChildrenReq = r },
-		func(m *SocketMessage) *ListChildrenResponse { return m.ListChildrenResp },
-		0, "list children")
-}
-
-// SendMergeChildRequest sends a merge child request and waits for response
-func (c *SocketClient) SendMergeChildRequest(req MergeChildRequest) (MergeChildResponse, error) {
-	return sendSocketRequest(c, req, MessageTypeMergeChild,
-		func(m *SocketMessage, r *MergeChildRequest) { m.MergeChildReq = r },
-		func(m *SocketMessage) *MergeChildResponse { return m.MergeChildResp },
-		0, "merge child")
 }
 
 // SendCreatePRRequest sends a create PR request and waits for response
