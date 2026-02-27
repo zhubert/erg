@@ -18,8 +18,6 @@ type Config interface {
 	MarkSessionPRCreated(sessionID string) bool
 	MarkSessionPRMerged(sessionID string) bool
 	MarkSessionMergedToParent(sessionID string) bool
-	AddChildSession(supervisorID, childID string) bool
-	GetChildSessions(supervisorID string) []config.Session
 	UpdateSessionPRCommentsAddressedCount(sessionID string, count int) bool
 
 	// Repo settings

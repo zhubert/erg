@@ -18,7 +18,6 @@ var tcpAddr string
 var listenAddr string
 var autoApprove bool
 var mcpSessionID string
-var mcpSupervisor bool
 var mcpHostTools bool
 
 var mcpServerCmd = &cobra.Command{
@@ -34,7 +33,6 @@ func init() {
 	mcpServerCmd.Flags().StringVar(&listenAddr, "listen", "", "Listen on TCP address and wait for host to connect (host:port)")
 	mcpServerCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Auto-approve all tool permissions (used in container mode)")
 	mcpServerCmd.Flags().StringVar(&mcpSessionID, "session-id", "", "Session ID for logging")
-	mcpServerCmd.Flags().BoolVar(&mcpSupervisor, "supervisor", false, "Enable supervisor tools (create/list/merge child sessions)")
 	mcpServerCmd.Flags().BoolVar(&mcpHostTools, "host-tools", false, "Enable host operation tools (create_pr, push_branch)")
 	rootCmd.AddCommand(mcpServerCmd)
 }
@@ -50,8 +48,8 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	} else if socketPath != "" {
 		mode = "socket=" + socketPath
 	}
-	fmt.Fprintf(os.Stderr, "[mcp] starting (mode=%s auto-approve=%v supervisor=%v host-tools=%v)\n",
-		mode, autoApprove, mcpSupervisor, mcpHostTools)
+	fmt.Fprintf(os.Stderr, "[mcp] starting (mode=%s auto-approve=%v host-tools=%v)\n",
+		mode, autoApprove, mcpHostTools)
 
 	// Determine session ID from flag or socket path
 	sessionID := mcpSessionID
@@ -147,49 +145,8 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 			return mcp.PlanApprovalResponse{ID: req.ID, Approved: false}
 		})
 
-	// Supervisor channels and forwarding goroutines
-	var serverOpts []mcp.ServerOption
-	var createChildChan chan mcp.CreateChildRequest
-	var createChildRespChan chan mcp.CreateChildResponse
-	var listChildrenChan chan mcp.ListChildrenRequest
-	var listChildrenRespChan chan mcp.ListChildrenResponse
-	var mergeChildChan chan mcp.MergeChildRequest
-	var mergeChildRespChan chan mcp.MergeChildResponse
-
-	if mcpSupervisor {
-		createChildChan = make(chan mcp.CreateChildRequest)
-		createChildRespChan = make(chan mcp.CreateChildResponse, 1)
-		listChildrenChan = make(chan mcp.ListChildrenRequest)
-		listChildrenRespChan = make(chan mcp.ListChildrenResponse, 1)
-		mergeChildChan = make(chan mcp.MergeChildRequest)
-		mergeChildRespChan = make(chan mcp.MergeChildResponse, 1)
-
-		mcp.ForwardRequests(&wg, createChildChan, createChildRespChan,
-			client.SendCreateChildRequest,
-			func(req mcp.CreateChildRequest) mcp.CreateChildResponse {
-				return mcp.CreateChildResponse{ID: req.ID, Success: false, Error: "Communication error with TUI"}
-			})
-
-		mcp.ForwardRequests(&wg, listChildrenChan, listChildrenRespChan,
-			client.SendListChildrenRequest,
-			func(req mcp.ListChildrenRequest) mcp.ListChildrenResponse {
-				return mcp.ListChildrenResponse{ID: req.ID, Children: []mcp.ChildSessionInfo{}}
-			})
-
-		mcp.ForwardRequests(&wg, mergeChildChan, mergeChildRespChan,
-			client.SendMergeChildRequest,
-			func(req mcp.MergeChildRequest) mcp.MergeChildResponse {
-				return mcp.MergeChildResponse{ID: req.ID, Success: false, Error: "Communication error with TUI"}
-			})
-
-		serverOpts = append(serverOpts, mcp.WithSupervisor(
-			createChildChan, createChildRespChan,
-			listChildrenChan, listChildrenRespChan,
-			mergeChildChan, mergeChildRespChan,
-		))
-	}
-
 	// Host tools channels and forwarding goroutines
+	var serverOpts []mcp.ServerOption
 	var createPRChan chan mcp.CreatePRRequest
 	var createPRRespChan chan mcp.CreatePRResponse
 	var pushBranchChan chan mcp.PushBranchRequest
@@ -245,11 +202,6 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	close(reqChan)
 	close(questionChan)
 	close(planApprovalChan)
-	if mcpSupervisor {
-		close(createChildChan)
-		close(listChildrenChan)
-		close(mergeChildChan)
-	}
 	if mcpHostTools {
 		close(createPRChan)
 		close(pushBranchChan)
@@ -259,11 +211,6 @@ func runMCPServer(cmd *cobra.Command, args []string) error {
 	close(respChan)
 	close(answerChan)
 	close(planResponseChan)
-	if mcpSupervisor {
-		close(createChildRespChan)
-		close(listChildrenRespChan)
-		close(mergeChildRespChan)
-	}
 	if mcpHostTools {
 		close(createPRRespChan)
 		close(pushBranchRespChan)

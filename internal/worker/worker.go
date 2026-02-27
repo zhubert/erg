@@ -109,11 +109,6 @@ func (w *SessionWorker) CheckLimits() bool {
 	return w.checkLimits()
 }
 
-// HasActiveChildren checks if any child sessions are still running.
-func (w *SessionWorker) HasActiveChildren() bool {
-	return w.hasActiveChildren()
-}
-
 // ExitError returns the error that caused the worker to exit, or nil if it completed normally.
 func (w *SessionWorker) ExitError() error {
 	if p := w.exitErr.Load(); p != nil {
@@ -199,18 +194,6 @@ func (w *SessionWorker) run() {
 			continue
 		}
 
-		// For supervisor sessions, check if children are still active
-		if w.session.IsSupervisor && w.hasActiveChildren() {
-			log.Debug("supervisor has active children, waiting...")
-			// Wait a bit then check again for pending messages
-			select {
-			case <-w.ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-				continue
-			}
-		}
-
 		// Session completed
 		log.Info("session completed")
 		w.handleCompletion()
@@ -275,24 +258,6 @@ func (w *SessionWorker) processOneResponse(responseChan <-chan claude.ResponseCh
 			}
 			w.autoApprovePlan(req)
 
-		case req, ok := <-w.safeChanCreateChild():
-			if !ok {
-				continue
-			}
-			w.handleCreateChild(req)
-
-		case req, ok := <-w.safeChanListChildren():
-			if !ok {
-				continue
-			}
-			w.handleListChildren(req)
-
-		case req, ok := <-w.safeChanMergeChild():
-			if !ok {
-				continue
-			}
-			w.handleMergeChild(req)
-
 		case req, ok := <-w.safeChanCreatePR():
 			if !ok {
 				continue
@@ -315,30 +280,6 @@ func (w *SessionWorker) processOneResponse(responseChan <-chan claude.ResponseCh
 }
 
 // Safe channel accessors that return nil channels (which block forever in select) when not available.
-func (w *SessionWorker) safeChanCreateChild() <-chan mcp.CreateChildRequest {
-	ch := w.runner.CreateChildRequestChan()
-	if ch == nil {
-		return nil
-	}
-	return ch
-}
-
-func (w *SessionWorker) safeChanListChildren() <-chan mcp.ListChildrenRequest {
-	ch := w.runner.ListChildrenRequestChan()
-	if ch == nil {
-		return nil
-	}
-	return ch
-}
-
-func (w *SessionWorker) safeChanMergeChild() <-chan mcp.MergeChildRequest {
-	ch := w.runner.MergeChildRequestChan()
-	if ch == nil {
-		return nil
-	}
-	return ch
-}
-
 func (w *SessionWorker) safeChanCreatePR() <-chan mcp.CreatePRRequest {
 	ch := w.runner.CreatePRRequestChan()
 	if ch == nil {
@@ -448,10 +389,6 @@ func (w *SessionWorker) handleCompletion() {
 		return
 	}
 
-	// Notify supervisor if this is a child session
-	if sess.SupervisorID != "" {
-		w.notifySupervisor(sess.SupervisorID, true)
-	}
 }
 
 // checkLimits returns true if the session has hit its turn or duration limit.
@@ -516,129 +453,6 @@ func (w *SessionWorker) autoApprovePlan(req mcp.PlanApprovalRequest) {
 	w.runner.SendPlanApprovalResponse(mcp.PlanApprovalResponse{
 		ID:       req.ID,
 		Approved: true,
-	})
-}
-
-// handleCreateChild handles a create_child_session MCP tool call.
-func (w *SessionWorker) handleCreateChild(req mcp.CreateChildRequest) {
-	log := w.host.Logger().With("sessionID", w.sessionID)
-
-	childInfo, err := w.host.CreateChildSession(w.ctx, w.sessionID, req.Task)
-	if err != nil {
-		log.Error("failed to create child session", "error", err)
-		w.runner.SendCreateChildResponse(mcp.CreateChildResponse{
-			ID:    req.ID,
-			Error: fmt.Sprintf("Failed to create child session: %v", err),
-		})
-		return
-	}
-
-	w.runner.SendCreateChildResponse(mcp.CreateChildResponse{
-		ID:      req.ID,
-		Success: true,
-		ChildID: childInfo.ID,
-		Branch:  childInfo.Branch,
-	})
-}
-
-// handleListChildren handles a list_child_sessions MCP tool call.
-func (w *SessionWorker) handleListChildren(req mcp.ListChildrenRequest) {
-	children := w.host.Config().GetChildSessions(w.sessionID)
-	var childInfos []mcp.ChildSessionInfo
-	for _, child := range children {
-		status := "idle"
-		if w.host.IsWorkerRunning(child.ID) {
-			status = "running"
-		} else if child.MergedToParent {
-			status = "merged"
-		} else if child.PRCreated {
-			status = "pr_created"
-		}
-
-		childInfos = append(childInfos, mcp.ChildSessionInfo{
-			ID:     child.ID,
-			Branch: child.Branch,
-			Status: status,
-		})
-	}
-
-	w.runner.SendListChildrenResponse(mcp.ListChildrenResponse{
-		ID:       req.ID,
-		Children: childInfos,
-	})
-}
-
-// handleMergeChild handles a merge_child_to_parent MCP tool call.
-func (w *SessionWorker) handleMergeChild(req mcp.MergeChildRequest) {
-	log := w.host.Logger().With("sessionID", w.sessionID)
-
-	sess := w.host.Config().GetSession(w.sessionID)
-	if sess == nil {
-		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
-			ID:    req.ID,
-			Error: "Supervisor session not found",
-		})
-		return
-	}
-
-	childSess := w.host.Config().GetSession(req.ChildSessionID)
-	if childSess == nil {
-		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
-			ID:    req.ID,
-			Error: "Child session not found",
-		})
-		return
-	}
-
-	if childSess.SupervisorID != w.sessionID {
-		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
-			ID:    req.ID,
-			Error: "Child session does not belong to this supervisor",
-		})
-		return
-	}
-
-	if childSess.MergedToParent {
-		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
-			ID:    req.ID,
-			Error: "Child session already merged",
-		})
-		return
-	}
-
-	log.Info("merging child to parent", "childID", childSess.ID, "childBranch", childSess.Branch)
-
-	ctx, cancel := context.WithTimeout(w.ctx, 2*time.Minute)
-	defer cancel()
-
-	resultCh := w.host.GitService().MergeToParent(ctx, childSess.WorkTree, childSess.Branch, sess.WorkTree, sess.Branch, "")
-
-	var lastErr error
-	for result := range resultCh {
-		if result.Error != nil {
-			lastErr = result.Error
-		}
-	}
-
-	if lastErr != nil {
-		log.Error("merge child failed", "childID", childSess.ID, "error", lastErr)
-		w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
-			ID:    req.ID,
-			Error: lastErr.Error(),
-		})
-		return
-	}
-
-	// Mark child as merged
-	w.host.Config().MarkSessionMergedToParent(childSess.ID)
-	if err := w.host.Config().Save(); err != nil {
-		log.Error("failed to save config after merge", "error", err)
-	}
-
-	w.runner.SendMergeChildResponse(mcp.MergeChildResponse{
-		ID:      req.ID,
-		Success: true,
-		Message: fmt.Sprintf("Successfully merged %s into %s", childSess.Branch, sess.Branch),
 	})
 }
 
@@ -711,51 +525,4 @@ func (w *SessionWorker) handleGetReviewComments(req mcp.GetReviewCommentsRequest
 	})
 }
 
-// hasActiveChildren checks if any child sessions are still running.
-func (w *SessionWorker) hasActiveChildren() bool {
-	children := w.host.Config().GetChildSessions(w.sessionID)
-	for _, child := range children {
-		if w.host.IsWorkerRunning(child.ID) {
-			return true
-		}
-	}
-	return false
-}
-
-// notifySupervisor sends a status update to the supervisor session.
-func (w *SessionWorker) notifySupervisor(supervisorID string, testsPassed bool) {
-	childSess := w.host.Config().GetSession(w.sessionID)
-	if childSess == nil {
-		return
-	}
-
-	status := "completed successfully"
-	if !testsPassed {
-		status = "completed (tests failed)"
-	}
-
-	allChildren := w.host.Config().GetChildSessions(supervisorID)
-	allDone := true
-	completedCount := 0
-	for _, child := range allChildren {
-		if w.host.IsWorkerRunning(child.ID) {
-			allDone = false
-		} else {
-			completedCount++
-		}
-	}
-
-	var prompt string
-	sessionName := childSess.Branch
-	if allDone {
-		prompt = fmt.Sprintf("Child session '%s' %s.\n\nAll %d child sessions have completed. You should now review the results, merge children to parent with `merge_child_to_parent`, and create a PR with `push_branch` and `create_pr`.",
-			sessionName, status, len(allChildren))
-	} else {
-		prompt = fmt.Sprintf("Child session '%s' %s. (%d/%d children completed)\n\nWait for all children to complete before merging or creating PRs.",
-			sessionName, status, completedCount, len(allChildren))
-	}
-
-	// Queue the message for the supervisor
-	w.host.SetPendingMessage(supervisorID, prompt)
-}
 

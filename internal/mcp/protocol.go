@@ -178,54 +178,7 @@ type PlanApprovalResponse struct {
 	Approved bool `json:"approved"` // Whether the plan was approved
 }
 
-// CreateChildRequest represents a request from the supervisor to create a child session
-type CreateChildRequest struct {
-	ID   any    `json:"id"`   // JSON-RPC request ID for response correlation
-	Task string `json:"task"` // Task description for the child session
-}
-
-// CreateChildResponse represents the result of creating a child session
-type CreateChildResponse struct {
-	ID      any    `json:"id"`                 // Correlates with request ID
-	Success bool   `json:"success"`            // Whether child was created successfully
-	ChildID string `json:"child_id,omitempty"` // ID of the created child session
-	Branch  string `json:"branch,omitempty"`   // Branch name of the child session
-	Error   string `json:"error,omitempty"`    // Error message if creation failed
-}
-
-// ListChildrenRequest represents a request from the supervisor to list child sessions
-type ListChildrenRequest struct {
-	ID any `json:"id"` // JSON-RPC request ID for response correlation
-}
-
-// ChildSessionInfo represents the status of a child session
-type ChildSessionInfo struct {
-	ID     string `json:"id"`     // Session ID
-	Branch string `json:"branch"` // Branch name
-	Status string `json:"status"` // "running", "idle", "completed", "merged"
-}
-
-// ListChildrenResponse represents the result of listing child sessions
-type ListChildrenResponse struct {
-	ID       any                `json:"id"`       // Correlates with request ID
-	Children []ChildSessionInfo `json:"children"` // List of child sessions
-}
-
-// MergeChildRequest represents a request from the supervisor to merge a child session
-type MergeChildRequest struct {
-	ID             any    `json:"id"`               // JSON-RPC request ID for response correlation
-	ChildSessionID string `json:"child_session_id"` // ID of the child session to merge
-}
-
-// MergeChildResponse represents the result of merging a child session
-type MergeChildResponse struct {
-	ID      any    `json:"id"`                // Correlates with request ID
-	Success bool   `json:"success"`           // Whether merge was successful
-	Message string `json:"message,omitempty"` // Success or error message
-	Error   string `json:"error,omitempty"`   // Error message if merge failed
-}
-
-// CreatePRRequest represents a request from an automated supervisor to create a PR on the host
+// CreatePRRequest represents a request from an automated session to create a PR on the host
 type CreatePRRequest struct {
 	ID    any    `json:"id"`              // JSON-RPC request ID for response correlation
 	Title string `json:"title,omitempty"` // Optional PR title (body is auto-generated)
@@ -239,7 +192,7 @@ type CreatePRResponse struct {
 	Error   string `json:"error,omitempty"`  // Error message if creation failed
 }
 
-// PushBranchRequest represents a request from an automated supervisor to push branch on the host
+// PushBranchRequest represents a request from an automated session to push branch on the host
 type PushBranchRequest struct {
 	ID            any    `json:"id"`                       // JSON-RPC request ID for response correlation
 	CommitMessage string `json:"commit_message,omitempty"` // Optional commit message
@@ -252,7 +205,7 @@ type PushBranchResponse struct {
 	Error   string `json:"error,omitempty"` // Error message if push failed
 }
 
-// GetReviewCommentsRequest represents a request from an automated supervisor to get PR review comments
+// GetReviewCommentsRequest represents a request from an automated session to get PR review comments
 type GetReviewCommentsRequest struct {
 	ID any `json:"id"` // JSON-RPC request ID for response correlation
 }

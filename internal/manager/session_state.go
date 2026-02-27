@@ -69,9 +69,6 @@ type SessionState struct {
 	ContainerInitializing bool      // true during container startup
 	ContainerInitStart    time.Time // When container init started
 
-	// Pending merge child request ID (for supervisor MCP tool correlation).
-	// Uses interface{} because JSON-RPC request IDs can be numbers or strings.
-	PendingMergeChildRequestID any
 }
 
 // ToolUseRollupState tracks consecutive tool uses for non-active sessions
@@ -929,22 +926,6 @@ func (m *SessionStateManager) GetContainerInitStart(sessionID string) (time.Time
 		return state.ContainerInitStart, true
 	}
 	return time.Time{}, false
-}
-
-// --- Thread-safe accessors for PendingMergeChildRequestID ---
-
-// GetPendingMergeChildRequestID returns the stored merge child request ID.
-func (s *SessionState) GetPendingMergeChildRequestID() any {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.PendingMergeChildRequestID
-}
-
-// SetPendingMergeChildRequestID stores the merge child request ID for later correlation.
-func (s *SessionState) SetPendingMergeChildRequestID(id any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.PendingMergeChildRequestID = id
 }
 
 // getOrCreate returns existing state or creates new one. Caller must hold lock.

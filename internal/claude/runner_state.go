@@ -12,18 +12,12 @@ import (
 // MCPChannels groups all MCP communication channels for interactive prompts.
 // Each prompt type (permission, question, plan approval) has a request/response pair.
 // Request channels are populated by the MCP server, response channels by the TUI.
-// Supervisor channels are only used when the session is a supervisor session.
 type MCPChannels struct {
 	Permission   *mcp.ChannelPair[mcp.PermissionRequest, mcp.PermissionResponse]
 	Question     *mcp.ChannelPair[mcp.QuestionRequest, mcp.QuestionResponse]
 	PlanApproval *mcp.ChannelPair[mcp.PlanApprovalRequest, mcp.PlanApprovalResponse]
 
-	// Supervisor tool channels (nil when not a supervisor session)
-	CreateChild  *mcp.ChannelPair[mcp.CreateChildRequest, mcp.CreateChildResponse]
-	ListChildren *mcp.ChannelPair[mcp.ListChildrenRequest, mcp.ListChildrenResponse]
-	MergeChild   *mcp.ChannelPair[mcp.MergeChildRequest, mcp.MergeChildResponse]
-
-	// Host tool channels (nil when not an autonomous supervisor session)
+	// Host tool channels (nil when not an autonomous session)
 	CreatePR          *mcp.ChannelPair[mcp.CreatePRRequest, mcp.CreatePRResponse]
 	PushBranch        *mcp.ChannelPair[mcp.PushBranchRequest, mcp.PushBranchResponse]
 	GetReviewComments *mcp.ChannelPair[mcp.GetReviewCommentsRequest, mcp.GetReviewCommentsResponse]
@@ -38,16 +32,8 @@ func NewMCPChannels() *MCPChannels {
 	}
 }
 
-// InitSupervisorChannels initializes the supervisor tool channels.
-// These are only created when the session is a supervisor session.
-func (m *MCPChannels) InitSupervisorChannels() {
-	m.CreateChild = mcp.NewChannelPair[mcp.CreateChildRequest, mcp.CreateChildResponse](PermissionChannelBuffer)
-	m.ListChildren = mcp.NewChannelPair[mcp.ListChildrenRequest, mcp.ListChildrenResponse](PermissionChannelBuffer)
-	m.MergeChild = mcp.NewChannelPair[mcp.MergeChildRequest, mcp.MergeChildResponse](PermissionChannelBuffer)
-}
-
 // InitHostToolChannels initializes the host tool channels.
-// These are only created when the session is an autonomous supervisor.
+// These are only created when the session is autonomous.
 func (m *MCPChannels) InitHostToolChannels() {
 	m.CreatePR = mcp.NewChannelPair[mcp.CreatePRRequest, mcp.CreatePRResponse](PermissionChannelBuffer)
 	m.PushBranch = mcp.NewChannelPair[mcp.PushBranchRequest, mcp.PushBranchResponse](PermissionChannelBuffer)
@@ -59,9 +45,6 @@ func (m *MCPChannels) Close() {
 	m.Permission.Close()
 	m.Question.Close()
 	m.PlanApproval.Close()
-	m.CreateChild.Close()
-	m.ListChildren.Close()
-	m.MergeChild.Close()
 	m.CreatePR.Close()
 	m.PushBranch.Close()
 	m.GetReviewComments.Close()

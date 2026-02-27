@@ -192,11 +192,8 @@ type Runner struct {
 	containerized  bool
 	containerImage string
 
-	// Supervisor mode: when true, MCP config includes --supervisor flag
-	supervisor bool
-
 	// Host tools mode: when true, expose create_pr and push_branch MCP tools
-	// Only used for autonomous supervisor sessions running inside containers
+	// Only used for autonomous sessions running inside containers
 	hostTools bool
 
 	// Disable streaming chunks: when true, omits --include-partial-messages for less verbose output
@@ -327,18 +324,6 @@ func (r *Runner) SetSystemPrompt(prompt string) {
 	r.systemPrompt = prompt
 }
 
-// SetSupervisor enables or disables supervisor mode for this runner.
-// When enabled, supervisor tool channels are initialized and the MCP config
-// will include the --supervisor flag.
-func (r *Runner) SetSupervisor(supervisor bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.supervisor = supervisor
-	if supervisor && r.mcp != nil && r.mcp.CreateChild == nil {
-		r.mcp.InitSupervisorChannels()
-	}
-}
-
 // SetHostTools enables or disables host tools mode for this runner.
 // When enabled, host tool channels are initialized and the MCP config
 // will include the --host-tools flag.
@@ -460,7 +445,6 @@ func (r *Runner) ensureProcessRunning() error {
 		Containerized:          r.containerized,
 		ContainerImage:         r.containerImage,
 		ContainerMCPPort:       containerMCPPort,
-		Supervisor:             r.supervisor,
 		DisableStreamingChunks: r.disableStreamingChunks,
 		SystemPrompt:           r.systemPrompt,
 	}

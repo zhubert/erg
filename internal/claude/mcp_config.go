@@ -38,17 +38,8 @@ func (r *Runner) ensureServerRunning() error {
 	var socketServer *mcp.SocketServer
 	var err error
 
-	// Build optional socket server options for supervisor channels
-	var socketOpts []mcp.SocketServerOption
-	if r.supervisor && r.mcp.CreateChild != nil {
-		socketOpts = append(socketOpts, mcp.WithSupervisorChannels(
-			r.mcp.CreateChild.Req, r.mcp.CreateChild.Resp,
-			r.mcp.ListChildren.Req, r.mcp.ListChildren.Resp,
-			r.mcp.MergeChild.Req, r.mcp.MergeChild.Resp,
-		))
-	}
-
 	// Build optional socket server options for host tool channels
+	var socketOpts []mcp.SocketServerOption
 	if r.hostTools && r.mcp.CreatePR != nil {
 		socketOpts = append(socketOpts, mcp.WithHostToolChannels(
 			r.mcp.CreatePR.Req, r.mcp.CreatePR.Resp,
@@ -126,9 +117,6 @@ func (r *Runner) createMCPConfigLocked(socketPath string) (string, error) {
 
 	// Start with the erg permission handler
 	mcpArgs := []string{"mcp-server", "--socket", socketPath}
-	if r.supervisor {
-		mcpArgs = append(mcpArgs, "--supervisor")
-	}
 	if r.hostTools {
 		mcpArgs = append(mcpArgs, "--host-tools")
 	}
@@ -173,9 +161,6 @@ func (r *Runner) createMCPConfigLocked(socketPath string) (string, error) {
 func (r *Runner) createContainerMCPConfigLocked(containerPort int) (string, error) {
 	listenAddr := fmt.Sprintf("0.0.0.0:%d", containerPort)
 	args := []string{"mcp-server", "--listen", listenAddr, "--auto-approve", "--session-id", r.sessionID}
-	if r.supervisor {
-		args = append(args, "--supervisor")
-	}
 	if r.hostTools {
 		args = append(args, "--host-tools")
 	}

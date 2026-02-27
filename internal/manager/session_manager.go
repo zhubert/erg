@@ -349,8 +349,8 @@ func (sm *SessionManager) GetOrCreateRunner(sess *config.Session) claude.RunnerI
 }
 
 // ConfigureRunnerDefaults applies default policy configuration to a runner based on
-// the session's properties. This includes tools, supervisor mode, host tools,
-// container mode, MCP servers, and streaming settings.
+// the session's properties. This includes tools, host tools, container mode,
+// MCP servers, and streaming settings.
 //
 // This method is intended for the TUI and other consumers that want the "standard"
 // configuration. Headless consumers (like the daemon/agent) should configure runners
@@ -368,17 +368,11 @@ func (sm *SessionManager) ConfigureRunnerDefaults(runner claude.RunnerConfig, se
 	}
 	runner.SetAllowedTools(tools)
 
-	// Configure supervisor mode if this is a supervisor session
-	if sess.IsSupervisor {
-		runner.SetSupervisor(true)
-		log.Debug("supervisor session, supervisor MCP tools enabled")
-	}
-
-	// Enable host tools for autonomous supervisors (create_pr, push_branch)
+	// Enable host tools for autonomous sessions (create_pr, push_branch)
 	// Skip for daemon-managed sessions — the daemon workflow handles push/PR/merge
-	if sess.IsSupervisor && sess.Autonomous && !sess.DaemonManaged {
+	if sess.Autonomous && !sess.DaemonManaged {
 		runner.SetHostTools(true)
-		log.Debug("autonomous supervisor, host tools enabled")
+		log.Debug("autonomous session, host tools enabled")
 	}
 
 	// Configure container mode if enabled for this session

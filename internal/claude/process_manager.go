@@ -71,7 +71,6 @@ type ProcessConfig struct {
 	Containerized          bool   // When true, wraps Claude CLI in a container
 	ContainerImage         string // Container image name (e.g., "ghcr.io/zhubert/erg")
 	ContainerMCPPort       int    // Port the MCP subprocess listens on inside the container (published via -p 0:port)
-	Supervisor               bool          // When true, adds --supervisor flag to Claude CLI args
 	DisableStreamingChunks   bool          // When true, omits --include-partial-messages for less verbose output (useful for agent mode)
 	SystemPrompt             string        // When set, passed to Claude CLI via --append-system-prompt
 	ContainerStartupTimeout  time.Duration // Override container startup watchdog timeout (0 = use default)

@@ -18,7 +18,6 @@ type RunnerConfig interface {
 	SetOnContainerReady(callback func())
 	SetDisableStreamingChunks(disable bool)
 	SetSystemPrompt(prompt string)
-	SetSupervisor(supervisor bool)
 	SetHostTools(hostTools bool)
 }
 
@@ -43,15 +42,7 @@ type RunnerSession interface {
 	PlanApprovalRequestChan() <-chan mcp.PlanApprovalRequest
 	SendPlanApprovalResponse(resp mcp.PlanApprovalResponse)
 
-	// Supervisor tool channels
-	CreateChildRequestChan() <-chan mcp.CreateChildRequest
-	SendCreateChildResponse(resp mcp.CreateChildResponse)
-	ListChildrenRequestChan() <-chan mcp.ListChildrenRequest
-	SendListChildrenResponse(resp mcp.ListChildrenResponse)
-	MergeChildRequestChan() <-chan mcp.MergeChildRequest
-	SendMergeChildResponse(resp mcp.MergeChildResponse)
-
-	// Host tool channels (for autonomous supervisor sessions)
+	// Host tool channels (for autonomous sessions)
 	CreatePRRequestChan() <-chan mcp.CreatePRRequest
 	SendCreatePRResponse(resp mcp.CreatePRResponse)
 	PushBranchRequestChan() <-chan mcp.PushBranchRequest

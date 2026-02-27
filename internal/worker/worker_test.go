@@ -84,10 +84,6 @@ func (h *mockHost) AutoMerge() bool                        { return h.autoMerge 
 func (h *mockHost) MergeMethod() string                    { return h.mergeMethod }
 func (h *mockHost) AutoAddressPRComments() bool            { return h.autoAddressPRComments }
 
-func (h *mockHost) CreateChildSession(ctx context.Context, supervisorID, taskDescription string) (SessionInfo, error) {
-	return SessionInfo{}, nil
-}
-
 func (h *mockHost) CleanupSession(ctx context.Context, sessionID string) error {
 	h.cleanupCalled[sessionID] = true
 	return nil

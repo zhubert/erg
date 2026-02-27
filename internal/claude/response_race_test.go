@@ -34,27 +34,6 @@ func TestSendResponseNoRaceWithStop(t *testing.T) {
 			},
 		},
 		{
-			name: "SendCreateChildResponse",
-			sendFunc: func(r *Runner) {
-				r.SetSupervisor(true) // Initialize supervisor channels
-				r.SendCreateChildResponse(mcp.CreateChildResponse{ChildID: "test"})
-			},
-		},
-		{
-			name: "SendListChildrenResponse",
-			sendFunc: func(r *Runner) {
-				r.SetSupervisor(true) // Initialize supervisor channels
-				r.SendListChildrenResponse(mcp.ListChildrenResponse{})
-			},
-		},
-		{
-			name: "SendMergeChildResponse",
-			sendFunc: func(r *Runner) {
-				r.SetSupervisor(true) // Initialize supervisor channels
-				r.SendMergeChildResponse(mcp.MergeChildResponse{})
-			},
-		},
-		{
 			name: "SendCreatePRResponse",
 			sendFunc: func(r *Runner) {
 				r.SetHostTools(true) // Initialize host tool channels
@@ -127,11 +106,6 @@ func TestSendResponseAfterStop(t *testing.T) {
 	r.SendQuestionResponse(mcp.QuestionResponse{Answers: map[string]string{"q1": "a1"}})
 	r.SendPlanApprovalResponse(mcp.PlanApprovalResponse{Approved: true})
 
-	r.SetSupervisor(true)
-	r.SendCreateChildResponse(mcp.CreateChildResponse{ChildID: "test"})
-	r.SendListChildrenResponse(mcp.ListChildrenResponse{})
-	r.SendMergeChildResponse(mcp.MergeChildResponse{})
-
 	r.SetHostTools(true)
 	r.SendCreatePRResponse(mcp.CreatePRResponse{})
 	r.SendPushBranchResponse(mcp.PushBranchResponse{})
@@ -200,7 +174,6 @@ func TestSendResponseBeforeStop(t *testing.T) {
 // return nil after Stop() to prevent reading from closed channels.
 func TestRequestChannelsReturnNilAfterStop(t *testing.T) {
 	r := New("test-session", "/tmp", "/tmp", false, nil)
-	r.SetSupervisor(true)
 	r.SetHostTools(true)
 
 	// Before stop, channels should be non-nil
@@ -225,15 +198,6 @@ func TestRequestChannelsReturnNilAfterStop(t *testing.T) {
 	}
 	if r.PlanApprovalRequestChan() != nil {
 		t.Error("expected PlanApprovalRequestChan to be nil after stop")
-	}
-	if r.CreateChildRequestChan() != nil {
-		t.Error("expected CreateChildRequestChan to be nil after stop")
-	}
-	if r.ListChildrenRequestChan() != nil {
-		t.Error("expected ListChildrenRequestChan to be nil after stop")
-	}
-	if r.MergeChildRequestChan() != nil {
-		t.Error("expected MergeChildRequestChan to be nil after stop")
 	}
 	if r.CreatePRRequestChan() != nil {
 		t.Error("expected CreatePRRequestChan to be nil after stop")
