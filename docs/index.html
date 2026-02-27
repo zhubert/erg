@@ -2171,6 +2171,151 @@
           </div>
         </div>
 
+        <div class="action-ref">
+          <div class="action-header">
+            <span class="action-title">ai.plan</span>
+            <span class="badge badge-async">async</span>
+          </div>
+          <p class="action-desc">
+            Starts a read-only planning session where Claude analyzes the issue
+            and codebase, then posts a structured implementation plan as an
+            issue comment. No new branch or worktree is created — Claude reads
+            from the main repo directory. Useful as a first step before
+            <code>ai.code</code> to get human sign-off on the approach.
+          </p>
+          <div class="param-section">
+            <div class="param-section-title">Params</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>system_prompt</td>
+                  <td>string</td>
+                  <td><em>built-in</em></td>
+                  <td>
+                    Inline prompt or <code>file:.erg/plan_prompt.md</code> to
+                    load from the repo. Overrides the default planning prompt.
+                  </td>
+                </tr>
+                <tr>
+                  <td>max_turns</td>
+                  <td>int</td>
+                  <td><em>unlimited</em></td>
+                  <td>Maximum number of Claude turns for the planning session.</td>
+                </tr>
+                <tr>
+                  <td>max_duration</td>
+                  <td>duration</td>
+                  <td><em>none</em></td>
+                  <td>
+                    Hard time limit for the session, e.g. <code>20m</code>,
+                    <code>2h</code>.
+                  </td>
+                </tr>
+                <tr>
+                  <td>containerized</td>
+                  <td>bool</td>
+                  <td>true</td>
+                  <td>Run Claude inside a Docker container sandbox.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <div class="param-section-title">Output data</div>
+            <p class="param-none">
+              None. The plan is posted as an issue comment by Claude during the
+              session. The daemon advances the state machine when the worker
+              exits.
+            </p>
+          </div>
+        </div>
+
+        <div class="action-ref">
+          <div class="action-header">
+            <span class="action-title">ai.review</span>
+            <span class="badge badge-async">async</span>
+          </div>
+          <p class="action-desc">
+            Runs a Claude session to self-review the branch diff before
+            pushing, acting as a quality gate. Claude examines the diff, checks
+            for correctness, test coverage, security issues, and code quality,
+            then reports via the <code>submit_review</code> MCP tool. If the
+            review fails (<code>passed=false</code>), the step returns an error
+            and the workflow follows the error edge.
+          </p>
+          <div class="param-section">
+            <div class="param-section-title">Params</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>max_ai_review_rounds</td>
+                  <td>int</td>
+                  <td>1</td>
+                  <td>
+                    Maximum number of review attempts before returning an
+                    error.
+                  </td>
+                </tr>
+                <tr>
+                  <td>system_prompt</td>
+                  <td>string</td>
+                  <td><em>built-in</em></td>
+                  <td>Custom system prompt for the review session.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <div class="param-section-title">Output data</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>review_passed</td>
+                  <td>bool</td>
+                  <td>
+                    <code>true</code> if the review passed,
+                    <code>false</code> if it was blocked. Inspect in
+                    <code>choice</code> states to branch on review outcome.
+                  </td>
+                </tr>
+                <tr>
+                  <td>ai_review_summary</td>
+                  <td>string</td>
+                  <td>One-sentence summary of the review findings.</td>
+                </tr>
+                <tr>
+                  <td>ai_review_rounds</td>
+                  <td>int</td>
+                  <td>Incremented on each attempt. Inspect in <code>choice</code> states to check round count.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <h3 id="actions-github">GitHub actions</h3>
 
         <div class="action-ref">
