@@ -304,6 +304,11 @@ type requestReviewAction struct {
 	daemon *Daemon
 }
 
+// assignPRAction implements the github.assign_pr action.
+type assignPRAction struct {
+	daemon *Daemon
+}
+
 // Execute requests review on the PR for the work item.
 func (a *requestReviewAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
@@ -314,6 +319,21 @@ func (a *requestReviewAction) Execute(ctx context.Context, ac *workflow.ActionCo
 
 	if err := d.requestReview(ctx, item, ac.Params); err != nil {
 		return workflow.ActionResult{Error: fmt.Errorf("request review failed: %w", err)}
+	}
+
+	return workflow.ActionResult{Success: true}
+}
+
+// Execute assigns the PR to specific users for the work item.
+func (a *assignPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	if err := d.assignPR(ctx, item, ac.Params); err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("assign PR failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -419,6 +439,51 @@ func (a *rebaseAction) Execute(ctx context.Context, ac *workflow.ActionContext) 
 	}
 
 	d.logger.Info("rebased branch successfully", "workItem", item.ID, "branch", item.Branch, "baseBranch", baseBranch, "round", rounds+1)
+	return workflow.ActionResult{Success: true}
+}
+
+// squashAction implements the git.squash action.
+type squashAction struct {
+	daemon *Daemon
+}
+
+// Execute squashes all branch commits since divergence from the base branch into one.
+func (a *squashAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	sess := d.config.GetSession(item.SessionID)
+	if sess == nil {
+		return workflow.ActionResult{Error: fmt.Errorf("session not found")}
+	}
+
+	// Refresh stale session to ensure worktree exists.
+	sess = d.refreshStaleSession(ctx, item, sess)
+
+	// Determine base branch.
+	baseBranch := sess.BaseBranch
+	if baseBranch == "" {
+		baseBranch = d.gitService.GetDefaultBranch(ctx, sess.RepoPath)
+	}
+
+	workDir := sess.WorkTree
+	if workDir == "" {
+		workDir = sess.RepoPath
+	}
+
+	message := ac.Params.String("message", "")
+
+	squashCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if err := d.gitService.SquashBranch(squashCtx, workDir, item.Branch, baseBranch, message); err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("squash failed: %w", err)}
+	}
+
+	d.logger.Info("squashed branch successfully", "workItem", item.ID, "branch", item.Branch, "baseBranch", baseBranch)
 	return workflow.ActionResult{Success: true}
 }
 
@@ -690,6 +755,31 @@ func (d *Daemon) sendSlackNotification(ctx context.Context, item daemonstate.Wor
 
 	d.logger.Info("slack notification sent", "workItem", item.ID, "channel", payload.Channel)
 	return nil
+}
+
+// writePRDescriptionAction implements the ai.write_pr_description action.
+type writePRDescriptionAction struct {
+	daemon *Daemon
+}
+
+// Execute generates a rich PR description from the diff and updates the open PR body.
+func (a *writePRDescriptionAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	sess := d.config.GetSession(item.SessionID)
+	if sess == nil {
+		return workflow.ActionResult{Error: fmt.Errorf("session not found")}
+	}
+
+	if err := d.writePRDescription(ctx, item, sess); err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("ai.write_pr_description failed: %w", err)}
+	}
+
+	return workflow.ActionResult{Success: true}
 }
 
 // waitAction implements the workflow.wait action.
