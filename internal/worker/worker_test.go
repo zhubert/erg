@@ -93,7 +93,7 @@ func (h *mockHost) CleanupSession(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-func (h *mockHost) SaveRunnerMessages(sessionID string, runner claude.RunnerInterface) {}
+func (h *mockHost) SaveRunnerMessages(sessionID string, runner claude.RunnerSession) {}
 
 func (h *mockHost) IsWorkerRunning(sessionID string) bool { return false }
 

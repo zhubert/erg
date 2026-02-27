@@ -372,7 +372,7 @@ func (d *Daemon) recreateWorktree(ctx context.Context, repoPath, branch, session
 
 // configureRunner explicitly configures a runner for daemon use.
 // The daemon makes all policy decisions here rather than relying on SessionManager.
-func (d *Daemon) configureRunner(runner claude.RunnerInterface, sess *config.Session, customPrompt string) {
+func (d *Daemon) configureRunner(runner claude.RunnerConfig, sess *config.Session, customPrompt string) {
 	// Tools: compose the container tool set for daemon sessions
 	runner.SetAllowedTools(claude.ComposeTools(
 		claude.ToolSetBase,
@@ -887,7 +887,7 @@ func getReviewRounds(stepData map[string]any) int {
 }
 
 // saveRunnerMessages saves messages for a session's runner.
-func (d *Daemon) saveRunnerMessages(sessionID string, runner claude.RunnerInterface) {
+func (d *Daemon) saveRunnerMessages(sessionID string, runner claude.RunnerSession) {
 	if err := d.sessionMgr.SaveRunnerMessages(sessionID, runner); err != nil {
 		d.logger.Error("failed to save session messages", "sessionID", sessionID, "error", err)
 	}
