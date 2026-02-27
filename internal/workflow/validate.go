@@ -98,6 +98,11 @@ func validateState(name string, state *State, allStates map[string]*State) []Val
 			errs = append(errs, validateCodingParams(prefix, state.Params)...)
 		}
 
+		// Validate params for ai.plan action (same param shape as ai.code)
+		if state.Action == "ai.plan" {
+			errs = append(errs, validateCodingParams(prefix, state.Params)...)
+		}
+
 		// Validate params for github.merge action
 		if state.Action == "github.merge" {
 			errs = append(errs, validateMergeParams(prefix, state.Params)...)

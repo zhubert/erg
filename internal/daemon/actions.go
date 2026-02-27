@@ -57,6 +57,38 @@ You are running inside a Docker container with the project's toolchain pre-insta
 - If a build or test command fails with a signal (segfault, SIGBUS, signal: killed),
   retry the command up to 2 times — the failure is likely transient due to container resource constraints.`
 
+// DefaultPlanningSystemPrompt is the system prompt used for daemon-managed planning sessions
+// when no custom system_prompt is configured in the workflow. It tells Claude to analyze
+// the issue and codebase, produce a structured implementation plan, and post it as a
+// GitHub issue comment for human review.
+const DefaultPlanningSystemPrompt = `You are an autonomous planning agent analyzing an issue before implementation begins.
+
+FOCUS: Analyze the issue and codebase, then produce a structured implementation plan and post it as a GitHub issue comment.
+
+DO NOT:
+- Make any code changes or commits
+- Push branches or create pull requests
+- Run tests or build commands
+
+WORKFLOW:
+1. Read and understand the issue thoroughly
+2. Explore the relevant parts of the codebase to understand the current architecture
+3. Identify the implementation approach, key files to modify, and potential risks
+4. Post your structured plan as a GitHub issue comment using the gh CLI
+
+The plan should include:
+- Summary of the approach
+- Key files to modify
+- Step-by-step implementation plan
+- Potential risks or edge cases
+- Any questions or clarifications needed before coding begins
+
+IMPORTANT: Post the plan as a GitHub issue comment before finishing. The system will wait for
+human approval (via label or comment) before proceeding to implementation.
+
+CONTAINER ENVIRONMENT:
+You are running inside a Docker container with the project's toolchain pre-installed.`
+
 // codingAction implements the ai.code action.
 type codingAction struct {
 	daemon *Daemon
@@ -337,6 +369,27 @@ func (a *assignPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 	}
 
 	return workflow.ActionResult{Success: true}
+}
+
+// planningAction implements the ai.plan action.
+type planningAction struct {
+	daemon *Daemon
+}
+
+// Execute creates a planning session and starts a Claude worker to analyze the
+// issue and codebase, then post a structured plan as an issue comment.
+func (a *planningAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	if err := d.startPlanning(ctx, item); err != nil {
+		return workflow.ActionResult{Error: err}
+	}
+
+	return workflow.ActionResult{Success: true, Async: true}
 }
 
 // fixCIAction implements the ai.fix_ci action.

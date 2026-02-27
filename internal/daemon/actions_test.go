@@ -5721,3 +5721,321 @@ func TestWritePRDescriptionAction_RegisteredInRegistry(t *testing.T) {
 		t.Error("ai.write_pr_description not registered in action registry")
 	}
 }
+
+// --- planningAction tests ---
+
+func TestPlanningAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &planningAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestPlanningAction_Execute_NoRepo(t *testing.T) {
+	cfg := testConfig()
+	// No repos configured — startPlanning should fail
+	cfg.Repos = []string{}
+	d := testDaemon(cfg)
+	d.repoFilter = ""
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42"},
+		StepData: map[string]any{},
+	})
+
+	action := &planningAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when no repo is found")
+	}
+	if result.Error == nil {
+		t.Error("expected error when no repo is found")
+	}
+}
+
+func TestStartPlanning_CreatesSessionOnDefaultBranch(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	// Mock GetDefaultBranch (git symbolic-ref)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Implement feature"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := d.startPlanning(ctx, *item)
+	if err != nil {
+		t.Fatalf("startPlanning failed: %v", err)
+	}
+
+	// Verify work item was updated with a session ID and marked active
+	updatedItem, ok := d.state.GetWorkItem(item.ID)
+	if !ok {
+		t.Fatal("work item should exist in state")
+	}
+	if updatedItem.SessionID == "" {
+		t.Error("SessionID must be set after startPlanning")
+	}
+	if updatedItem.State != daemonstate.WorkItemActive {
+		t.Errorf("item.State must be WorkItemActive, got %q", updatedItem.State)
+	}
+
+	// Verify a session was recorded in config
+	sessions := cfg.GetSessions()
+	if len(sessions) == 0 {
+		t.Fatal("expected a session to be recorded in config")
+	}
+	sess := sessions[0]
+
+	// Session should be on the default branch, not a new feature branch
+	if sess.Branch != "main" {
+		t.Errorf("session branch = %q, want %q", sess.Branch, "main")
+	}
+
+	// WorkTree should be the repo path itself (no separate worktree)
+	if sess.WorkTree != "/test/repo" {
+		t.Errorf("session WorkTree = %q, want %q", sess.WorkTree, "/test/repo")
+	}
+
+	// Session should be marked as daemon-managed and autonomous
+	if !sess.DaemonManaged {
+		t.Error("session should be DaemonManaged")
+	}
+	if !sess.Autonomous {
+		t.Error("session should be Autonomous")
+	}
+
+	// Config session ID must match item's SessionID
+	if sess.ID != updatedItem.SessionID {
+		t.Errorf("config session ID %q does not match item.SessionID %q", sess.ID, updatedItem.SessionID)
+	}
+}
+
+func TestPlanningAction_Execute_ReturnsAsync(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Plan feature"},
+		StepData: map[string]any{},
+	})
+
+	action := &planningAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "work-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	result := action.Execute(ctx, ac)
+
+	if !result.Success {
+		t.Errorf("expected success, got error: %v", result.Error)
+	}
+	if !result.Async {
+		t.Error("expected Async=true for planningAction")
+	}
+}
+
+func TestPlanningAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("ai.plan") == nil {
+		t.Error("ai.plan not registered in action registry")
+	}
+}
+
+func TestDefaultPlanningSystemPrompt_NotEmpty(t *testing.T) {
+	if DefaultPlanningSystemPrompt == "" {
+		t.Fatal("DefaultPlanningSystemPrompt should not be empty")
+	}
+}
+
+func TestDefaultPlanningSystemPrompt_FocusesOnAnalysis(t *testing.T) {
+	if !strings.Contains(DefaultPlanningSystemPrompt, "planning agent") {
+		t.Error("DefaultPlanningSystemPrompt should identify as a planning agent")
+	}
+	if !strings.Contains(DefaultPlanningSystemPrompt, "DO NOT") {
+		t.Error("DefaultPlanningSystemPrompt should contain DO NOT instructions")
+	}
+	if !strings.Contains(DefaultPlanningSystemPrompt, "implementation plan") {
+		t.Error("DefaultPlanningSystemPrompt should mention implementation plan")
+	}
+}
+
+func TestDefaultPlanningSystemPrompt_ExplicitlyForbidsCodeChanges(t *testing.T) {
+	if !strings.Contains(DefaultPlanningSystemPrompt, "code changes") {
+		t.Error("DefaultPlanningSystemPrompt should explicitly forbid code changes")
+	}
+	if !strings.Contains(DefaultPlanningSystemPrompt, "commits") {
+		t.Error("DefaultPlanningSystemPrompt should explicitly forbid commits")
+	}
+}
+
+func TestDefaultPlanningSystemPrompt_InstructsToPostComment(t *testing.T) {
+	if !strings.Contains(DefaultPlanningSystemPrompt, "issue comment") {
+		t.Error("DefaultPlanningSystemPrompt should instruct Claude to post an issue comment")
+	}
+}
+
+func TestDefaultPlanningSystemPrompt_ContainerEnvironment(t *testing.T) {
+	if !strings.Contains(DefaultPlanningSystemPrompt, "CONTAINER ENVIRONMENT") {
+		t.Error("DefaultPlanningSystemPrompt should contain CONTAINER ENVIRONMENT section")
+	}
+}
+
+func TestStartPlanning_UsesCustomSystemPrompt(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	// Set up workflow config with a custom system prompt for the planning state
+	customPrompt := "My custom planning instructions"
+	wfCfg := workflow.DefaultWorkflowConfig()
+	wfCfg.States["planning"] = &workflow.State{
+		Type:   workflow.StateTypeTask,
+		Action: "ai.plan",
+		Next:   "done",
+		Params: map[string]any{"system_prompt": customPrompt},
+	}
+	d.workflowConfigs = map[string]*workflow.Config{"/test/repo": wfCfg}
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Plan feature"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	var capturedRunner *trackingRunner
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		r := newTrackingRunner(sessionID)
+		capturedRunner = r
+		return r
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := d.startPlanning(ctx, *item)
+	if err != nil {
+		t.Fatalf("startPlanning failed: %v", err)
+	}
+
+	if capturedRunner == nil {
+		t.Fatal("expected runner factory to be called")
+	}
+	if capturedRunner.systemPrompt != customPrompt {
+		t.Errorf("expected custom prompt %q, got %q", customPrompt, capturedRunner.systemPrompt)
+	}
+}
+
+func TestStartPlanning_UsesDefaultPromptWhenNoCustom(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Plan feature"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	var capturedRunner *trackingRunner
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		r := newTrackingRunner(sessionID)
+		capturedRunner = r
+		return r
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := d.startPlanning(ctx, *item)
+	if err != nil {
+		t.Fatalf("startPlanning failed: %v", err)
+	}
+
+	if capturedRunner == nil {
+		t.Fatal("expected runner factory to be called")
+	}
+	if capturedRunner.systemPrompt != DefaultPlanningSystemPrompt {
+		t.Errorf("expected DefaultPlanningSystemPrompt when no custom prompt, got %q", capturedRunner.systemPrompt)
+	}
+}
