@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/git"
-	"github.com/zhubert/erg/internal/manager"
 	"github.com/zhubert/erg/internal/mcp"
 )
 
@@ -21,7 +21,6 @@ import (
 type mockHost struct {
 	cfg        *config.Config
 	gitService *git.GitService
-	sessionMgr *manager.SessionManager
 	logger     *slog.Logger
 
 	maxTurns              int
@@ -30,10 +29,13 @@ type mockHost struct {
 	mergeMethod           string
 	autoAddressPRComments bool
 
-	cleanupCalled  map[string]bool
-	recordedCostUSD    float64
+	cleanupCalled        map[string]bool
+	recordedCostUSD      float64
 	recordedOutputTokens int
 	recordedInputTokens  int
+
+	pendingMu       sync.Mutex
+	pendingMessages map[string]string
 }
 
 func newMockHost(mockExec *exec.MockExecutor) *mockHost {
@@ -42,29 +44,40 @@ func newMockHost(mockExec *exec.MockExecutor) *mockHost {
 		AutoMaxDurationMin: 30,
 	}
 	gitSvc := git.NewGitServiceWithExecutor(mockExec)
-	sessMgr := manager.NewSessionManager(cfg, gitSvc)
-	sessMgr.SetSkipMessageLoad(true)
 
 	return &mockHost{
-		cfg:           cfg,
-		gitService:    gitSvc,
-		sessionMgr:    sessMgr,
-		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		maxTurns:      50,
-		maxDuration:   30,
-		autoMerge:     true,
-		mergeMethod:   "rebase",
-		cleanupCalled: make(map[string]bool),
+		cfg:             cfg,
+		gitService:      gitSvc,
+		logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		maxTurns:        50,
+		maxDuration:     30,
+		autoMerge:       true,
+		mergeMethod:     "rebase",
+		cleanupCalled:   make(map[string]bool),
+		pendingMessages: make(map[string]string),
 	}
 }
 
 // Compile-time check that mockHost implements Host.
 var _ Host = (*mockHost)(nil)
 
-func (h *mockHost) Config() agentconfig.Config             { return h.cfg }
-func (h *mockHost) GitService() *git.GitService            { return h.gitService }
-func (h *mockHost) SessionManager() *manager.SessionManager { return h.sessionMgr }
-func (h *mockHost) Logger() *slog.Logger                   { return h.logger }
+func (h *mockHost) Config() agentconfig.Config  { return h.cfg }
+func (h *mockHost) GitService() *git.GitService { return h.gitService }
+func (h *mockHost) Logger() *slog.Logger        { return h.logger }
+
+func (h *mockHost) GetPendingMessage(sessionID string) string {
+	h.pendingMu.Lock()
+	defer h.pendingMu.Unlock()
+	msg := h.pendingMessages[sessionID]
+	delete(h.pendingMessages, sessionID)
+	return msg
+}
+
+func (h *mockHost) SetPendingMessage(sessionID, msg string) {
+	h.pendingMu.Lock()
+	defer h.pendingMu.Unlock()
+	h.pendingMessages[sessionID] = msg
+}
 func (h *mockHost) MaxTurns() int                          { return h.maxTurns }
 func (h *mockHost) MaxDuration() int                       { return h.maxDuration }
 func (h *mockHost) AutoMerge() bool                        { return h.autoMerge }

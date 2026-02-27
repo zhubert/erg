@@ -191,7 +191,7 @@ func (w *SessionWorker) run() {
 		}
 
 		// Check for pending messages (e.g., child completion notifications)
-		pendingMsg := w.host.SessionManager().StateManager().GetPendingMessage(w.sessionID)
+		pendingMsg := w.host.GetPendingMessage(w.sessionID)
 		if pendingMsg != "" {
 			log.Debug("sending pending message")
 			content := []claude.ContentBlock{{Type: claude.ContentTypeText, Text: pendingMsg}}
@@ -756,7 +756,6 @@ func (w *SessionWorker) notifySupervisor(supervisorID string, testsPassed bool) 
 	}
 
 	// Queue the message for the supervisor
-	state := w.host.SessionManager().StateManager().GetOrCreate(supervisorID)
-	state.SetPendingMsg(prompt)
+	w.host.SetPendingMessage(supervisorID, prompt)
 }
 
