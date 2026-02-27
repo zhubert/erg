@@ -146,7 +146,7 @@ func readStreamLogLines(sessionID string) ([]string, error) {
 			switch c.Type {
 			case "text":
 				// Split multi-line text into individual lines
-				for _, ln := range strings.Split(c.Text, "\n") {
+				for ln := range strings.SplitSeq(c.Text, "\n") {
 					ln = strings.TrimRight(ln, "\r")
 					if strings.TrimSpace(ln) != "" {
 						lines = append(lines, ln)
@@ -190,16 +190,10 @@ func renderTailView(w io.Writer, items []*daemonstate.WorkItem, termRows, termCo
 
 	// Compute column widths — divide terminal evenly, separator between columns
 	// Total separators = n-1 (each "│" is 1 char)
-	colWidth := (termCols - (n - 1)) / n
-	if colWidth < 10 {
-		colWidth = 10
-	}
+	colWidth := max((termCols-(n-1))/n, 10)
 
 	// Content rows available: terminal rows minus 3 header rows (title, step, separator)
-	contentRows := termRows - 4
-	if contentRows < 1 {
-		contentRows = 1
-	}
+	contentRows := max(termRows-4, 1)
 
 	// Build each column's lines
 	type colData struct {

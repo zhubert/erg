@@ -45,10 +45,7 @@ func (a *RetryAction) Execute(ctx context.Context, ac *ActionContext) ActionResu
 		return ActionResult{Error: fmt.Errorf("workflow.retry: unknown action %q", innerName)}
 	}
 
-	maxAttempts := ac.Params.Int("max_attempts", 3)
-	if maxAttempts < 1 {
-		maxAttempts = 1
-	}
+	maxAttempts := max(ac.Params.Int("max_attempts", 3), 1)
 
 	interval := ac.Params.Duration("interval", 0)
 	backoffRate := ac.Params.Float64("backoff_rate", 1.0)

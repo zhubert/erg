@@ -1,5 +1,7 @@
 package workflow
 
+import "maps"
+
 import "time"
 
 // DefaultWorkflowConfig returns a Config with the default state graph:
@@ -21,7 +23,7 @@ import "time"
 func DefaultWorkflowConfig() *Config {
 	return &Config{
 		Workflow: "issue-to-merge",
-		Start:   "coding",
+		Start:    "coding",
 		Source: SourceConfig{
 			Provider: "github",
 			Filter: FilterConfig{
@@ -174,9 +176,9 @@ func DefaultWorkflowConfig() *Config {
 func Merge(partial, defaults *Config) *Config {
 	result := &Config{
 		Workflow: partial.Workflow,
-		Start:   partial.Start,
-		Source:  partial.Source,
-		States:  make(map[string]*State),
+		Start:    partial.Start,
+		Source:   partial.Source,
+		States:   make(map[string]*State),
 	}
 
 	// Fill empty top-level fields from defaults
@@ -206,9 +208,7 @@ func Merge(partial, defaults *Config) *Config {
 		s := *state
 		if state.Params != nil {
 			s.Params = make(map[string]any, len(state.Params))
-			for k, v := range state.Params {
-				s.Params[k] = v
-			}
+			maps.Copy(s.Params, state.Params)
 		}
 		if state.Before != nil {
 			s.Before = make([]HookConfig, len(state.Before))
@@ -242,9 +242,7 @@ func Merge(partial, defaults *Config) *Config {
 	}
 
 	// Overlay partial states (full replacement per state)
-	for name, state := range partial.States {
-		result.States[name] = state
-	}
+	maps.Copy(result.States, partial.States)
 
 	// Settings: partial wins if present, otherwise keep defaults
 	if partial.Settings != nil {

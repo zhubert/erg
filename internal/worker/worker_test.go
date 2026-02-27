@@ -78,11 +78,11 @@ func (h *mockHost) SetPendingMessage(sessionID, msg string) {
 	defer h.pendingMu.Unlock()
 	h.pendingMessages[sessionID] = msg
 }
-func (h *mockHost) MaxTurns() int                          { return h.maxTurns }
-func (h *mockHost) MaxDuration() int                       { return h.maxDuration }
-func (h *mockHost) AutoMerge() bool                        { return h.autoMerge }
-func (h *mockHost) MergeMethod() string                    { return h.mergeMethod }
-func (h *mockHost) AutoAddressPRComments() bool            { return h.autoAddressPRComments }
+func (h *mockHost) MaxTurns() int               { return h.maxTurns }
+func (h *mockHost) MaxDuration() int            { return h.maxDuration }
+func (h *mockHost) AutoMerge() bool             { return h.autoMerge }
+func (h *mockHost) MergeMethod() string         { return h.mergeMethod }
+func (h *mockHost) AutoAddressPRComments() bool { return h.autoAddressPRComments }
 
 func (h *mockHost) CleanupSession(ctx context.Context, sessionID string) error {
 	h.cleanupCalled[sessionID] = true
@@ -149,8 +149,7 @@ func TestSessionWorker_Lifecycle(t *testing.T) {
 	// Before start, cancel is nil
 	w.Cancel() // Should not panic
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 
@@ -474,8 +473,7 @@ func TestSessionWorker_ExitError_NilOnSuccess(t *testing.T) {
 	)
 
 	w := NewSessionWorker(h, sess, runner, "Do something")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 	w.Wait()
@@ -498,8 +496,7 @@ func TestSessionWorker_ExitError_SetOnChunkError(t *testing.T) {
 	)
 
 	w := NewSessionWorker(h, sess, runner, "Do something")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 	w.Wait()
@@ -528,8 +525,7 @@ func TestSessionWorker_ExitError_APIErrorInStream(t *testing.T) {
 	)
 
 	w := NewSessionWorker(h, sess, runner, "Do something")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 	w.Wait()
@@ -601,8 +597,7 @@ func TestSessionWorker_ExitError_SessionNotFound(t *testing.T) {
 	)
 
 	w := NewSessionWorker(h, sess, runner, "Address review feedback")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 	w.Wait()
@@ -709,7 +704,7 @@ func TestSessionWorker_Turns_ConcurrentAccess(t *testing.T) {
 	runner := claude.NewMockRunner("s1", false, nil)
 	// Queue enough responses for several turns so the worker stays alive long
 	// enough for the concurrent reader goroutine to race.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		runner.QueueResponse(
 			claude.ResponseChunk{Type: claude.ChunkTypeText, Content: "thinking"},
 			claude.ResponseChunk{Done: true},
@@ -717,8 +712,7 @@ func TestSessionWorker_Turns_ConcurrentAccess(t *testing.T) {
 	}
 
 	w := NewSessionWorker(h, sess, runner, "Do something")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 
@@ -759,8 +753,7 @@ func TestSessionWorker_ExitError_ConcurrentAccess(t *testing.T) {
 	)
 
 	w := NewSessionWorker(h, sess, runner, "Do something")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	w.Start(ctx)
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -121,13 +122,7 @@ func TestFindLocks_FindsLockFiles(t *testing.T) {
 	}
 
 	// Should find at least our lock
-	found := false
-	for _, l := range locks {
-		if l == lock.path {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(locks, lock.path)
 	if !found {
 		t.Error("expected FindLocks to discover our lock file")
 	}

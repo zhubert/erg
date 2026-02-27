@@ -44,7 +44,7 @@ func AcquireLock(repoPath string) (*DaemonLock, error) {
 	}
 
 	// Try up to 2 times: once normally, once after stale lock cleanup.
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		f, err := os.OpenFile(fp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
 			// Successfully created lock file — write our PID

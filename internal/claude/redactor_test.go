@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -111,13 +112,7 @@ func TestNewRedactor_AllKnownVarsRecognised(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(name, "super-secret-value")
 			r := NewRedactor()
-			found := false
-			for _, s := range r.secrets {
-				if s == "super-secret-value" {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(r.secrets, "super-secret-value")
 			if !found {
 				t.Errorf("env var %s not collected by NewRedactor", name)
 			}

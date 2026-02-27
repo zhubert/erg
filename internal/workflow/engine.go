@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"reflect"
 	"time"
 )
@@ -16,17 +17,17 @@ type EventChecker interface {
 
 // WorkItemView is a read-only view of a work item for the engine.
 type WorkItemView struct {
-	ID            string
-	SessionID     string
-	RepoPath      string
-	Branch        string
-	PRURL         string
-	CurrentStep   string
-	Phase         string
-	StepData      map[string]any
-	FeedbackRounds int
+	ID                string
+	SessionID         string
+	RepoPath          string
+	Branch            string
+	PRURL             string
+	CurrentStep       string
+	Phase             string
+	StepData          map[string]any
+	FeedbackRounds    int
 	CommentsAddressed int
-	StepEnteredAt time.Time
+	StepEnteredAt     time.Time
 
 	// Extra is an opaque map for passing implementation-specific data.
 	Extra map[string]any
@@ -512,12 +513,8 @@ func matchesErrors(errStr string, patterns []string) bool {
 // mergeData merges overlay into base, returning a new map.
 func mergeData(base, overlay map[string]any) map[string]any {
 	result := make(map[string]any)
-	for k, v := range base {
-		result[k] = v
-	}
-	for k, v := range overlay {
-		result[k] = v
-	}
+	maps.Copy(result, base)
+	maps.Copy(result, overlay)
 	return result
 }
 

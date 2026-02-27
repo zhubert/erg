@@ -7,12 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	pexec "github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/config"
+	pexec "github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/paths"
 )
 
@@ -963,13 +964,7 @@ func TestCreatePR_DraftFlag(t *testing.T) {
 	}
 
 	// Verify --draft flag is present
-	hasDraft := false
-	for _, arg := range ghCall.Args {
-		if arg == "--draft" {
-			hasDraft = true
-			break
-		}
-	}
+	hasDraft := slices.Contains(ghCall.Args, "--draft")
 	if !hasDraft {
 		t.Errorf("expected --draft flag in gh command, got: %v", ghCall.Args)
 	}

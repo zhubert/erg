@@ -880,7 +880,7 @@ func TestDisplaySummary_Running(t *testing.T) {
 	repo := "test/repo"
 	lockPath := daemonstate.LockFilePath(repo)
 	os.MkdirAll(filepath.Dir(lockPath), 0o755)
-	os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o644)
+	os.WriteFile(lockPath, fmt.Appendf(nil, "%d", os.Getpid()), 0o644)
 	defer os.Remove(lockPath)
 
 	// Create a state file

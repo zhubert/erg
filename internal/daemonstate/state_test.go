@@ -287,11 +287,11 @@ func TestDaemonState_ActiveSlotCount(t *testing.T) {
 
 func TestDaemonState_HasWorkItemForIssue(t *testing.T) {
 	tests := []struct {
-		name        string
-		setup       func(s *DaemonState)
-		source      string
-		issueID     string
-		want        bool
+		name    string
+		setup   func(s *DaemonState)
+		source  string
+		issueID string
+		want    bool
 	}{
 		{
 			name:    "empty state",
@@ -689,7 +689,7 @@ func TestDaemonState_SetLastPollAt(t *testing.T) {
 	const goroutines = 10
 	var wg sync.WaitGroup
 	wg.Add(goroutines * 2)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			s.SetLastPollAt(time.Now())
@@ -816,7 +816,7 @@ func TestGetWorkItem_ConcurrentSafe(t *testing.T) {
 	// Writer goroutine: simulates worker calling UpdateWorkItem concurrently.
 	go func() {
 		defer close(done)
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			state.UpdateWorkItem("item-1", func(it *WorkItem) {
 				it.Phase = "async_pending"
 			})
@@ -824,7 +824,7 @@ func TestGetWorkItem_ConcurrentSafe(t *testing.T) {
 	}()
 
 	// Reader goroutine: simulates main loop reading work item snapshots.
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		item, ok := state.GetWorkItem("item-1")
 		if ok {
 			_ = item.Phase // read the snapshot

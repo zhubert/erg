@@ -564,8 +564,7 @@ func TestProcessManager_MarkSessionStarted_ThreadSafe(t *testing.T) {
 
 // TestReadLine_NormalRead verifies that readLine returns a line successfully when data is available.
 func TestReadLine_NormalRead(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	pm := &ProcessManager{
 		ctx: ctx,
@@ -659,8 +658,7 @@ func TestReadLine_ContextCancelledThenPipeWrite(t *testing.T) {
 
 // TestReadLine_EOF verifies that readLine propagates EOF from the underlying reader.
 func TestReadLine_EOF(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	pm := &ProcessManager{
 		ctx: ctx,
@@ -3176,4 +3174,3 @@ func TestIsChannelClosed(t *testing.T) {
 		t.Error("closed channel should be reported as closed")
 	}
 }
-

@@ -101,7 +101,7 @@ func findDaemonPIDs(repo string) []int {
 	}
 
 	var pids []int
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if p, err := strconv.Atoi(strings.TrimSpace(line)); err == nil && p != os.Getpid() {
 			pids = append(pids, p)
 		}

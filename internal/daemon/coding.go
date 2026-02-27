@@ -577,11 +577,11 @@ func parseWorktreeForBranch(porcelainOutput, branchName string) string {
 	lines := strings.Split(porcelainOutput, "\n")
 	var currentPath string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "worktree ") {
-			currentPath = strings.TrimPrefix(line, "worktree ")
+		if after, ok := strings.CutPrefix(line, "worktree "); ok {
+			currentPath = after
 		}
-		if strings.HasPrefix(line, "branch refs/heads/") {
-			branch := strings.TrimPrefix(line, "branch refs/heads/")
+		if after, ok := strings.CutPrefix(line, "branch refs/heads/"); ok {
+			branch := after
 			if branch == branchName {
 				return currentPath
 			}

@@ -248,10 +248,7 @@ func printMapView(w io.Writer, items []*daemonstate.WorkItem, cfg *workflow.Conf
 				labels = append(labels, formatIssue(item))
 			}
 			annotation := strings.Join(labels, ", ")
-			pad := 26 - utf8.RuneCountInString(stateName)
-			if pad < 1 {
-				pad = 1
-			}
+			pad := max(26-utf8.RuneCountInString(stateName), 1)
 			fmt.Fprintf(w, "  %s %s %s\n", stateName, strings.Repeat("·", pad), annotation)
 		}
 	}
@@ -271,10 +268,7 @@ func printMapView(w io.Writer, items []*daemonstate.WorkItem, cfg *workflow.Conf
 			labels = append(labels, formatIssue(item))
 		}
 		annotation := strings.Join(labels, ", ")
-		pad := 26 - utf8.RuneCountInString(step)
-		if pad < 1 {
-			pad = 1
-		}
+		pad := max(26-utf8.RuneCountInString(step), 1)
 		fmt.Fprintf(w, "  %s %s %s\n", step, strings.Repeat("·", pad), annotation)
 	}
 }

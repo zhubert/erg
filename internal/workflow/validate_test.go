@@ -962,7 +962,7 @@ func TestValidate_GitRebaseAction(t *testing.T) {
 	// A workflow with git.rebase and invalid max_rebase_rounds should fail validation
 	cfg := &Config{
 		Workflow: "test",
-		Start:   "rebase",
+		Start:    "rebase",
 		Source:   SourceConfig{Provider: "github", Filter: FilterConfig{Label: "queued"}},
 		States: map[string]*State{
 			"rebase": {
@@ -1027,7 +1027,7 @@ func TestValidateResolveConflictsParams(t *testing.T) {
 func TestValidate_ResolveConflictsAction(t *testing.T) {
 	cfg := &Config{
 		Workflow: "test",
-		Start:   "resolve",
+		Start:    "resolve",
 		Source:   SourceConfig{Provider: "github", Filter: FilterConfig{Label: "queued"}},
 		States: map[string]*State{
 			"resolve": {
@@ -1078,12 +1078,12 @@ func TestValidateDiffParams(t *testing.T) {
 		{"negative max_lock_file_lines", map[string]any{"max_lock_file_lines": -5}, true},
 		{"float64 zero max_lock_file_lines", map[string]any{"max_lock_file_lines": float64(0)}, true},
 		{"require_tests only", map[string]any{"require_tests": true}, false},
-		{"forbidden_patterns only", map[string]any{"forbidden_patterns": []interface{}{".env"}}, false},
+		{"forbidden_patterns only", map[string]any{"forbidden_patterns": []any{".env"}}, false},
 		{"all valid params", map[string]any{
 			"max_diff_lines":      1000,
 			"max_lock_file_lines": 100,
 			"require_tests":       true,
-			"forbidden_patterns":  []interface{}{".env", "*.pem"},
+			"forbidden_patterns":  []any{".env", "*.pem"},
 		}, false},
 	}
 
@@ -1103,7 +1103,7 @@ func TestValidateDiffParams(t *testing.T) {
 func TestValidate_ValidateDiffAction(t *testing.T) {
 	cfg := &Config{
 		Workflow: "test",
-		Start:   "validate",
+		Start:    "validate",
 		Source:   SourceConfig{Provider: "github", Filter: FilterConfig{Label: "queued"}},
 		States: map[string]*State{
 			"validate": {

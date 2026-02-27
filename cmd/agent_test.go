@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -234,13 +235,7 @@ func TestBuildDaemonArgs_WithOnce(t *testing.T) {
 	if len(args) != 4 {
 		t.Fatalf("expected 4 args, got %d: %v", len(args), args)
 	}
-	found := false
-	for _, a := range args {
-		if a == "--once" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(args, "--once")
 	if !found {
 		t.Errorf("expected '--once' in args: %v", args)
 	}

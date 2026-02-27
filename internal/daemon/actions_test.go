@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zhubert/erg/internal/daemonstate"
-	"github.com/zhubert/erg/internal/worker"
-	"github.com/zhubert/erg/internal/workflow"
 	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/config"
+	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/issues"
 	"github.com/zhubert/erg/internal/session"
+	"github.com/zhubert/erg/internal/worker"
+	"github.com/zhubert/erg/internal/workflow"
 )
 
 // trackingRunner wraps MockRunner to track Set* calls for configureRunner tests.
@@ -707,8 +707,7 @@ func TestStartCoding_CleansUpStaleBranch(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err := d.startCoding(ctx, *item)
 	if err != nil {
@@ -768,8 +767,7 @@ func TestStartCoding_CleansUpOrphanedBranch(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err := d.startCoding(ctx, *item)
 	if err != nil {
@@ -860,8 +858,7 @@ func TestStartCoding_WorkItemUpdatedBeforeConfigSave(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err := d.startCoding(ctx, *item)
 	if err != nil {
@@ -899,13 +896,13 @@ func TestStartCoding_WorkItemUpdatedBeforeConfigSave(t *testing.T) {
 
 func TestParseWorktreeForBranch(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		porcelainOutput string
-		branchName     string
-		expectedPath   string
+		branchName      string
+		expectedPath    string
 	}{
 		{
-			name: "finds matching branch",
+			name:            "finds matching branch",
 			porcelainOutput: "worktree /home/user/repo\nHEAD abc123\nbranch refs/heads/main\n\nworktree /home/user/.erg/worktrees/uuid1\nHEAD def456\nbranch refs/heads/issue-10\n\n",
 			branchName:      "issue-10",
 			expectedPath:    "/home/user/.erg/worktrees/uuid1",
@@ -923,7 +920,7 @@ func TestParseWorktreeForBranch(t *testing.T) {
 			expectedPath:    "",
 		},
 		{
-			name: "multiple worktrees, match first",
+			name:            "multiple worktrees, match first",
 			porcelainOutput: "worktree /wt/a\nHEAD aaa\nbranch refs/heads/issue-10\n\nworktree /wt/b\nHEAD bbb\nbranch refs/heads/issue-20\n\n",
 			branchName:      "issue-10",
 			expectedPath:    "/wt/a",
@@ -2439,15 +2436,15 @@ func TestAddressFeedback_TranscriptOnlyResetsPhase(t *testing.T) {
 	reviewsJSON, _ := json.Marshal(struct {
 		Comments []struct {
 			Author struct{ Login string } `json:"author"`
-			Body   string                `json:"body"`
-			URL    string                `json:"url"`
+			Body   string                 `json:"body"`
+			URL    string                 `json:"url"`
 		} `json:"comments"`
 		Reviews []any `json:"reviews"`
 	}{
 		Comments: []struct {
 			Author struct{ Login string } `json:"author"`
-			Body   string                `json:"body"`
-			URL    string                `json:"url"`
+			Body   string                 `json:"body"`
+			URL    string                 `json:"url"`
 		}{
 			{Author: struct{ Login string }{Login: "erg-bot"}, Body: transcriptBody, URL: "https://example.com"},
 		},
@@ -3226,11 +3223,8 @@ func TestUnqueueIssue_GitHub(t *testing.T) {
 	foundRemoveLabel := false
 	for _, c := range calls {
 		if c.Name == "gh" && len(c.Args) >= 3 && c.Args[0] == "issue" && c.Args[1] == "edit" {
-			for _, arg := range c.Args {
-				if arg == "--remove-label" {
-					foundRemoveLabel = true
-					break
-				}
+			if slices.Contains(c.Args, "--remove-label") {
+				foundRemoveLabel = true
 			}
 		}
 	}
@@ -3348,9 +3342,9 @@ type mockCommentCall struct {
 	body     string
 }
 
-func (m *mockCommentProvider) Name() string                    { return string(m.src) }
-func (m *mockCommentProvider) Source() issues.Source           { return m.src }
-func (m *mockCommentProvider) IsConfigured(_ string) bool      { return true }
+func (m *mockCommentProvider) Name() string                             { return string(m.src) }
+func (m *mockCommentProvider) Source() issues.Source                    { return m.src }
+func (m *mockCommentProvider) IsConfigured(_ string) bool               { return true }
 func (m *mockCommentProvider) GenerateBranchName(_ issues.Issue) string { return "" }
 func (m *mockCommentProvider) GetPRLinkText(_ issues.Issue) string      { return "" }
 func (m *mockCommentProvider) FetchIssues(_ context.Context, _ string, _ issues.FilterConfig) ([]issues.Issue, error) {
@@ -4816,7 +4810,7 @@ func TestSlackNotifyAction_TemplateVariables(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
 	d.state.AddWorkItem(&daemonstate.WorkItem{
-		ID:    "item-1",
+		ID: "item-1",
 		IssueRef: config.IssueRef{
 			Source: "github",
 			ID:     "99",
@@ -5528,7 +5522,7 @@ func TestValidateDiff_ForbiddenPatterns_Pass(t *testing.T) {
 
 	action := &validateDiffAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{
-		"forbidden_patterns": []interface{}{".env", "*.pem", "credentials.json"},
+		"forbidden_patterns": []any{".env", "*.pem", "credentials.json"},
 	})
 	ac := &workflow.ActionContext{WorkItemID: "item-1", Params: params}
 
@@ -5566,7 +5560,7 @@ func TestValidateDiff_ForbiddenPatterns_Fail(t *testing.T) {
 
 	action := &validateDiffAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{
-		"forbidden_patterns": []interface{}{".env", "*.pem"},
+		"forbidden_patterns": []any{".env", "*.pem"},
 	})
 	ac := &workflow.ActionContext{WorkItemID: "item-1", Params: params}
 
@@ -5813,7 +5807,7 @@ func TestValidateDiff_MultipleViolations(t *testing.T) {
 	action := &validateDiffAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{
 		"require_tests":      true,
-		"forbidden_patterns": []interface{}{".env"},
+		"forbidden_patterns": []any{".env"},
 	})
 	ac := &workflow.ActionContext{WorkItemID: "item-1", Params: params}
 
@@ -5867,8 +5861,8 @@ func TestValidateDiff_CustomSourceAndTestPatterns(t *testing.T) {
 	action := &validateDiffAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{
 		"require_tests":   true,
-		"source_patterns": []interface{}{"*.py"},
-		"test_patterns":   []interface{}{"test_*.py"},
+		"source_patterns": []any{"*.py"},
+		"test_patterns":   []any{"test_*.py"},
 	})
 	ac := &workflow.ActionContext{WorkItemID: "item-1", Params: params}
 
@@ -5911,7 +5905,7 @@ func TestValidateDiff_CustomLockFilePatterns(t *testing.T) {
 	action := &validateDiffAction{daemon: d}
 	params := workflow.NewParamHelper(map[string]any{
 		"max_lock_file_lines": 10,
-		"lock_file_patterns":  []interface{}{"requirements.txt"},
+		"lock_file_patterns":  []any{"requirements.txt"},
 	})
 	ac := &workflow.ActionContext{WorkItemID: "item-1", Params: params}
 
@@ -6902,7 +6896,6 @@ func TestWritePRDescriptionAction_RegisteredInRegistry(t *testing.T) {
 	}
 }
 
-
 // --- planningAction tests ---
 
 func TestPlanningAction_Execute_WorkItemNotFound(t *testing.T) {
@@ -6978,8 +6971,7 @@ func TestStartPlanning_CreatesSessionOnDefaultBranch(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err := d.startPlanning(ctx, *item)
 	if err != nil {
@@ -7057,8 +7049,7 @@ func TestPlanningAction_Execute_ReturnsAsync(t *testing.T) {
 		Params:     workflow.NewParamHelper(nil),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	result := action.Execute(ctx, ac)
 
@@ -7159,8 +7150,7 @@ func TestStartPlanning_UsesCustomSystemPrompt(t *testing.T) {
 		return r
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err := d.startPlanning(ctx, *item)
 	if err != nil {
@@ -7205,8 +7195,7 @@ func TestStartPlanning_UsesDefaultPromptWhenNoCustom(t *testing.T) {
 		return r
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err := d.startPlanning(ctx, *item)
 	if err != nil {
@@ -7220,7 +7209,6 @@ func TestStartPlanning_UsesDefaultPromptWhenNoCustom(t *testing.T) {
 		t.Errorf("expected DefaultPlanningSystemPrompt when no custom prompt, got %q", capturedRunner.systemPrompt)
 	}
 }
-
 
 // --- cherryPickAction tests ---
 
@@ -7525,7 +7513,6 @@ func TestParseCherryPickCommits_InvalidType(t *testing.T) {
 		t.Fatal("expected error for invalid type")
 	}
 }
-
 
 // --- github.create_draft_pr tests ---
 

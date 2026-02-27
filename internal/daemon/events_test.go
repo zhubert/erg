@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/daemonstate"
+	"github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/workflow"
-	"github.com/zhubert/erg/internal/config"
-	"github.com/zhubert/erg/internal/exec"
 )
 
 func TestCheckPRReviewed_PRClosed(t *testing.T) {
@@ -193,11 +193,11 @@ func TestCheckPRReviewed_ReviewApproved(t *testing.T) {
 
 	// No comments
 	prListJSON, _ := json.Marshal([]struct {
-		State       string        `json:"state"`
-		HeadRefName string        `json:"headRefName"`
-		Comments    []interface{} `json:"comments"`
-		Reviews     []interface{} `json:"reviews"`
-	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []interface{}{}, Reviews: []interface{}{}}})
+		State       string `json:"state"`
+		HeadRefName string `json:"headRefName"`
+		Comments    []any  `json:"comments"`
+		Reviews     []any  `json:"reviews"`
+	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []any{}, Reviews: []any{}}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
 		Stdout: prListJSON,
 	})
@@ -524,12 +524,12 @@ func TestCheckPRReviewed_MaxFeedbackRoundsReached(t *testing.T) {
 		State       string    `json:"state"`
 		HeadRefName string    `json:"headRefName"`
 		Comments    []comment `json:"comments"`
-		Reviews     []interface{} `json:"reviews"`
+		Reviews     []any     `json:"reviews"`
 	}{{
 		State:       "OPEN",
 		HeadRefName: "feature-sess-1",
 		Comments:    []comment{{Body: "please fix"}},
-		Reviews:     []interface{}{},
+		Reviews:     []any{},
 	}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
 		Stdout: prListJSON,
@@ -580,15 +580,15 @@ func TestCheckPRReviewed_AutoAddressDisabled(t *testing.T) {
 		Body string `json:"body"`
 	}
 	prListJSON, _ := json.Marshal([]struct {
-		State       string        `json:"state"`
-		HeadRefName string        `json:"headRefName"`
-		Comments    []comment     `json:"comments"`
-		Reviews     []interface{} `json:"reviews"`
+		State       string    `json:"state"`
+		HeadRefName string    `json:"headRefName"`
+		Comments    []comment `json:"comments"`
+		Reviews     []any     `json:"reviews"`
 	}{{
 		State:       "OPEN",
 		HeadRefName: "feature-sess-1",
 		Comments:    []comment{{Body: "fix this"}},
-		Reviews:     []interface{}{},
+		Reviews:     []any{},
 	}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
 		Stdout: prListJSON,
@@ -657,11 +657,11 @@ func TestCheckPRReviewed_ChangesRequestedAutoAddressDisabled(t *testing.T) {
 
 	// No new comments — CommentCount equals CommentsAddressed
 	prListJSON, _ := json.Marshal([]struct {
-		State       string        `json:"state"`
-		HeadRefName string        `json:"headRefName"`
-		Comments    []interface{} `json:"comments"`
-		Reviews     []interface{} `json:"reviews"`
-	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []interface{}{}, Reviews: []interface{}{}}})
+		State       string `json:"state"`
+		HeadRefName string `json:"headRefName"`
+		Comments    []any  `json:"comments"`
+		Reviews     []any  `json:"reviews"`
+	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []any{}, Reviews: []any{}}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
 		Stdout: prListJSON,
 	})
@@ -730,11 +730,11 @@ func TestCheckPRReviewed_ChangesRequestedAutoAddressEnabled(t *testing.T) {
 
 	// No new comments
 	prListJSON, _ := json.Marshal([]struct {
-		State       string        `json:"state"`
-		HeadRefName string        `json:"headRefName"`
-		Comments    []interface{} `json:"comments"`
-		Reviews     []interface{} `json:"reviews"`
-	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []interface{}{}, Reviews: []interface{}{}}})
+		State       string `json:"state"`
+		HeadRefName string `json:"headRefName"`
+		Comments    []any  `json:"comments"`
+		Reviews     []any  `json:"reviews"`
+	}{{State: "OPEN", HeadRefName: "feature-sess-1", Comments: []any{}, Reviews: []any{}}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "list"}, exec.MockResponse{
 		Stdout: prListJSON,
 	})
@@ -865,9 +865,9 @@ func TestCheckPRMergeable_NotApproved(t *testing.T) {
 	// so the same mock response is returned for both calls.
 	// Use a combined JSON that satisfies both parsers: state=OPEN, no approved reviews.
 	prViewJSON, _ := json.Marshal(struct {
-		State   string        `json:"state"`
-		Reviews []interface{} `json:"reviews"`
-	}{State: "OPEN", Reviews: []interface{}{}})
+		State   string `json:"state"`
+		Reviews []any  `json:"reviews"`
+	}{State: "OPEN", Reviews: []any{}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
 		Stdout: prViewJSON,
 	})

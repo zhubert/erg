@@ -748,9 +748,9 @@ func TestDaemon_RecoverFromState_AddressingFeedback_PROpenNotApproved(t *testing
 
 	// PR is open with no approving reviews
 	prViewJSON, _ := json.Marshal(struct {
-		State   string        `json:"state"`
-		Reviews []interface{} `json:"reviews"`
-	}{State: "OPEN", Reviews: []interface{}{}})
+		State   string `json:"state"`
+		Reviews []any  `json:"reviews"`
+	}{State: "OPEN", Reviews: []any{}})
 	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
 		Stdout: prViewJSON,
 	})
@@ -1312,7 +1312,7 @@ func TestDaemon_SaveConfig_PausesAfterThreshold(t *testing.T) {
 	}
 
 	// Trigger 4 failures — still under threshold
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		d.saveConfig("test")
 	}
 	if d.configSavePaused {

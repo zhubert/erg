@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -2297,13 +2298,7 @@ func TestConfig_PerRepoSettings_ResolvedPath(t *testing.T) {
 		t.Error("AddRepoAllowedTool via symlink should succeed")
 	}
 	tools := cfg.GetAllowedToolsForRepo(target)
-	found := false
-	for _, tool := range tools {
-		if tool == "Bash(git:*)" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(tools, "Bash(git:*)")
 	if !found {
 		t.Error("GetAllowedToolsForRepo via stored path should include tool added via symlink")
 	}

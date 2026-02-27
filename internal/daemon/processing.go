@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"maps"
 	osexec "os/exec"
 	"strings"
 	"time"
@@ -293,9 +294,7 @@ func (d *Daemon) executeSyncChain(ctx context.Context, itemID string, engine *wo
 		// Merge data and apply known fields to the work item (via state lock)
 		if result.Data != nil {
 			d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
-				for k, v := range result.Data {
-					it.StepData[k] = v
-				}
+				maps.Copy(it.StepData, result.Data)
 				if prURL, ok := result.Data["pr_url"].(string); ok && prURL != "" {
 					it.PRURL = prURL
 					it.UpdatedAt = time.Now()
@@ -409,9 +408,7 @@ func (d *Daemon) processWaitItems(ctx context.Context) {
 			// can evaluate it.
 			if result.Data != nil {
 				d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
-					for k, v := range result.Data {
-						it.StepData[k] = v
-					}
+					maps.Copy(it.StepData, result.Data)
 				})
 			}
 			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
@@ -463,9 +460,7 @@ func (d *Daemon) processCIItems(ctx context.Context) {
 			// choice states can evaluate it.
 			if result.Data != nil {
 				d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
-					for k, v := range result.Data {
-						it.StepData[k] = v
-					}
+					maps.Copy(it.StepData, result.Data)
 				})
 			}
 			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
