@@ -110,7 +110,7 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 			d.unqueueIssue(ctx, item, fmt.Sprintf("The coding session made no changes. Removing from the queue — re-add the '%s' label if this still needs work.", label))
 			return workflow.ActionResult{Success: true, OverrideNext: "done"}
 		}
-		return workflow.ActionResult{Error: fmt.Errorf("PR creation failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("PR creation failed: %w", err)}
 	}
 
 	return workflow.ActionResult{
@@ -133,7 +133,7 @@ func (a *pushAction) Execute(ctx context.Context, ac *workflow.ActionContext) wo
 	}
 
 	if err := d.pushChanges(ctx, item); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("push failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("push failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -153,7 +153,7 @@ func (a *mergeAction) Execute(ctx context.Context, ac *workflow.ActionContext) w
 	}
 
 	if err := d.mergePR(ctx, item); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("merge failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("merge failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -173,7 +173,7 @@ func (a *commentIssueAction) Execute(ctx context.Context, ac *workflow.ActionCon
 	}
 
 	if err := d.commentOnIssue(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("issue comment failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("issue comment failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -193,7 +193,7 @@ func (a *commentPRAction) Execute(ctx context.Context, ac *workflow.ActionContex
 	}
 
 	if err := d.commentOnPR(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("PR comment failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("PR comment failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -213,7 +213,7 @@ func (a *asanaCommentAction) Execute(ctx context.Context, ac *workflow.ActionCon
 	}
 
 	if err := d.commentViaProvider(ctx, item, ac.Params, issues.SourceAsana); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("asana comment failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("asana comment failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -233,7 +233,7 @@ func (a *linearCommentAction) Execute(ctx context.Context, ac *workflow.ActionCo
 	}
 
 	if err := d.commentViaProvider(ctx, item, ac.Params, issues.SourceLinear); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("linear comment failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("linear comment failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -253,7 +253,7 @@ func (a *addLabelAction) Execute(ctx context.Context, ac *workflow.ActionContext
 	}
 
 	if err := d.addLabel(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("add label failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("add label failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -273,7 +273,7 @@ func (a *removeLabelAction) Execute(ctx context.Context, ac *workflow.ActionCont
 	}
 
 	if err := d.removeLabel(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("remove label failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("remove label failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -293,7 +293,7 @@ func (a *closeIssueAction) Execute(ctx context.Context, ac *workflow.ActionConte
 	}
 
 	if err := d.closeIssue(ctx, item); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("close issue failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("close issue failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -313,7 +313,7 @@ func (a *requestReviewAction) Execute(ctx context.Context, ac *workflow.ActionCo
 	}
 
 	if err := d.requestReview(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("request review failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("request review failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -512,7 +512,7 @@ func (a *formatAction) Execute(ctx context.Context, ac *workflow.ActionContext) 
 	}
 
 	if err := d.runFormatter(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("format failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("format failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -583,7 +583,7 @@ func (a *slackNotifyAction) Execute(ctx context.Context, ac *workflow.ActionCont
 	}
 
 	if err := d.sendSlackNotification(ctx, item, ac.Params); err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("slack.notify failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("slack.notify failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -717,7 +717,7 @@ func (a *webhookPostAction) Execute(ctx context.Context, ac *workflow.ActionCont
 
 	statusCode, err := d.postWebhook(ctx, item, ac.Params)
 	if err != nil {
-		return workflow.ActionResult{Error: fmt.Errorf("webhook.post failed: %v", err)}
+		return workflow.ActionResult{Error: fmt.Errorf("webhook.post failed: %w", err)}
 	}
 
 	return workflow.ActionResult{
