@@ -5742,6 +5742,215 @@ func TestGetAIReviewRounds(t *testing.T) {
 	}
 }
 
+func TestTruncateDiff(t *testing.T) {
+	tests := []struct {
+		name      string
+		diff      string
+		maxRunes  int
+		suffix    string
+		wantLen   int // expected rune count of result
+		wantTrunc bool
+	}{
+		{
+			name:      "short diff unchanged",
+			diff:      "hello world",
+			maxRunes:  100,
+			suffix:    "...truncated",
+			wantLen:   len([]rune("hello world")),
+			wantTrunc: false,
+		},
+		{
+			name:      "exact length unchanged",
+			diff:      strings.Repeat("a", 100),
+			maxRunes:  100,
+			suffix:    "...truncated",
+			wantLen:   100,
+			wantTrunc: false,
+		},
+		{
+			name:      "long diff truncated to maxRunes",
+			diff:      strings.Repeat("a", 200),
+			maxRunes:  100,
+			suffix:    strings.Repeat("s", 10),
+			wantLen:   100,
+			wantTrunc: true,
+		},
+		{
+			name:      "multibyte UTF-8 not split",
+			diff:      strings.Repeat("日", 200), // each '日' is 3 bytes, 1 rune
+			maxRunes:  100,
+			suffix:    strings.Repeat("s", 10),
+			wantLen:   100,
+			wantTrunc: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateDiff(tc.diff, tc.maxRunes, tc.suffix)
+			runeCount := len([]rune(got))
+			if runeCount != tc.wantLen {
+				t.Errorf("rune count = %d, want %d", runeCount, tc.wantLen)
+			}
+			if tc.wantTrunc && !strings.HasSuffix(got, tc.suffix) {
+				t.Errorf("expected result to end with suffix %q", tc.suffix)
+			}
+			if !tc.wantTrunc && got != tc.diff {
+				t.Errorf("expected unchanged diff, got %q", got)
+			}
+		})
+	}
+}
+
+func TestGetAIReviewDiff(t *testing.T) {
+	// Create a remote bare repo to serve as origin
+	remoteDir := t.TempDir()
+	localDir := t.TempDir()
+
+	runGit := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := osexec.Command("git", append([]string{"-C", dir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v failed: %s (%v)", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	// Initialize the remote repo and create an initial commit
+	runGit(remoteDir, "init", "-b", "main")
+	runGit(remoteDir, "config", "user.email", "test@test.com")
+	runGit(remoteDir, "config", "user.name", "Test")
+	helloPath := filepath.Join(remoteDir, "hello.go")
+	if err := os.WriteFile(helloPath, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(remoteDir, "add", ".")
+	runGit(remoteDir, "commit", "-m", "initial")
+
+	// Clone into localDir so origin/main is set up correctly
+	cloneCmd := osexec.Command("git", "clone", remoteDir, localDir)
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone failed: %s (%v)", out, err)
+	}
+	runGit(localDir, "config", "user.email", "test@test.com")
+	runGit(localDir, "config", "user.name", "Test")
+
+	// Add a new file on the local branch (simulating work done by Claude)
+	newFile := filepath.Join(localDir, "new.go")
+	if err := os.WriteFile(newFile, []byte("package main\nfunc New() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(localDir, "add", ".")
+	runGit(localDir, "commit", "-m", "add new.go")
+
+	diff, err := getAIReviewDiff(context.Background(), localDir, "main")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(diff, "new.go") {
+		t.Errorf("expected diff to mention new.go; got:\n%s", diff)
+	}
+}
+
+func TestGetAIReviewDiff_EmptyBaseBranch(t *testing.T) {
+	// When baseBranch is empty it should default to "main"
+	remoteDir := t.TempDir()
+	localDir := t.TempDir()
+
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := osexec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %s (%v)", args, out, err)
+		}
+	}
+
+	runGit(remoteDir, "init", "-b", "main")
+	runGit(remoteDir, "config", "user.email", "test@test.com")
+	runGit(remoteDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(remoteDir, "readme.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(remoteDir, "add", ".")
+	runGit(remoteDir, "commit", "-m", "initial")
+
+	cloneCmd := osexec.Command("git", "clone", remoteDir, localDir)
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone failed: %s (%v)", out, err)
+	}
+	runGit(localDir, "config", "user.email", "test@test.com")
+	runGit(localDir, "config", "user.name", "Test")
+
+	// No extra commit — HEAD == origin/main; diff should be empty
+	diff, err := getAIReviewDiff(context.Background(), localDir, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("expected empty diff when HEAD == origin/main, got:\n%s", diff)
+	}
+}
+
+func TestGetAIReviewDiff_InvalidDir(t *testing.T) {
+	_, err := getAIReviewDiff(context.Background(), "/nonexistent/path", "main")
+	if err == nil {
+		t.Error("expected error for invalid directory")
+	}
+}
+
+func TestGetAIReviewDiff_Truncation(t *testing.T) {
+	// Verify that diffs larger than 50000 runes are truncated
+	remoteDir := t.TempDir()
+	localDir := t.TempDir()
+
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := osexec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %s (%v)", args, out, err)
+		}
+	}
+
+	runGit(remoteDir, "init", "-b", "main")
+	runGit(remoteDir, "config", "user.email", "test@test.com")
+	runGit(remoteDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(remoteDir, "base.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(remoteDir, "add", ".")
+	runGit(remoteDir, "commit", "-m", "initial")
+
+	cloneCmd := osexec.Command("git", "clone", remoteDir, localDir)
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone failed: %s (%v)", out, err)
+	}
+	runGit(localDir, "config", "user.email", "test@test.com")
+	runGit(localDir, "config", "user.name", "Test")
+
+	// Write a file large enough to exceed the 50000-rune limit
+	bigContent := "package main\n// " + strings.Repeat("x", 60000) + "\n"
+	if err := os.WriteFile(filepath.Join(localDir, "big.go"), []byte(bigContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(localDir, "add", ".")
+	runGit(localDir, "commit", "-m", "add big file")
+
+	diff, err := getAIReviewDiff(context.Background(), localDir, "main")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	const wantSuffix = "\n\n... (diff truncated)"
+	if !strings.HasSuffix(diff, wantSuffix) {
+		t.Errorf("expected truncated diff to end with %q; got suffix: %q",
+			wantSuffix, diff[max(0, len(diff)-30):])
+	}
+	if runeCount := len([]rune(diff)); runeCount != 50000 {
+		t.Errorf("expected truncated diff to be exactly 50000 runes, got %d", runeCount)
+	}
+}
+
 func TestFormatAIReviewPrompt(t *testing.T) {
 	diff := "diff --git a/foo.go b/foo.go\n+func Foo() {}"
 	prompt := formatAIReviewPrompt(2, diff)

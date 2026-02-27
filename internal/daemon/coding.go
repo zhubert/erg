@@ -1036,14 +1036,21 @@ func getAIReviewDiff(ctx context.Context, workDir, baseBranch string) (string, e
 		return "", fmt.Errorf("git diff failed: %w", err)
 	}
 
-	diff := string(output)
-	const maxDiffLen = 50000
+	const maxDiffRunes = 50000
 	const truncSuffix = "\n\n... (diff truncated)"
-	if len(diff) > maxDiffLen {
-		diff = diff[:maxDiffLen-len(truncSuffix)] + truncSuffix
-	}
+	return truncateDiff(string(output), maxDiffRunes, truncSuffix), nil
+}
 
-	return diff, nil
+// truncateDiff truncates diff to at most maxRunes runes, appending truncSuffix
+// when truncation occurs. Using rune counts prevents splitting multi-byte UTF-8
+// characters that would produce invalid sequences for Claude's API.
+func truncateDiff(diff string, maxRunes int, truncSuffix string) string {
+	runes := []rune(diff)
+	if len(runes) <= maxRunes {
+		return diff
+	}
+	suffixRunes := []rune(truncSuffix)
+	return string(runes[:maxRunes-len(suffixRunes)]) + truncSuffix
 }
 
 // getAIReviewRounds extracts the AI review round counter from step data.
