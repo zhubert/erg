@@ -6,12 +6,11 @@ import (
 	"log/slog"
 
 	"github.com/zhubert/erg/internal/agentconfig"
+	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/daemonstate"
+	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/worker"
 	"github.com/zhubert/erg/internal/workflow"
-	"github.com/zhubert/erg/internal/claude"
-	"github.com/zhubert/erg/internal/git"
-	"github.com/zhubert/erg/internal/manager"
 )
 
 // Compile-time assertion: Daemon must implement worker.Host.
@@ -19,10 +18,17 @@ var _ worker.Host = (*Daemon)(nil)
 
 // --- Host interface implementation ---
 
-func (d *Daemon) Config() agentconfig.Config             { return d.config }
-func (d *Daemon) GitService() *git.GitService            { return d.gitService }
-func (d *Daemon) SessionManager() *manager.SessionManager { return d.sessionMgr }
-func (d *Daemon) Logger() *slog.Logger                   { return d.logger }
+func (d *Daemon) Config() agentconfig.Config  { return d.config }
+func (d *Daemon) GitService() *git.GitService { return d.gitService }
+func (d *Daemon) Logger() *slog.Logger        { return d.logger }
+
+func (d *Daemon) GetPendingMessage(sessionID string) string {
+	return d.sessionMgr.StateManager().GetPendingMessage(sessionID)
+}
+
+func (d *Daemon) SetPendingMessage(sessionID, msg string) {
+	d.sessionMgr.StateManager().GetOrCreate(sessionID).SetPendingMsg(msg)
+}
 func (d *Daemon) MaxTurns() int                          { return d.getMaxTurns() }
 func (d *Daemon) MaxDuration() int                       { return d.getMaxDuration() }
 func (d *Daemon) AutoMerge() bool                        { return d.autoMerge }
