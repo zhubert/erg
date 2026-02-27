@@ -297,6 +297,7 @@ func (d *Daemon) buildActionRegistry() *workflow.ActionRegistry {
 	registry := workflow.NewActionRegistry()
 	registry.Register("ai.code", &codingAction{daemon: d})
 	registry.Register("github.create_pr", &createPRAction{daemon: d})
+	registry.Register("github.create_draft_pr", &createDraftPRAction{daemon: d})
 	registry.Register("github.push", &pushAction{daemon: d})
 	registry.Register("github.merge", &mergeAction{daemon: d})
 	registry.Register("github.comment_issue", &commentIssueAction{daemon: d})
@@ -305,16 +306,20 @@ func (d *Daemon) buildActionRegistry() *workflow.ActionRegistry {
 	registry.Register("github.remove_label", &removeLabelAction{daemon: d})
 	registry.Register("github.close_issue", &closeIssueAction{daemon: d})
 	registry.Register("github.request_review", &requestReviewAction{daemon: d})
+	registry.Register("github.assign_pr", &assignPRAction{daemon: d})
 	registry.Register("ai.fix_ci", &fixCIAction{daemon: d})
 	registry.Register("ai.address_review", &addressReviewAction{daemon: d})
+	registry.Register("ai.write_pr_description", &writePRDescriptionAction{daemon: d})
 	registry.Register("git.format", &formatAction{daemon: d})
 	registry.Register("git.rebase", &rebaseAction{daemon: d})
 	registry.Register("git.validate_diff", &validateDiffAction{daemon: d})
+	registry.Register("git.squash", &squashAction{daemon: d})
 	registry.Register("ai.resolve_conflicts", &resolveConflictsAction{daemon: d})
 	registry.Register("asana.comment", &asanaCommentAction{daemon: d})
 	registry.Register("linear.comment", &linearCommentAction{daemon: d})
 	registry.Register("slack.notify", &slackNotifyAction{daemon: d})
 	registry.Register("webhook.post", &webhookPostAction{daemon: d})
+	registry.Register("workflow.wait", &waitAction{daemon: d})
 	return registry
 }
 

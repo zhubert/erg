@@ -138,6 +138,7 @@ var ValidActions = map[string]bool{
 	"github.remove_label":   true,
 	"github.close_issue":    true,
 	"github.request_review": true,
+	"github.assign_pr":      true,
 	"ai.fix_ci":             true,
 	"ai.resolve_conflicts":  true,
 	"ai.address_review":     true,
@@ -146,6 +147,7 @@ var ValidActions = map[string]bool{
 	"git.validate_diff":     true,
 	"asana.comment":         true,
 	"linear.comment":        true,
+	"workflow.wait":         true,
 }
 
 // RetryableActions is the set of network-bound actions that should be retried
@@ -161,6 +163,7 @@ var RetryableActions = map[string]bool{
 	"github.remove_label":   true,
 	"github.close_issue":    true,
 	"github.request_review": true,
+	"github.assign_pr":      true,
 	"git.rebase":            true,
 	"asana.comment":         true,
 	"linear.comment":        true,
