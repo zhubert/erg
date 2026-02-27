@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"slices"
@@ -5539,4 +5540,292 @@ func TestWaitAction_Execute(t *testing.T) {
 			t.Error("workflow.wait not registered in action registry")
 		}
 	})
+}
+
+// --- ai.review action tests ---
+
+func TestAIReviewAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &aiReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_ai_review_rounds": 1})
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestAIReviewAction_Execute_MaxRoundsExceeded(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{"ai_review_rounds": 1},
+	})
+
+	action := &aiReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_ai_review_rounds": 1})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when max rounds exceeded")
+	}
+	if result.Error == nil {
+		t.Error("expected error when max rounds exceeded")
+	}
+	if !strings.Contains(result.Error.Error(), "max AI review rounds exceeded") {
+		t.Errorf("expected 'max AI review rounds exceeded' error, got: %v", result.Error)
+	}
+}
+
+func TestAIReviewAction_Execute_MaxRoundsFloat64(t *testing.T) {
+	// JSON deserialization produces float64 for numbers
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{"ai_review_rounds": float64(1)},
+	})
+
+	action := &aiReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_ai_review_rounds": 1})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when max rounds exceeded (float64)")
+	}
+	if result.Error == nil {
+		t.Error("expected error when max rounds exceeded (float64)")
+	}
+}
+
+func TestAIReviewAction_Execute_NoSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "nonexistent",
+		Branch:    "feature-1",
+		StepData:  map[string]any{},
+	})
+
+	action := &aiReviewAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"max_ai_review_rounds": 1})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when session not found")
+	}
+	if result.Error == nil {
+		t.Error("expected error when session not found")
+	}
+}
+
+func TestAIReviewAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("ai.review") == nil {
+		t.Error("ai.review not registered in action registry")
+	}
+}
+
+func TestGetAIReviewRounds(t *testing.T) {
+	tests := []struct {
+		name     string
+		stepData map[string]any
+		want     int
+	}{
+		{"missing", map[string]any{}, 0},
+		{"int zero", map[string]any{"ai_review_rounds": 0}, 0},
+		{"int one", map[string]any{"ai_review_rounds": 1}, 1},
+		{"float64 zero", map[string]any{"ai_review_rounds": float64(0)}, 0},
+		{"float64 two", map[string]any{"ai_review_rounds": float64(2)}, 2},
+		{"wrong type", map[string]any{"ai_review_rounds": "oops"}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := getAIReviewRounds(tc.stepData)
+			if got != tc.want {
+				t.Errorf("getAIReviewRounds(%v) = %d, want %d", tc.stepData, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatAIReviewPrompt(t *testing.T) {
+	diff := "diff --git a/foo.go b/foo.go\n+func Foo() {}"
+	prompt := formatAIReviewPrompt(2, diff)
+
+	if !strings.Contains(prompt, "ROUND 2") {
+		t.Error("expected prompt to contain round number")
+	}
+	if !strings.Contains(prompt, diff) {
+		t.Error("expected prompt to contain the diff")
+	}
+	if !strings.Contains(prompt, "DO NOT modify") {
+		t.Error("expected prompt to contain DO NOT modify instruction")
+	}
+	if !strings.Contains(prompt, "ai_review.json") {
+		t.Error("expected prompt to mention ai_review.json output file")
+	}
+}
+
+func TestReadAIReviewResult_FileNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	dir := t.TempDir()
+	sess := &config.Session{WorkTree: dir}
+
+	passed, summary := d.readAIReviewResult(sess)
+
+	if !passed {
+		t.Error("expected passed=true when ai_review.json is absent")
+	}
+	if summary != "" {
+		t.Errorf("expected empty summary when file absent, got %q", summary)
+	}
+}
+
+func TestReadAIReviewResult_Passed(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	dir := t.TempDir()
+	ergDir := filepath.Join(dir, ".erg")
+	if err := os.MkdirAll(ergDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := filepath.Join(ergDir, "ai_review.json")
+	content := `{"passed": true, "summary": "Looks good", "issues": []}`
+	if err := os.WriteFile(resultPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sess := &config.Session{WorkTree: dir}
+	passed, summary := d.readAIReviewResult(sess)
+
+	if !passed {
+		t.Error("expected passed=true")
+	}
+	if summary != "Looks good" {
+		t.Errorf("expected summary 'Looks good', got %q", summary)
+	}
+}
+
+func TestReadAIReviewResult_Failed(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	dir := t.TempDir()
+	ergDir := filepath.Join(dir, ".erg")
+	if err := os.MkdirAll(ergDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := filepath.Join(ergDir, "ai_review.json")
+	content := `{"passed": false, "summary": "SQL injection risk found", "issues": [{"severity": "BLOCKING", "description": "SQL injection in query builder"}]}`
+	if err := os.WriteFile(resultPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sess := &config.Session{WorkTree: dir}
+	passed, summary := d.readAIReviewResult(sess)
+
+	if passed {
+		t.Error("expected passed=false for blocking issues")
+	}
+	if summary != "SQL injection risk found" {
+		t.Errorf("expected summary 'SQL injection risk found', got %q", summary)
+	}
+}
+
+func TestReadAIReviewResult_InvalidJSON(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	dir := t.TempDir()
+	ergDir := filepath.Join(dir, ".erg")
+	if err := os.MkdirAll(ergDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := filepath.Join(ergDir, "ai_review.json")
+	if err := os.WriteFile(resultPath, []byte("not valid json {{{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sess := &config.Session{WorkTree: dir}
+	passed, _ := d.readAIReviewResult(sess)
+
+	if !passed {
+		t.Error("expected passed=true when JSON is invalid (fail-open for malformed output)")
+	}
+}
+
+func TestReadAIReviewResult_FallbackToRepoPath(t *testing.T) {
+	// When WorkTree is empty, use RepoPath
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	dir := t.TempDir()
+	ergDir := filepath.Join(dir, ".erg")
+	if err := os.MkdirAll(ergDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resultPath := filepath.Join(ergDir, "ai_review.json")
+	if err := os.WriteFile(resultPath, []byte(`{"passed": false, "summary": "critical bug"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// WorkTree is empty — should fall back to RepoPath
+	sess := &config.Session{WorkTree: "", RepoPath: dir}
+	passed, summary := d.readAIReviewResult(sess)
+
+	if passed {
+		t.Error("expected passed=false")
+	}
+	if summary != "critical bug" {
+		t.Errorf("expected summary 'critical bug', got %q", summary)
+	}
 }
