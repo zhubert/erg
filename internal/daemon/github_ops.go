@@ -18,7 +18,8 @@ import (
 )
 
 // createPR creates a pull request for a work item's session.
-func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem) (string, error) {
+// When draft is true the PR is created in draft state.
+func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem, draft bool) (string, error) {
 	sess := d.config.GetSession(item.SessionID)
 	if sess == nil {
 		return "", fmt.Errorf("session not found")
@@ -59,7 +60,7 @@ func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem) (strin
 	prCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	resultCh := d.gitService.CreatePR(prCtx, sess.RepoPath, sess.WorkTree, sess.Branch, sess.BaseBranch, "", sess.GetIssueRef(), item.SessionID)
+	resultCh := d.gitService.CreatePR(prCtx, sess.RepoPath, sess.WorkTree, sess.Branch, sess.BaseBranch, "", sess.GetIssueRef(), item.SessionID, draft)
 
 	var lastErr error
 	var prURL string
@@ -191,18 +192,28 @@ func (d *Daemon) mergePR(ctx context.Context, item daemonstate.WorkItem) error {
 		defer rebaseCancel()
 
 		if rebaseErr := d.gitService.RebaseBranch(rebaseCtx, worktree, sess.Branch, baseBranch); rebaseErr != nil {
-			log.Warn("linearization rebase failed, returning original merge error", "rebaseError", rebaseErr)
-			return mergeErr
-		}
+			log.Warn("linearization rebase failed, falling back to squash merge", "rebaseError", rebaseErr)
 
-		log.Info("branch linearized successfully, retrying merge")
+			squashCtx, squashCancel := context.WithTimeout(ctx, 60*time.Second)
+			defer squashCancel()
 
-		// Retry merge
-		retryCtx, retryCancel := context.WithTimeout(ctx, 60*time.Second)
-		defer retryCancel()
+			if squashErr := d.gitService.MergePR(squashCtx, sess.RepoPath, item.Branch, false, "squash"); squashErr != nil {
+				log.Warn("squash merge fallback also failed", "squashError", squashErr)
+				return mergeErr
+			}
 
-		if retryErr := d.gitService.MergePR(retryCtx, sess.RepoPath, item.Branch, false, method); retryErr != nil {
-			return retryErr
+			log.Info("merged PR via squash fallback")
+			// Fall through to post-merge cleanup below.
+		} else {
+			log.Info("branch linearized successfully, retrying merge")
+
+			// Retry merge
+			retryCtx, retryCancel := context.WithTimeout(ctx, 60*time.Second)
+			defer retryCancel()
+
+			if retryErr := d.gitService.MergePR(retryCtx, sess.RepoPath, item.Branch, false, method); retryErr != nil {
+				return retryErr
+			}
 		}
 	}
 
@@ -537,6 +548,37 @@ func (d *Daemon) requestReview(ctx context.Context, item daemonstate.WorkItem, p
 		return fmt.Errorf("gh pr edit --add-reviewer failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// createRelease creates a GitHub release for a work item.
+// Params:
+//   - tag (required): release tag name, e.g. "v1.2.3"
+//   - title (optional): release title; defaults to the tag name if empty
+//   - notes (optional): release notes body; if empty, GitHub auto-generates notes
+//   - draft (optional, default false): save as a draft release
+//   - prerelease (optional, default false): mark as a pre-release
+//   - target (optional): branch or SHA to tag; defaults to the repo's default branch
+func (d *Daemon) createRelease(ctx context.Context, item daemonstate.WorkItem, params *workflow.ParamHelper) (string, error) {
+	repoPath := d.resolveRepoPath(ctx, item)
+	if repoPath == "" {
+		return "", fmt.Errorf("no repo path found for work item %s", item.ID)
+	}
+
+	tag := params.String("tag", "")
+	if tag == "" {
+		return "", fmt.Errorf("tag parameter is required")
+	}
+
+	title := params.String("title", "")
+	notes := params.String("notes", "")
+	draft := params.Bool("draft", false)
+	prerelease := params.Bool("prerelease", false)
+	target := params.String("target", "")
+
+	releaseCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	return d.gitService.CreateRelease(releaseCtx, repoPath, tag, title, notes, draft, prerelease, target)
 }
 
 // assignPR assigns the PR to specific users for a work item.

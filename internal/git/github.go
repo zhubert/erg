@@ -648,6 +648,38 @@ func (s *GitService) SquashBranch(ctx context.Context, worktreePath, branch, bas
 	return nil
 }
 
+// RebaseResult contains information about a completed rebase operation.
+type RebaseResult struct {
+	// Clean is true when the rebase was a no-op (HEAD unchanged), meaning
+	// the branch was already up-to-date with the base branch.
+	Clean bool
+}
+
+// RebaseBranchWithStatus rebases a branch onto the latest base branch, force-pushes,
+// and reports whether the rebase was a no-op (HEAD unchanged). This allows callers
+// to detect phantom conflicts where GitHub's mergeable status is stale after a
+// clean rebase.
+func (s *GitService) RebaseBranchWithStatus(ctx context.Context, worktreePath, branch, baseBranch string) (*RebaseResult, error) {
+	// Capture HEAD before rebase to detect no-ops
+	headBefore, err := s.executor.Output(ctx, worktreePath, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("git rev-parse HEAD (before rebase) failed: %w", err)
+	}
+
+	if err := s.RebaseBranch(ctx, worktreePath, branch, baseBranch); err != nil {
+		return nil, err
+	}
+
+	// Capture HEAD after rebase
+	headAfter, err := s.executor.Output(ctx, worktreePath, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("git rev-parse HEAD (after rebase) failed: %w", err)
+	}
+
+	clean := strings.TrimSpace(string(headBefore)) == strings.TrimSpace(string(headAfter))
+	return &RebaseResult{Clean: clean}, nil
+}
+
 // RebaseBranch rebases a branch onto the latest base branch and force-pushes.
 // This is a mechanical rebase (no Claude needed). If real file-level conflicts
 // exist, the rebase is aborted and an error is returned.
@@ -704,6 +736,47 @@ func (s *GitService) MergeBaseIntoBranch(ctx context.Context, worktreePath, base
 
 	// Clean merge — no conflicts
 	return nil, nil
+}
+
+// CherryPick cherry-picks the given commits onto targetBranch in repoPath
+// and pushes the result to origin. The commits are applied in the order given.
+//
+// If cherry-pick conflicts occur, the cherry-pick is aborted and an error is
+// returned so the caller can route to ai.resolve_conflicts or another handler.
+func (s *GitService) CherryPick(ctx context.Context, repoPath, targetBranch string, commits []string) error {
+	log := logger.WithComponent("git")
+
+	if len(commits) == 0 {
+		return fmt.Errorf("no commits specified for cherry-pick")
+	}
+
+	// Fetch to ensure target branch ref is current (best-effort).
+	if _, err := s.executor.CombinedOutput(ctx, repoPath, "git", "fetch", "origin", targetBranch); err != nil {
+		return fmt.Errorf("git fetch origin %s failed: %w", targetBranch, err)
+	}
+
+	// Check out the target branch.
+	if out, err := s.executor.CombinedOutput(ctx, repoPath, "git", "checkout", targetBranch); err != nil {
+		return fmt.Errorf("git checkout %s failed: %s: %w", targetBranch, strings.TrimSpace(string(out)), err)
+	}
+
+	log.Info("cherry-picking commits", "targetBranch", targetBranch, "commits", commits)
+
+	// Cherry-pick all commits in one invocation (preserves order, atomic).
+	args := append([]string{"cherry-pick"}, commits...)
+	if out, err := s.executor.CombinedOutput(ctx, repoPath, "git", args...); err != nil {
+		// Abort to leave the worktree in a clean state.
+		s.executor.CombinedOutput(ctx, repoPath, "git", "cherry-pick", "--abort") //nolint:errcheck
+		return fmt.Errorf("git cherry-pick failed (possible conflicts): %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	// Push the updated target branch.
+	if out, err := s.executor.CombinedOutput(ctx, repoPath, "git", "push", "origin", targetBranch); err != nil {
+		return fmt.Errorf("git push origin %s failed: %s: %w", targetBranch, strings.TrimSpace(string(out)), err)
+	}
+
+	log.Info("cherry-pick complete", "targetBranch", targetBranch, "numCommits", len(commits))
+	return nil
 }
 
 // CIStatus represents the overall CI check status for a PR.
@@ -1008,6 +1081,46 @@ Diff:
 
 	log.Info("generated PR title", "title", title)
 	return title, body, nil
+}
+
+// CreateRelease creates a GitHub release using the gh CLI and returns the release URL.
+//
+// Parameters:
+//   - tag: the release tag (e.g., "v1.2.3") — required
+//   - title: release title; defaults to the tag name if empty
+//   - notes: release notes body; if empty, GitHub auto-generates notes from merged PRs
+//   - draft: save as a draft release (not publicly visible)
+//   - prerelease: mark as a pre-release
+//   - target: branch or SHA to tag; defaults to the repo's default branch if empty
+func (s *GitService) CreateRelease(ctx context.Context, repoPath, tag, title, notes string, draft, prerelease bool, target string) (string, error) {
+	if tag == "" {
+		return "", fmt.Errorf("tag is required")
+	}
+
+	args := []string{"release", "create", tag}
+	if title != "" {
+		args = append(args, "--title", title)
+	}
+	if notes != "" {
+		args = append(args, "--notes", notes)
+	} else {
+		args = append(args, "--generate-notes")
+	}
+	if draft {
+		args = append(args, "--draft")
+	}
+	if prerelease {
+		args = append(args, "--prerelease")
+	}
+	if target != "" {
+		args = append(args, "--target", target)
+	}
+
+	output, err := s.executor.Output(ctx, repoPath, "gh", args...)
+	if err != nil {
+		return "", fmt.Errorf("gh release create failed: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 // UpdatePRBody updates the body of an existing pull request using the gh CLI.

@@ -93,6 +93,7 @@ type createPRAction struct {
 }
 
 // Execute creates a PR. This is a synchronous action.
+// Supports an optional boolean param "draft" (default false) to create a draft PR.
 func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item, ok := d.state.GetWorkItem(ac.WorkItemID)
@@ -100,7 +101,8 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
 	}
 
-	prURL, err := d.createPR(ctx, item)
+	draft := ac.Params.Bool("draft", false)
+	prURL, err := d.createPR(ctx, item, draft)
 	if err != nil {
 		if errors.Is(err, errNoChanges) {
 			// Coding session made no changes — unqueue the issue (remove label +
@@ -111,6 +113,37 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 			return workflow.ActionResult{Success: true, OverrideNext: "done"}
 		}
 		return workflow.ActionResult{Error: fmt.Errorf("PR creation failed: %w", err)}
+	}
+
+	return workflow.ActionResult{
+		Success: true,
+		Data:    map[string]any{"pr_url": prURL},
+	}
+}
+
+// createDraftPRAction implements the github.create_draft_pr action.
+// It is equivalent to github.create_pr with draft=true.
+type createDraftPRAction struct {
+	daemon *Daemon
+}
+
+// Execute creates a draft PR. This is a synchronous action.
+func (a *createDraftPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	prURL, err := d.createPR(ctx, item, true)
+	if err != nil {
+		if errors.Is(err, errNoChanges) {
+			repoPath := d.resolveRepoPath(ctx, item)
+			label := d.resolveQueueLabel(repoPath)
+			d.unqueueIssue(ctx, item, fmt.Sprintf("The coding session made no changes. Removing from the queue — re-add the '%s' label if this still needs work.", label))
+			return workflow.ActionResult{Success: true, OverrideNext: "done"}
+		}
+		return workflow.ActionResult{Error: fmt.Errorf("draft PR creation failed: %w", err)}
 	}
 
 	return workflow.ActionResult{
@@ -434,12 +467,19 @@ func (a *rebaseAction) Execute(ctx context.Context, ac *workflow.ActionContext) 
 	rebaseCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	if err := d.gitService.RebaseBranch(rebaseCtx, workDir, item.Branch, baseBranch); err != nil {
+	result, err := d.gitService.RebaseBranchWithStatus(rebaseCtx, workDir, item.Branch, baseBranch)
+	if err != nil {
 		return workflow.ActionResult{Error: fmt.Errorf("rebase failed: %w", err)}
 	}
 
-	d.logger.Info("rebased branch successfully", "workItem", item.ID, "branch", item.Branch, "baseBranch", baseBranch, "round", rounds+1)
-	return workflow.ActionResult{Success: true}
+	d.logger.Info("rebased branch successfully", "workItem", item.ID, "branch", item.Branch, "baseBranch", baseBranch, "round", rounds+1, "clean", result.Clean)
+	return workflow.ActionResult{
+		Success: true,
+		Data: map[string]any{
+			"last_rebase_clean": result.Clean,
+			"last_rebase_at":    time.Now().Format(time.RFC3339),
+		},
+	}
 }
 
 // squashAction implements the git.squash action.
@@ -561,6 +601,36 @@ func (a *resolveConflictsAction) Execute(ctx context.Context, ac *workflow.Actio
 	}
 
 	return workflow.ActionResult{Success: true, Async: true}
+}
+
+// validateDiffAction implements the git.validate_diff action.
+type validateDiffAction struct {
+	daemon *Daemon
+}
+
+// Execute runs static validation checks on the branch diff.
+// All params are optional; no params means the check always passes.
+// On violation, Success is false and Error describes all violations found.
+func (a *validateDiffAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	violations, err := d.validateDiff(ctx, item, ac.Params)
+	if err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("git.validate_diff: %v", err)}
+	}
+
+	if len(violations) > 0 {
+		return workflow.ActionResult{
+			Error: fmt.Errorf("diff validation failed:\n%s", strings.Join(violations, "\n")),
+			Data:  map[string]any{"violations": violations},
+		}
+	}
+
+	return workflow.ActionResult{Success: true}
 }
 
 // formatAction implements the git.format action.
@@ -696,6 +766,32 @@ func (a *aiReviewAction) Execute(ctx context.Context, ac *workflow.ActionContext
 	}
 
 	return workflow.ActionResult{Success: true, Async: true}
+}
+
+// createReleaseAction implements the github.create_release action.
+type createReleaseAction struct {
+	daemon *Daemon
+}
+
+// Execute creates a GitHub release for the work item. This is a synchronous action.
+// Required params: tag. Optional: title, notes, draft, prerelease, target.
+func (a *createReleaseAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	releaseURL, err := d.createRelease(ctx, item, ac.Params)
+	if err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("github.create_release failed: %w", err)}
+	}
+
+	d.logger.Info("github release created", "workItem", item.ID, "url", releaseURL)
+	return workflow.ActionResult{
+		Success: true,
+		Data:    map[string]any{"release_url": releaseURL},
+	}
 }
 
 // slackNotifyAction implements the slack.notify action.
@@ -844,6 +940,87 @@ func (a *writePRDescriptionAction) Execute(ctx context.Context, ac *workflow.Act
 	}
 
 	return workflow.ActionResult{Success: true}
+}
+
+// cherryPickAction implements the git.cherry_pick action.
+type cherryPickAction struct {
+	daemon *Daemon
+}
+
+// Execute cherry-picks commits onto a target branch for backport workflows.
+// Params:
+//   - commits (required): list of commit SHAs to cherry-pick (YAML sequence or space-separated string)
+//   - target_branch (required): branch to cherry-pick the commits onto
+func (a *cherryPickAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	sess := d.config.GetSession(item.SessionID)
+	if sess == nil {
+		return workflow.ActionResult{Error: fmt.Errorf("session not found")}
+	}
+
+	targetBranch := ac.Params.String("target_branch", "")
+	if targetBranch == "" {
+		return workflow.ActionResult{Error: fmt.Errorf("target_branch parameter is required")}
+	}
+
+	commits, err := parseCherryPickCommits(ac.Params)
+	if err != nil {
+		return workflow.ActionResult{Error: err}
+	}
+
+	cherryCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if err := d.gitService.CherryPick(cherryCtx, sess.RepoPath, targetBranch, commits); err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("git.cherry_pick failed: %w", err)}
+	}
+
+	d.logger.Info("cherry-picked commits to target branch", "workItem", item.ID, "targetBranch", targetBranch, "commits", commits)
+	return workflow.ActionResult{Success: true}
+}
+
+// parseCherryPickCommits extracts commit SHAs from the "commits" param.
+// Accepts a YAML sequence ([]any of strings) or a space-separated string.
+func parseCherryPickCommits(params *workflow.ParamHelper) ([]string, error) {
+	raw := params.Raw("commits")
+	if raw == nil {
+		return nil, fmt.Errorf("commits parameter is required")
+	}
+
+	switch v := raw.(type) {
+	case []any:
+		if len(v) == 0 {
+			return nil, fmt.Errorf("commits list is empty")
+		}
+		commits := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("commits entries must be strings, got %T", item)
+			}
+			s = strings.TrimSpace(s)
+			if s != "" {
+				commits = append(commits, s)
+			}
+		}
+		if len(commits) == 0 {
+			return nil, fmt.Errorf("commits list is empty")
+		}
+		return commits, nil
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil, fmt.Errorf("commits parameter is empty")
+		}
+		return strings.Fields(s), nil
+	default:
+		return nil, fmt.Errorf("commits parameter must be a list or string, got %T", raw)
+	}
 }
 
 // waitAction implements the workflow.wait action.
