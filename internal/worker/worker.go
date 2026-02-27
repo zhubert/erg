@@ -20,7 +20,7 @@ type SessionWorker struct {
 	host       Host
 	sessionID  string
 	session    *config.Session
-	runner     claude.RunnerInterface
+	runner     claude.RunnerSession
 	initialMsg string
 	turns      atomic.Int32 // written from run() goroutine; read externally — use atomics
 	startTime  time.Time
@@ -39,7 +39,7 @@ type SessionWorker struct {
 }
 
 // NewSessionWorker creates a new session worker.
-func NewSessionWorker(host Host, sess *config.Session, runner claude.RunnerInterface, initialMsg string) *SessionWorker {
+func NewSessionWorker(host Host, sess *config.Session, runner claude.RunnerSession, initialMsg string) *SessionWorker {
 	return &SessionWorker{
 		host:       host,
 		sessionID:  sess.ID,
