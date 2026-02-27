@@ -5770,3 +5770,78 @@ func TestValidateDiff_CustomLockFilePatterns(t *testing.T) {
 		t.Errorf("expected 'requirements.txt' in error, got: %v", result.Error)
 	}
 }
+
+// TestActionErrorWrapping verifies that action Execute methods use %w so that
+// errors.Is can traverse the chain from the outer ActionResult.Error back to
+// the original sentinel / leaf error returned by the underlying operation.
+func TestActionErrorWrapping(t *testing.T) {
+	// sentinelErr is the leaf error injected via the mock executor.
+	sentinelErr := errors.New("sentinel gh failure")
+
+	setup := func(t *testing.T, prefixArgs []string) (*Daemon, *config.Config, *exec.MockExecutor) {
+		t.Helper()
+		cfg := testConfig()
+		mockExec := exec.NewMockExecutor(nil)
+		mockExec.AddPrefixMatch("gh", prefixArgs, exec.MockResponse{Err: sentinelErr})
+		gitSvc := git.NewGitServiceWithExecutor(mockExec)
+		d := testDaemonWithExec(cfg, mockExec)
+		d.gitService = gitSvc
+		d.repoFilter = "/test/repo"
+		sess := testSession("sess-1")
+		cfg.AddSession(*sess)
+		d.state.AddWorkItem(&daemonstate.WorkItem{
+			ID:        "item-1",
+			IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+			SessionID: "sess-1",
+		})
+		return d, cfg, mockExec
+	}
+
+	t.Run("commentIssueAction wraps error", func(t *testing.T) {
+		d, _, _ := setup(t, []string{"issue", "comment"})
+		action := &commentIssueAction{daemon: d}
+		ac := &workflow.ActionContext{
+			WorkItemID: "item-1",
+			Params:     workflow.NewParamHelper(map[string]any{"body": "hello"}),
+		}
+		result := action.Execute(context.Background(), ac)
+		if result.Success {
+			t.Fatal("expected failure")
+		}
+		if !errors.Is(result.Error, sentinelErr) {
+			t.Errorf("errors.Is did not find sentinel in chain: %v", result.Error)
+		}
+	})
+
+	t.Run("addLabelAction wraps error", func(t *testing.T) {
+		d, _, _ := setup(t, []string{"issue", "edit"})
+		action := &addLabelAction{daemon: d}
+		ac := &workflow.ActionContext{
+			WorkItemID: "item-1",
+			Params:     workflow.NewParamHelper(map[string]any{"label": "bug"}),
+		}
+		result := action.Execute(context.Background(), ac)
+		if result.Success {
+			t.Fatal("expected failure")
+		}
+		if !errors.Is(result.Error, sentinelErr) {
+			t.Errorf("errors.Is did not find sentinel in chain: %v", result.Error)
+		}
+	})
+
+	t.Run("removeLabelAction wraps error", func(t *testing.T) {
+		d, _, _ := setup(t, []string{"issue", "edit"})
+		action := &removeLabelAction{daemon: d}
+		ac := &workflow.ActionContext{
+			WorkItemID: "item-1",
+			Params:     workflow.NewParamHelper(map[string]any{"label": "bug"}),
+		}
+		result := action.Execute(context.Background(), ac)
+		if result.Success {
+			t.Fatal("expected failure")
+		}
+		if !errors.Is(result.Error, sentinelErr) {
+			t.Errorf("errors.Is did not find sentinel in chain: %v", result.Error)
+		}
+	})
+}
