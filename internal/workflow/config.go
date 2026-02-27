@@ -130,6 +130,7 @@ func (d Duration) MarshalYAML() (any, error) {
 var ValidActions = map[string]bool{
 	"ai.code":               true,
 	"ai.review":             true,
+	"ai.plan":               true,
 	"github.create_pr":      true,
 	"github.push":           true,
 	"github.merge":          true,

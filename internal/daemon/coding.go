@@ -21,6 +21,90 @@ import (
 	"github.com/zhubert/erg/internal/workflow"
 )
 
+// startPlanning creates a read-only planning session and starts a Claude worker to analyze
+// the issue and codebase, then post a structured implementation plan as an issue comment.
+// Unlike startCoding, no new branch or worktree is created: Claude reads from the main
+// repo directory and uses the gh CLI to post the plan as a GitHub issue comment.
+func (d *Daemon) startPlanning(ctx context.Context, item daemonstate.WorkItem) error {
+	log := d.logger.With("workItem", item.ID, "issue", item.IssueRef.ID)
+
+	repoPath := d.findRepoPath(ctx)
+	if repoPath == "" {
+		return fmt.Errorf("no matching repo found")
+	}
+
+	baseBranch := d.gitService.GetDefaultBranch(ctx, repoPath)
+
+	// Create a lightweight session on the default branch.
+	// WorkTree is set to repoPath so Claude can read the codebase.
+	// No new branch or git worktree is created — this is read-only.
+	sessID := uuid.New().String()
+	sess := &config.Session{
+		ID:            sessID,
+		RepoPath:      repoPath,
+		WorkTree:      repoPath,
+		Branch:        baseBranch,
+		BaseBranch:    baseBranch,
+		DaemonManaged: true,
+		Autonomous:    true,
+		IssueRef: &config.IssueRef{
+			Source: item.IssueRef.Source,
+			ID:     item.IssueRef.ID,
+			Title:  item.IssueRef.Title,
+			URL:    item.IssueRef.URL,
+		},
+	}
+
+	// Configure from workflow params for the planning state
+	wfCfg := d.getWorkflowConfig(repoPath)
+	planningState := wfCfg.States["planning"]
+	params := workflow.NewParamHelper(nil)
+	if planningState != nil {
+		params = workflow.NewParamHelper(planningState.Params)
+	}
+
+	sess.Containerized = params.Bool("containerized", true)
+	sess.IsSupervisor = params.Bool("supervisor", false)
+
+	d.config.AddSession(*sess)
+
+	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+		it.SessionID = sess.ID
+		it.State = daemonstate.WorkItemActive
+		it.UpdatedAt = time.Now()
+	})
+
+	d.saveConfig("startPlanning")
+	d.saveState()
+
+	// Build initial message using provider-aware formatting
+	issueBody, _ := item.StepData["issue_body"].(string)
+	initialMsg := worker.FormatInitialMessage(item.IssueRef, issueBody)
+
+	// Resolve planning system prompt from workflow config
+	systemPrompt := params.String("system_prompt", "")
+	planningPrompt, err := workflow.ResolveSystemPrompt(systemPrompt, repoPath)
+	if err != nil {
+		log.Warn("failed to resolve planning system prompt", "error", err)
+	}
+
+	if planningPrompt == "" {
+		planningPrompt = DefaultPlanningSystemPrompt
+	}
+
+	// Start worker, applying any per-session limits from workflow params
+	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, planningPrompt)
+	maxTurns := params.Int("max_turns", 0)
+	maxDuration := params.Duration("max_duration", 0)
+	if maxTurns > 0 || maxDuration > 0 {
+		w.SetLimits(maxTurns, maxDuration)
+	}
+	w.Start(ctx)
+
+	log.Info("started planning", "sessionID", sess.ID, "branch", baseBranch)
+	return nil
+}
+
 // startCoding creates a session and starts a Claude worker for a work item.
 func (d *Daemon) startCoding(ctx context.Context, item daemonstate.WorkItem) error {
 	log := d.logger.With("workItem", item.ID, "issue", item.IssueRef.ID)
