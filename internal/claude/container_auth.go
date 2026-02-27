@@ -78,15 +78,25 @@ func buildContainerRunArgs(config ProcessConfig, claudeArgs []string) (container
 		args = append(args, "-v", config.MCPConfigPath+":"+containerMCPConfigPath+":ro")
 	}
 
-	// Forward the host's git identity into the container so Claude Code
-	// doesn't invent its own (e.g., "erg agent" or "Plural Agent").
-	// GIT_AUTHOR_*/GIT_COMMITTER_* env vars override any git config inside
-	// the container and are respected by all git operations.
-	if name := gitConfigValue("user.name"); name != "" {
+	// Forward the host's git identity into the container via env vars.
+	// We use three mechanisms to prevent Claude Code from inventing its own
+	// identity (e.g., "erg agent"):
+	//   1. GIT_AUTHOR_*/GIT_COMMITTER_* — used by git-commit directly
+	//   2. GIT_CONFIG_COUNT/KEY/VALUE — makes `git config --get user.name`
+	//      return the value, so Claude Code sees identity is already configured
+	//      and won't run `git config user.name` (which writes to .git/config)
+	name := gitConfigValue("user.name")
+	email := gitConfigValue("user.email")
+	if name != "" {
 		args = append(args, "-e", "GIT_AUTHOR_NAME="+name, "-e", "GIT_COMMITTER_NAME="+name)
 	}
-	if email := gitConfigValue("user.email"); email != "" {
+	if email != "" {
 		args = append(args, "-e", "GIT_AUTHOR_EMAIL="+email, "-e", "GIT_COMMITTER_EMAIL="+email)
+	}
+	if configEnvs := gitConfigEnvVars(name, email); len(configEnvs) > 0 {
+		for _, e := range configEnvs {
+			args = append(args, "-e", e)
+		}
 	}
 
 	// Mount main repository for git worktree support.
@@ -289,10 +299,11 @@ func gitConfigValue(key string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// appendGitIdentityEnv appends GIT_AUTHOR_*/GIT_COMMITTER_* env vars to the
-// given environment slice if the host has git user.name/user.email configured
-// and they aren't already set in the environment. This ensures Claude Code
-// uses the host's identity rather than inventing one.
+// appendGitIdentityEnv appends git identity env vars to the given environment
+// slice if the host has git user.name/user.email configured and they aren't
+// already set. Uses both GIT_AUTHOR_*/GIT_COMMITTER_* (for commits) and
+// GIT_CONFIG_COUNT/KEY/VALUE (so `git config --get` returns the values,
+// preventing Claude Code from writing to .git/config).
 func appendGitIdentityEnv(env []string) []string {
 	has := func(prefix string) bool {
 		for _, e := range env {
@@ -303,7 +314,10 @@ func appendGitIdentityEnv(env []string) []string {
 		return false
 	}
 
-	if name := gitConfigValue("user.name"); name != "" {
+	name := gitConfigValue("user.name")
+	email := gitConfigValue("user.email")
+
+	if name != "" {
 		if !has("GIT_AUTHOR_NAME") {
 			env = append(env, "GIT_AUTHOR_NAME="+name)
 		}
@@ -311,7 +325,7 @@ func appendGitIdentityEnv(env []string) []string {
 			env = append(env, "GIT_COMMITTER_NAME="+name)
 		}
 	}
-	if email := gitConfigValue("user.email"); email != "" {
+	if email != "" {
 		if !has("GIT_AUTHOR_EMAIL") {
 			env = append(env, "GIT_AUTHOR_EMAIL="+email)
 		}
@@ -319,7 +333,40 @@ func appendGitIdentityEnv(env []string) []string {
 			env = append(env, "GIT_COMMITTER_EMAIL="+email)
 		}
 	}
+
+	// Also inject via GIT_CONFIG_COUNT so `git config --get user.name`
+	// returns the value. Without this, Claude Code thinks git identity
+	// is unconfigured and writes to .git/config.
+	if !has("GIT_CONFIG_COUNT") {
+		env = append(env, gitConfigEnvVars(name, email)...)
+	}
+
 	return env
+}
+
+// gitConfigEnvVars returns GIT_CONFIG_COUNT/KEY/VALUE env var entries that
+// inject user.name and user.email into git's runtime config. This makes
+// `git config --get user.name` return the value without any file being written.
+func gitConfigEnvVars(name, email string) []string {
+	var pairs []struct{ key, value string }
+	if name != "" {
+		pairs = append(pairs, struct{ key, value string }{"user.name", name})
+	}
+	if email != "" {
+		pairs = append(pairs, struct{ key, value string }{"user.email", email})
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+
+	envs := []string{fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(pairs))}
+	for i, p := range pairs {
+		envs = append(envs,
+			fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, p.key),
+			fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, p.value),
+		)
+	}
+	return envs
 }
 
 // readKeychainPassword reads a password from the macOS keychain.

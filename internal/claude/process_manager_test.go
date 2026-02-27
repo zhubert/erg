@@ -2204,10 +2204,6 @@ func TestFriendlyContainerError(t *testing.T) {
 }
 
 func TestBuildContainerRunArgs_ForwardsHostGitIdentity(t *testing.T) {
-	// gitConfigValue reads from the real host git config.
-	// On any dev machine (and CI), user.name and user.email are typically set.
-	// We test the integration: if the host has a git identity, the container
-	// args must include the corresponding GIT_AUTHOR_*/GIT_COMMITTER_* env vars.
 	hostName := gitConfigValue("user.name")
 	hostEmail := gitConfigValue("user.email")
 
@@ -2239,6 +2235,22 @@ func TestBuildContainerRunArgs_ForwardsHostGitIdentity(t *testing.T) {
 			t.Errorf("expected GIT_COMMITTER_EMAIL=%s in args, got %v", hostEmail, result.Args)
 		}
 	}
+
+	// Verify GIT_CONFIG_COUNT/KEY/VALUE are also set so `git config --get`
+	// returns the identity (prevents Claude Code from writing to .git/config)
+	if hostName != "" || hostEmail != "" {
+		if !containsArg(result.Args, "GIT_CONFIG_COUNT=2") && !containsArg(result.Args, "GIT_CONFIG_COUNT=1") {
+			t.Errorf("expected GIT_CONFIG_COUNT in args, got %v", result.Args)
+		}
+		if hostName != "" {
+			if !containsArg(result.Args, "GIT_CONFIG_KEY_0=user.name") {
+				t.Errorf("expected GIT_CONFIG_KEY_0=user.name in args, got %v", result.Args)
+			}
+			if !containsArg(result.Args, "GIT_CONFIG_VALUE_0="+hostName) {
+				t.Errorf("expected GIT_CONFIG_VALUE_0=%s in args, got %v", hostName, result.Args)
+			}
+		}
+	}
 }
 
 func TestAppendGitIdentityEnv(t *testing.T) {
@@ -2248,14 +2260,18 @@ func TestAppendGitIdentityEnv(t *testing.T) {
 		t.Skip("git user.name/user.email not configured on this host")
 	}
 
-	t.Run("adds identity to empty env", func(t *testing.T) {
+	t.Run("adds identity and config vars to empty env", func(t *testing.T) {
 		env := appendGitIdentityEnv(nil)
 		found := map[string]bool{}
 		for _, e := range env {
 			parts := strings.SplitN(e, "=", 2)
 			found[parts[0]] = true
 		}
-		for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		for _, key := range []string{
+			"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME",
+			"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL",
+			"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0",
+		} {
 			if !found[key] {
 				t.Errorf("expected %s in env", key)
 			}
@@ -2275,10 +2291,63 @@ func TestAppendGitIdentityEnv(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("does not add GIT_CONFIG if already set", func(t *testing.T) {
+		env := appendGitIdentityEnv([]string{"GIT_CONFIG_COUNT=5"})
+		count := 0
+		for _, e := range env {
+			if strings.HasPrefix(e, "GIT_CONFIG_COUNT=") {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("expected exactly 1 GIT_CONFIG_COUNT, got %d", count)
+		}
+	})
+}
+
+func TestGitConfigEnvVars(t *testing.T) {
+	t.Run("both name and email", func(t *testing.T) {
+		envs := gitConfigEnvVars("Alice", "alice@example.com")
+		if len(envs) != 5 {
+			t.Fatalf("expected 5 env vars, got %d: %v", len(envs), envs)
+		}
+		if envs[0] != "GIT_CONFIG_COUNT=2" {
+			t.Errorf("expected GIT_CONFIG_COUNT=2, got %s", envs[0])
+		}
+		if envs[1] != "GIT_CONFIG_KEY_0=user.name" {
+			t.Errorf("expected GIT_CONFIG_KEY_0=user.name, got %s", envs[1])
+		}
+		if envs[2] != "GIT_CONFIG_VALUE_0=Alice" {
+			t.Errorf("expected GIT_CONFIG_VALUE_0=Alice, got %s", envs[2])
+		}
+		if envs[3] != "GIT_CONFIG_KEY_1=user.email" {
+			t.Errorf("expected GIT_CONFIG_KEY_1=user.email, got %s", envs[3])
+		}
+		if envs[4] != "GIT_CONFIG_VALUE_1=alice@example.com" {
+			t.Errorf("expected GIT_CONFIG_VALUE_1=alice@example.com, got %s", envs[4])
+		}
+	})
+
+	t.Run("name only", func(t *testing.T) {
+		envs := gitConfigEnvVars("Alice", "")
+		if len(envs) != 3 {
+			t.Fatalf("expected 3 env vars, got %d: %v", len(envs), envs)
+		}
+		if envs[0] != "GIT_CONFIG_COUNT=1" {
+			t.Errorf("expected GIT_CONFIG_COUNT=1, got %s", envs[0])
+		}
+	})
+
+	t.Run("empty returns nil", func(t *testing.T) {
+		envs := gitConfigEnvVars("", "")
+		if envs != nil {
+			t.Errorf("expected nil, got %v", envs)
+		}
+	})
 }
 
 func TestGitConfigValue(t *testing.T) {
-	// user.name should be set on any machine that can commit
 	name := gitConfigValue("user.name")
 	if name == "" {
 		t.Skip("git user.name not configured on this host")
@@ -2287,7 +2356,6 @@ func TestGitConfigValue(t *testing.T) {
 		t.Errorf("gitConfigValue should trim whitespace, got %q", name)
 	}
 
-	// Non-existent key should return empty string
 	val := gitConfigValue("user.nonexistent.key.that.does.not.exist")
 	if val != "" {
 		t.Errorf("expected empty string for non-existent key, got %q", val)
