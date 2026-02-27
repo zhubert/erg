@@ -170,6 +170,11 @@ func (d *Daemon) handleAsyncComplete(ctx context.Context, item daemonstate.WorkI
 		if !reviewPassed {
 			exitErr = fmt.Errorf("AI review blocked: %s", reviewSummary)
 		}
+		// Re-fetch item so workItemView sees the updated StepData rather than
+		// the snapshot captured at collection time.
+		if fresh, ok := d.state.GetWorkItem(item.ID); ok {
+			item = fresh
+		}
 	}
 
 	// Normal async completion -- advance via engine
