@@ -1374,6 +1374,88 @@ func TestRequestReviewAction_Execute_MissingReviewerParam(t *testing.T) {
 	}
 }
 
+// --- assignPRAction tests ---
+
+func TestAssignPRAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &assignPRAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"assignee": "octocat"})
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestAssignPRAction_Execute_NoSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "nonexistent-session",
+		Branch:    "feature-1",
+	})
+
+	action := &assignPRAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"assignee": "octocat"})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing session")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing session")
+	}
+}
+
+func TestAssignPRAction_Execute_MissingAssigneeParam(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+	})
+
+	action := &assignPRAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing assignee parameter")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing assignee parameter")
+	}
+}
+
 // --- commentPRAction tests ---
 
 func TestCommentPRAction_Execute_WorkItemNotFound(t *testing.T) {
@@ -2405,7 +2487,7 @@ func TestCreatePR_NoChanges_ReturnsError(t *testing.T) {
 	})
 
 	item, _ := d.state.GetWorkItem("item-no-changes")
-	_, err := d.createPR(context.Background(), item)
+	_, err := d.createPR(context.Background(), item, false)
 	if err == nil {
 		t.Fatal("expected error when creating PR with no changes")
 	}
@@ -2673,7 +2755,7 @@ func TestCreatePR_ExistingPR_ReturnsWithoutError(t *testing.T) {
 	})
 
 	item, _ := d.state.GetWorkItem("item-existing")
-	_, err := d.createPR(context.Background(), item)
+	_, err := d.createPR(context.Background(), item, false)
 	if err != nil {
 		t.Fatalf("expected no error for existing PR, got: %v", err)
 	}
@@ -5595,4 +5677,301 @@ func TestWaitAction_Execute(t *testing.T) {
 			t.Error("workflow.wait not registered in action registry")
 		}
 	})
+}
+
+func TestWritePRDescriptionAction_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &writePRDescriptionAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestWritePRDescriptionAction_SessionNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "session-does-not-exist",
+		Branch:    "feature-42",
+		StepData:  map[string]any{},
+	})
+
+	action := &writePRDescriptionAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when session not found")
+	}
+	if result.Error == nil {
+		t.Error("expected error when session not found")
+	}
+}
+
+func TestWritePRDescriptionAction_Success(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// git fetch origin
+	mockExec.AddPrefixMatch("git", []string{"fetch", "origin"}, exec.MockResponse{})
+	// git rev-parse --verify origin/main
+	mockExec.AddPrefixMatch("git", []string{"rev-parse", "--verify"}, exec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	// git log
+	mockExec.AddPrefixMatch("git", []string{"log"}, exec.MockResponse{
+		Stdout: []byte("abc123 feat: add feature\n"),
+	})
+	// git diff
+	mockExec.AddPrefixMatch("git", []string{"diff"}, exec.MockResponse{
+		Stdout: []byte("diff --git a/foo.go b/foo.go\n+new line\n"),
+	})
+	// claude --print -p ...
+	mockExec.AddPrefixMatch("claude", []string{"--print", "-p"}, exec.MockResponse{
+		Stdout: []byte("## Summary\nThis PR adds a feature.\n\n## Changes\n- Added foo.go\n\n## Test plan\n- Run tests\n\n## Breaking changes\nNone"),
+	})
+	// gh pr edit --body ...
+	mockExec.AddPrefixMatch("gh", []string{"pr", "edit"}, exec.MockResponse{})
+	// git symbolic-ref (for GetDefaultBranch)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+
+	sess := testSession("sess-1")
+	sess.BaseBranch = "main"
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	})
+
+	action := &writePRDescriptionAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if !result.Success {
+		t.Errorf("expected success, got error: %v", result.Error)
+	}
+
+	// Verify gh pr edit was called
+	calls := mockExec.GetCalls()
+	found := false
+	for _, c := range calls {
+		if c.Name == "gh" && len(c.Args) >= 3 && c.Args[0] == "pr" && c.Args[1] == "edit" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected gh pr edit to be called to update PR body")
+	}
+}
+
+func TestWritePRDescriptionAction_ClaudeFailure(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	mockExec.AddPrefixMatch("git", []string{"fetch", "origin"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("git", []string{"rev-parse", "--verify"}, exec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"log"}, exec.MockResponse{
+		Stdout: []byte("abc123 feat: something\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"diff"}, exec.MockResponse{
+		Stdout: []byte("diff output\n"),
+	})
+	mockExec.AddPrefixMatch("claude", []string{"--print", "-p"}, exec.MockResponse{
+		Err: fmt.Errorf("claude: not found"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+
+	sess := testSession("sess-2")
+	sess.BaseBranch = "main"
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-2",
+		IssueRef:  config.IssueRef{Source: "github", ID: "43"},
+		SessionID: "sess-2",
+		Branch:    "feature-sess-2",
+		StepData:  map[string]any{},
+	})
+
+	action := &writePRDescriptionAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-2",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when Claude fails")
+	}
+	if result.Error == nil {
+		t.Error("expected non-nil error when Claude fails")
+	}
+}
+
+func TestWritePRDescriptionAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("ai.write_pr_description") == nil {
+		t.Error("ai.write_pr_description not registered in action registry")
+	}
+}
+
+// --- github.create_draft_pr tests ---
+
+func TestCreateDraftPRAction_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &createDraftPRAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected non-nil error for missing work item")
+	}
+}
+
+func TestCreateDraftPRAction_NoChanges_UnqueuesIssue(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+
+	defaultBranch := getDefaultBranch(t, repoDir)
+	mustRunGit(t, repoDir, "checkout", "-b", "issue-60")
+
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Mock gh issue edit/comment/close for unqueueIssue
+	mockExec.AddPrefixMatch("gh", []string{"issue", "edit"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("gh", []string{"issue", "comment"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("gh", []string{"issue", "close"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = repoDir
+	cfg.Repos = []string{repoDir}
+
+	sess := &config.Session{
+		ID:         "sess-draft-no-changes",
+		RepoPath:   repoDir,
+		WorkTree:   repoDir,
+		Branch:     "issue-60",
+		BaseBranch: defaultBranch,
+	}
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-draft-no-changes",
+		IssueRef:  config.IssueRef{Source: "github", ID: "60"},
+		SessionID: "sess-draft-no-changes",
+		Branch:    "issue-60",
+		StepData:  map[string]any{},
+	})
+
+	action := &createDraftPRAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-draft-no-changes",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if !result.Success {
+		t.Errorf("expected success on no-changes, got error: %v", result.Error)
+	}
+	if result.OverrideNext != "done" {
+		t.Errorf("expected OverrideNext='done', got %q", result.OverrideNext)
+	}
+}
+
+func TestCreateDraftPRAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("github.create_draft_pr") == nil {
+		t.Error("github.create_draft_pr not registered in action registry")
+	}
+}
+
+func TestCreatePRAction_DraftParam_PassedThrough(t *testing.T) {
+	// Verifies that github.create_pr with draft=true reads the param correctly.
+	// Since createPR will fail with "session not found" before reaching git ops,
+	// we just verify the action returns an error (not a panic or wrong code path).
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-draft-param",
+		IssueRef:  config.IssueRef{Source: "github", ID: "99"},
+		SessionID: "nonexistent-session",
+		Branch:    "issue-99",
+		StepData:  map[string]any{},
+	})
+
+	action := &createPRAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-draft-param",
+		Params:     workflow.NewParamHelper(map[string]any{"draft": true}),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	// Should fail because session doesn't exist, not because of a panic or wrong param handling
+	if result.Success {
+		t.Error("expected failure for missing session")
+	}
+	if result.Error == nil {
+		t.Error("expected non-nil error")
+	}
 }

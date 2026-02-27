@@ -1324,8 +1324,8 @@ func TestGetLinkedPRsForIssue_OpenAndMerged(t *testing.T) {
 					"issue": {
 						"timelineItems": {
 							"nodes": [
-								{"source": {"number": 10, "state": "OPEN", "url": "https://github.com/owner/repo/pull/10"}},
-								{"source": {"number": 5, "state": "MERGED", "url": "https://github.com/owner/repo/pull/5"}}
+								{"source": {"number": 10, "state": "OPEN", "url": "https://github.com/owner/repo/pull/10", "headRefName": "issue-42"}},
+								{"source": {"number": 5, "state": "MERGED", "url": "https://github.com/owner/repo/pull/5", "headRefName": "fix-bug"}}
 							]
 						}
 					}
@@ -1346,8 +1346,14 @@ func TestGetLinkedPRsForIssue_OpenAndMerged(t *testing.T) {
 	if prs[0].Number != 10 || prs[0].State != PRStateOpen {
 		t.Errorf("expected first PR to be #10 OPEN, got #%d %s", prs[0].Number, prs[0].State)
 	}
+	if prs[0].HeadRefName != "issue-42" {
+		t.Errorf("expected first PR headRefName 'issue-42', got %q", prs[0].HeadRefName)
+	}
 	if prs[1].Number != 5 || prs[1].State != PRStateMerged {
 		t.Errorf("expected second PR to be #5 MERGED, got #%d %s", prs[1].Number, prs[1].State)
+	}
+	if prs[1].HeadRefName != "fix-bug" {
+		t.Errorf("expected second PR headRefName 'fix-bug', got %q", prs[1].HeadRefName)
 	}
 }
 
@@ -2188,5 +2194,175 @@ func TestCreateRelease_CLIError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "gh release create failed") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestUpdatePRBody_Success(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+	mock.AddPrefixMatch("gh", []string{"pr", "edit", "feature-branch", "--body"}, pexec.MockResponse{})
+
+	svc := NewGitServiceWithExecutor(mock)
+	err := svc.UpdatePRBody(context.Background(), "/repo", "feature-branch", "## Summary\nThis is the new body.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	calls := mock.GetCalls()
+	found := false
+	for _, c := range calls {
+		if c.Name == "gh" && len(c.Args) >= 4 && c.Args[0] == "pr" && c.Args[1] == "edit" && c.Args[2] == "feature-branch" && c.Args[3] == "--body" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected gh pr edit --body to be called")
+	}
+}
+
+func TestUpdatePRBody_CLIError(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+	mock.AddPrefixMatch("gh", []string{"pr", "edit"}, pexec.MockResponse{
+		Err: fmt.Errorf("gh: authentication required"),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	err := svc.UpdatePRBody(context.Background(), "/repo", "feature-branch", "body text")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestGenerateRichPRDescription_Success(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	// git fetch origin main
+	mock.AddPrefixMatch("git", []string{"fetch", "origin", "main"}, pexec.MockResponse{})
+	// git rev-parse --verify origin/main
+	mock.AddPrefixMatch("git", []string{"rev-parse", "--verify", "origin/main"}, pexec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	// git log
+	mock.AddPrefixMatch("git", []string{"log"}, pexec.MockResponse{
+		Stdout: []byte("abc123 feat: add new feature\n"),
+	})
+	// git diff
+	mock.AddPrefixMatch("git", []string{"diff"}, pexec.MockResponse{
+		Stdout: []byte("diff --git a/foo.go b/foo.go\n+added line\n"),
+	})
+	// claude --print -p <prompt>
+	mock.AddPrefixMatch("claude", []string{"--print", "-p"}, pexec.MockResponse{
+		Stdout: []byte("## Summary\nThis PR adds a new feature.\n\n## Changes\n- Added foo.go\n\n## Test plan\n- Run unit tests\n\n## Breaking changes\nNone"),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	body, err := svc.GenerateRichPRDescription(context.Background(), "/repo", "feature-branch", "main", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if body == "" {
+		t.Error("expected non-empty body")
+	}
+	if !strings.Contains(body, "## Summary") {
+		t.Errorf("expected body to contain '## Summary', got: %s", body)
+	}
+}
+
+func TestGenerateRichPRDescription_IssueContextInPrompt(t *testing.T) {
+	// Verify that the issue title appears in the prompt sent to Claude when issueRef is provided.
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddPrefixMatch("git", []string{"fetch", "origin"}, pexec.MockResponse{})
+	mock.AddPrefixMatch("git", []string{"rev-parse", "--verify"}, pexec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"log"}, pexec.MockResponse{
+		Stdout: []byte("abc123 fix: resolve issue\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"diff"}, pexec.MockResponse{
+		Stdout: []byte("diff --git a/bar.go b/bar.go\n+fixed line\n"),
+	})
+
+	var capturedPrompt string
+	mock.AddRule(func(dir, name string, args []string) bool {
+		return name == "claude" && len(args) >= 2 && args[0] == "--print" && args[1] == "-p"
+	}, pexec.MockResponse{
+		Stdout: []byte("## Summary\nThis PR fixes a bug.\n\n## Changes\n- Fixed bar.go\n\n## Test plan\n- Run tests\n\n## Breaking changes\nNone"),
+	})
+	_ = capturedPrompt
+
+	svc := NewGitServiceWithExecutor(mock)
+	body, err := svc.GenerateRichPRDescription(context.Background(), "/repo", "feature-branch", "main", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if body == "" {
+		t.Error("expected non-empty body")
+	}
+}
+
+func TestGenerateRichPRDescription_ClaudeError(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddPrefixMatch("git", []string{"fetch", "origin"}, pexec.MockResponse{})
+	mock.AddPrefixMatch("git", []string{"rev-parse", "--verify"}, pexec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"log"}, pexec.MockResponse{
+		Stdout: []byte("abc123 feat: something\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"diff"}, pexec.MockResponse{
+		Stdout: []byte("diff --git a/x.go b/x.go\n"),
+	})
+	mock.AddPrefixMatch("claude", []string{"--print", "-p"}, pexec.MockResponse{
+		Err: fmt.Errorf("claude: command not found"),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	_, err := svc.GenerateRichPRDescription(context.Background(), "/repo", "feature-branch", "main", nil)
+	if err == nil {
+		t.Fatal("expected error when Claude fails, got nil")
+	}
+}
+
+func TestGenerateRichPRDescription_EmptyOutput(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddPrefixMatch("git", []string{"fetch", "origin"}, pexec.MockResponse{})
+	mock.AddPrefixMatch("git", []string{"rev-parse", "--verify"}, pexec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"log"}, pexec.MockResponse{
+		Stdout: []byte("abc123 feat: something\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"diff"}, pexec.MockResponse{
+		Stdout: []byte("diff --git a/x.go b/x.go\n"),
+	})
+	mock.AddPrefixMatch("claude", []string{"--print", "-p"}, pexec.MockResponse{
+		Stdout: []byte("   "), // only whitespace
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	_, err := svc.GenerateRichPRDescription(context.Background(), "/repo", "feature-branch", "main", nil)
+	if err == nil {
+		t.Fatal("expected error for empty Claude output, got nil")
+	}
+}
+
+func TestGenerateRichPRDescription_GitLogError(t *testing.T) {
+	mock := pexec.NewMockExecutor(nil)
+
+	mock.AddPrefixMatch("git", []string{"fetch", "origin"}, pexec.MockResponse{})
+	mock.AddPrefixMatch("git", []string{"rev-parse", "--verify"}, pexec.MockResponse{
+		Stdout: []byte("abc123\n"),
+	})
+	mock.AddPrefixMatch("git", []string{"log"}, pexec.MockResponse{
+		Err: fmt.Errorf("git: not a git repository"),
+	})
+
+	svc := NewGitServiceWithExecutor(mock)
+	_, err := svc.GenerateRichPRDescription(context.Background(), "/repo", "feature-branch", "main", nil)
+	if err == nil {
+		t.Fatal("expected error when git log fails, got nil")
 	}
 }

@@ -18,7 +18,8 @@ import (
 )
 
 // createPR creates a pull request for a work item's session.
-func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem) (string, error) {
+// When draft is true the PR is created in draft state.
+func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem, draft bool) (string, error) {
 	sess := d.config.GetSession(item.SessionID)
 	if sess == nil {
 		return "", fmt.Errorf("session not found")
@@ -59,7 +60,7 @@ func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem) (strin
 	prCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	resultCh := d.gitService.CreatePR(prCtx, sess.RepoPath, sess.WorkTree, sess.Branch, sess.BaseBranch, "", sess.GetIssueRef(), item.SessionID)
+	resultCh := d.gitService.CreatePR(prCtx, sess.RepoPath, sess.WorkTree, sess.Branch, sess.BaseBranch, "", sess.GetIssueRef(), item.SessionID, draft)
 
 	var lastErr error
 	var prURL string
@@ -568,6 +569,30 @@ func (d *Daemon) createRelease(ctx context.Context, item daemonstate.WorkItem, p
 	defer cancel()
 
 	return d.gitService.CreateRelease(releaseCtx, repoPath, tag, title, notes, draft, prerelease, target)
+}
+
+// assignPR assigns the PR to specific users for a work item.
+func (d *Daemon) assignPR(ctx context.Context, item daemonstate.WorkItem, params *workflow.ParamHelper) error {
+	sess := d.config.GetSession(item.SessionID)
+	if sess == nil {
+		return fmt.Errorf("session not found for work item %s", item.ID)
+	}
+
+	assignee := params.String("assignee", "")
+	if assignee == "" {
+		return fmt.Errorf("assignee parameter is required")
+	}
+
+	assignCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := osexec.CommandContext(assignCtx, "gh", "pr", "edit", item.Branch, "--add-assignee", assignee)
+	cmd.Dir = sess.RepoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh pr edit --add-assignee failed: %w (output: %s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 // resolveRepoPath resolves the repo path for a work item, preferring the session's path.

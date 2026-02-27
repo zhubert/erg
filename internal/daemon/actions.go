@@ -93,6 +93,7 @@ type createPRAction struct {
 }
 
 // Execute creates a PR. This is a synchronous action.
+// Supports an optional boolean param "draft" (default false) to create a draft PR.
 func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
 	item, ok := d.state.GetWorkItem(ac.WorkItemID)
@@ -100,7 +101,8 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
 	}
 
-	prURL, err := d.createPR(ctx, item)
+	draft := ac.Params.Bool("draft", false)
+	prURL, err := d.createPR(ctx, item, draft)
 	if err != nil {
 		if errors.Is(err, errNoChanges) {
 			// Coding session made no changes — unqueue the issue (remove label +
@@ -111,6 +113,37 @@ func (a *createPRAction) Execute(ctx context.Context, ac *workflow.ActionContext
 			return workflow.ActionResult{Success: true, OverrideNext: "done"}
 		}
 		return workflow.ActionResult{Error: fmt.Errorf("PR creation failed: %w", err)}
+	}
+
+	return workflow.ActionResult{
+		Success: true,
+		Data:    map[string]any{"pr_url": prURL},
+	}
+}
+
+// createDraftPRAction implements the github.create_draft_pr action.
+// It is equivalent to github.create_pr with draft=true.
+type createDraftPRAction struct {
+	daemon *Daemon
+}
+
+// Execute creates a draft PR. This is a synchronous action.
+func (a *createDraftPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	prURL, err := d.createPR(ctx, item, true)
+	if err != nil {
+		if errors.Is(err, errNoChanges) {
+			repoPath := d.resolveRepoPath(ctx, item)
+			label := d.resolveQueueLabel(repoPath)
+			d.unqueueIssue(ctx, item, fmt.Sprintf("The coding session made no changes. Removing from the queue — re-add the '%s' label if this still needs work.", label))
+			return workflow.ActionResult{Success: true, OverrideNext: "done"}
+		}
+		return workflow.ActionResult{Error: fmt.Errorf("draft PR creation failed: %w", err)}
 	}
 
 	return workflow.ActionResult{
@@ -304,6 +337,11 @@ type requestReviewAction struct {
 	daemon *Daemon
 }
 
+// assignPRAction implements the github.assign_pr action.
+type assignPRAction struct {
+	daemon *Daemon
+}
+
 // Execute requests review on the PR for the work item.
 func (a *requestReviewAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
 	d := a.daemon
@@ -314,6 +352,21 @@ func (a *requestReviewAction) Execute(ctx context.Context, ac *workflow.ActionCo
 
 	if err := d.requestReview(ctx, item, ac.Params); err != nil {
 		return workflow.ActionResult{Error: fmt.Errorf("request review failed: %w", err)}
+	}
+
+	return workflow.ActionResult{Success: true}
+}
+
+// Execute assigns the PR to specific users for the work item.
+func (a *assignPRAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	if err := d.assignPR(ctx, item, ac.Params); err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("assign PR failed: %w", err)}
 	}
 
 	return workflow.ActionResult{Success: true}
@@ -761,6 +814,31 @@ func (d *Daemon) sendSlackNotification(ctx context.Context, item daemonstate.Wor
 
 	d.logger.Info("slack notification sent", "workItem", item.ID, "channel", payload.Channel)
 	return nil
+}
+
+// writePRDescriptionAction implements the ai.write_pr_description action.
+type writePRDescriptionAction struct {
+	daemon *Daemon
+}
+
+// Execute generates a rich PR description from the diff and updates the open PR body.
+func (a *writePRDescriptionAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	sess := d.config.GetSession(item.SessionID)
+	if sess == nil {
+		return workflow.ActionResult{Error: fmt.Errorf("session not found")}
+	}
+
+	if err := d.writePRDescription(ctx, item, sess); err != nil {
+		return workflow.ActionResult{Error: fmt.Errorf("ai.write_pr_description failed: %w", err)}
+	}
+
+	return workflow.ActionResult{Success: true}
 }
 
 // waitAction implements the workflow.wait action.
