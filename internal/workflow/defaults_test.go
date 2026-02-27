@@ -190,6 +190,9 @@ func TestDefaultWorkflowConfig(t *testing.T) {
 	if mp.String("method", "") != "rebase" {
 		t.Errorf("merge method: got %q", mp.String("method", ""))
 	}
+	if merge.Error != "rebase" {
+		t.Errorf("merge error: expected rebase, got %s", merge.Error)
+	}
 
 	// Default should pass validation (including the choice-gated cycle)
 	errs := Validate(cfg)

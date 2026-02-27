@@ -188,6 +188,7 @@ states:
       method: rebase             # Merge method: rebase, squash, or merge
       cleanup: true              # Delete branch after merge
     next: done
+    error: rebase                # Merge conflicts → rebase and retry
 
   done:
     type: succeed
