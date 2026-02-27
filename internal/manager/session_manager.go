@@ -356,7 +356,7 @@ func (sm *SessionManager) GetOrCreateRunner(sess *config.Session) claude.RunnerI
 // This method is intended for the TUI and other consumers that want the "standard"
 // configuration. Headless consumers (like the daemon/agent) should configure runners
 // explicitly using the runner's Set* methods and the tool catalog in claude/tools.go.
-func (sm *SessionManager) ConfigureRunnerDefaults(runner claude.RunnerInterface, sess *config.Session) {
+func (sm *SessionManager) ConfigureRunnerDefaults(runner claude.RunnerConfig, sess *config.Session) {
 	log := logger.WithSession(sess.ID)
 
 	// Build the full allowed tools list: defaults + per-repo config
@@ -418,7 +418,7 @@ func (sm *SessionManager) ConfigureRunnerDefaults(runner claude.RunnerInterface,
 }
 
 // SaveRunnerMessages saves messages for a specific runner (used when runner reference is already available).
-func (sm *SessionManager) SaveRunnerMessages(sessionID string, runner claude.RunnerInterface) error {
+func (sm *SessionManager) SaveRunnerMessages(sessionID string, runner claude.RunnerSession) error {
 	if runner == nil {
 		return nil
 	}

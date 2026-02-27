@@ -6,23 +6,10 @@ import (
 	"github.com/zhubert/erg/internal/mcp"
 )
 
-// RunnerInterface defines the contract for Claude runners.
-// This allows for mock implementations in tests while keeping
-// the production Runner implementation unchanged.
-type RunnerInterface interface {
-	// Session state
-	SessionStarted() bool
-	IsStreaming() bool
-
-	// Message handling
-	Send(ctx context.Context, prompt string) <-chan ResponseChunk
-	SendContent(ctx context.Context, content []ContentBlock) <-chan ResponseChunk
-	GetMessages() []Message
-	GetMessagesWithStreaming() []Message
-	AddAssistantMessage(content string)
-	GetResponseChan() <-chan ResponseChunk
-
-	// Configuration
+// RunnerConfig is the interface for configuring a runner before a session starts.
+// It contains all Set* methods used by the daemon and session manager to set policy
+// on runners before they send any messages.
+type RunnerConfig interface {
 	SetAllowedTools(tools []string)
 	AddAllowedTool(tool string)
 	SetMCPServers(servers []MCPServer)
@@ -31,6 +18,22 @@ type RunnerInterface interface {
 	SetOnContainerReady(callback func())
 	SetDisableStreamingChunks(disable bool)
 	SetSystemPrompt(prompt string)
+	SetSupervisor(supervisor bool)
+	SetHostTools(hostTools bool)
+}
+
+// RunnerSession is the interface for interacting with an active Claude session.
+// It contains session state queries, message sending, channel accessors, and
+// lifecycle methods. This is what SessionWorker needs to drive a session.
+type RunnerSession interface {
+	// Session state
+	SessionStarted() bool
+	IsStreaming() bool
+
+	// Message sending and retrieval
+	Send(ctx context.Context, prompt string) <-chan ResponseChunk
+	SendContent(ctx context.Context, content []ContentBlock) <-chan ResponseChunk
+	GetMessages() []Message
 
 	// Permission/Question/Plan channels
 	PermissionRequestChan() <-chan mcp.PermissionRequest
@@ -41,7 +44,6 @@ type RunnerInterface interface {
 	SendPlanApprovalResponse(resp mcp.PlanApprovalResponse)
 
 	// Supervisor tool channels
-	SetSupervisor(supervisor bool)
 	CreateChildRequestChan() <-chan mcp.CreateChildRequest
 	SendCreateChildResponse(resp mcp.CreateChildResponse)
 	ListChildrenRequestChan() <-chan mcp.ListChildrenRequest
@@ -50,7 +52,6 @@ type RunnerInterface interface {
 	SendMergeChildResponse(resp mcp.MergeChildResponse)
 
 	// Host tool channels (for autonomous supervisor sessions)
-	SetHostTools(hostTools bool)
 	CreatePRRequestChan() <-chan mcp.CreatePRRequest
 	SendCreatePRResponse(resp mcp.CreatePRResponse)
 	PushBranchRequestChan() <-chan mcp.PushBranchRequest
@@ -61,6 +62,14 @@ type RunnerInterface interface {
 	// Lifecycle
 	Stop()
 	Interrupt() error
+}
+
+// RunnerInterface is the full interface combining RunnerConfig and RunnerSession.
+// It is satisfied by the concrete Runner and MockRunner types.
+// Most consumers should depend on RunnerConfig or RunnerSession directly.
+type RunnerInterface interface {
+	RunnerConfig
+	RunnerSession
 }
 
 // Ensure Runner implements RunnerInterface at compile time.

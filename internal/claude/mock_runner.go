@@ -198,26 +198,26 @@ func (m *MockRunner) SimulateGetReviewCommentsRequest(req mcp.GetReviewCommentsR
 	ch.Req <- req
 }
 
-// SessionStarted implements RunnerInterface.
+// SessionStarted implements RunnerSession.
 func (m *MockRunner) SessionStarted() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessionStarted
 }
 
-// IsStreaming implements RunnerInterface.
+// IsStreaming implements RunnerSession.
 func (m *MockRunner) IsStreaming() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.isStreaming
 }
 
-// Send implements RunnerInterface.
+// Send implements RunnerSession.
 func (m *MockRunner) Send(ctx context.Context, prompt string) <-chan ResponseChunk {
 	return m.SendContent(ctx, TextContent(prompt))
 }
 
-// SendContent implements RunnerInterface.
+// SendContent implements RunnerSession.
 func (m *MockRunner) SendContent(ctx context.Context, content []ContentBlock) <-chan ResponseChunk {
 	m.mu.Lock()
 
@@ -280,7 +280,7 @@ func (m *MockRunner) SendContent(ctx context.Context, content []ContentBlock) <-
 	return ch
 }
 
-// GetMessages implements RunnerInterface.
+// GetMessages implements RunnerSession.
 func (m *MockRunner) GetMessages() []Message {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -290,8 +290,9 @@ func (m *MockRunner) GetMessages() []Message {
 	return msgs
 }
 
-// GetMessagesWithStreaming implements RunnerInterface.
-// Returns GetMessages() plus any simulated streaming content set via SetStreamingContent.
+// GetMessagesWithStreaming is not part of any interface — it is only used by tests
+// within the claude package. Returns GetMessages() plus any simulated streaming
+// content set via SetStreamingContent.
 func (m *MockRunner) GetMessagesWithStreaming() []Message {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -311,21 +312,23 @@ func (m *MockRunner) SetStreamingContent(content string) {
 	m.streamingContent = content
 }
 
-// AddAssistantMessage implements RunnerInterface.
+// AddAssistantMessage is not part of any interface — it is only used by tests
+// within the claude package.
 func (m *MockRunner) AddAssistantMessage(content string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messages = append(m.messages, Message{Role: "assistant", Content: content})
 }
 
-// GetResponseChan implements RunnerInterface.
+// GetResponseChan is not part of any interface — it is only used by tests
+// within the claude package.
 func (m *MockRunner) GetResponseChan() <-chan ResponseChunk {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.responseChan
 }
 
-// SetAllowedTools implements RunnerInterface.
+// SetAllowedTools implements RunnerConfig.
 func (m *MockRunner) SetAllowedTools(tools []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -333,7 +336,7 @@ func (m *MockRunner) SetAllowedTools(tools []string) {
 	copy(m.allowedTools, tools)
 }
 
-// AddAllowedTool implements RunnerInterface.
+// AddAllowedTool implements RunnerConfig.
 func (m *MockRunner) AddAllowedTool(tool string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -342,14 +345,14 @@ func (m *MockRunner) AddAllowedTool(tool string) {
 	}
 }
 
-// SetMCPServers implements RunnerInterface.
+// SetMCPServers implements RunnerConfig.
 func (m *MockRunner) SetMCPServers(servers []MCPServer) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.mcpServers = servers
 }
 
-// SetForkFromSession implements RunnerInterface.
+// SetForkFromSession implements RunnerConfig.
 // In mock, this stores the parent session ID for test verification.
 func (m *MockRunner) SetForkFromSession(parentSessionID string) {
 	m.mu.Lock()
@@ -364,30 +367,30 @@ func (m *MockRunner) GetForkFromSessionID() string {
 	return m.forkFromSessionID
 }
 
-// SetContainerized implements RunnerInterface.
+// SetContainerized implements RunnerConfig.
 // In mock, this is a no-op since we don't spawn real processes.
 func (m *MockRunner) SetContainerized(containerized bool, image string) {
 	// No-op for mock
 }
 
-// SetOnContainerReady implements RunnerInterface.
+// SetOnContainerReady implements RunnerConfig.
 // In mock, this is a no-op since we don't spawn real containers.
 func (m *MockRunner) SetOnContainerReady(callback func()) {
 	// No-op for mock
 }
 
-// SetDisableStreamingChunks implements RunnerInterface.
+// SetDisableStreamingChunks implements RunnerConfig.
 // In mock, this is a no-op since we don't use real streaming.
 func (m *MockRunner) SetDisableStreamingChunks(disable bool) {
 	// No-op for mock
 }
 
-// SetSystemPrompt implements RunnerInterface.
+// SetSystemPrompt implements RunnerConfig.
 func (m *MockRunner) SetSystemPrompt(prompt string) {
 	// No-op for mock
 }
 
-// PermissionRequestChan implements RunnerInterface.
+// PermissionRequestChan implements RunnerSession.
 func (m *MockRunner) PermissionRequestChan() <-chan mcp.PermissionRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -397,7 +400,7 @@ func (m *MockRunner) PermissionRequestChan() <-chan mcp.PermissionRequest {
 	return m.permission.Req
 }
 
-// SendPermissionResponse implements RunnerInterface.
+// SendPermissionResponse implements RunnerSession.
 func (m *MockRunner) SendPermissionResponse(resp mcp.PermissionResponse) {
 	m.mu.RLock()
 	stopped := m.stopped
@@ -417,7 +420,7 @@ func (m *MockRunner) SendPermissionResponse(resp mcp.PermissionResponse) {
 	}
 }
 
-// QuestionRequestChan implements RunnerInterface.
+// QuestionRequestChan implements RunnerSession.
 func (m *MockRunner) QuestionRequestChan() <-chan mcp.QuestionRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -427,7 +430,7 @@ func (m *MockRunner) QuestionRequestChan() <-chan mcp.QuestionRequest {
 	return m.question.Req
 }
 
-// SendQuestionResponse implements RunnerInterface.
+// SendQuestionResponse implements RunnerSession.
 func (m *MockRunner) SendQuestionResponse(resp mcp.QuestionResponse) {
 	m.mu.RLock()
 	stopped := m.stopped
@@ -447,7 +450,7 @@ func (m *MockRunner) SendQuestionResponse(resp mcp.QuestionResponse) {
 	}
 }
 
-// PlanApprovalRequestChan implements RunnerInterface.
+// PlanApprovalRequestChan implements RunnerSession.
 func (m *MockRunner) PlanApprovalRequestChan() <-chan mcp.PlanApprovalRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -457,7 +460,7 @@ func (m *MockRunner) PlanApprovalRequestChan() <-chan mcp.PlanApprovalRequest {
 	return m.planApproval.Req
 }
 
-// SendPlanApprovalResponse implements RunnerInterface.
+// SendPlanApprovalResponse implements RunnerSession.
 func (m *MockRunner) SendPlanApprovalResponse(resp mcp.PlanApprovalResponse) {
 	m.mu.RLock()
 	stopped := m.stopped
@@ -477,7 +480,7 @@ func (m *MockRunner) SendPlanApprovalResponse(resp mcp.PlanApprovalResponse) {
 	}
 }
 
-// SetSupervisor implements RunnerInterface.
+// SetSupervisor implements RunnerConfig.
 func (m *MockRunner) SetSupervisor(supervisor bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -488,7 +491,7 @@ func (m *MockRunner) SetSupervisor(supervisor bool) {
 	}
 }
 
-// CreateChildRequestChan implements RunnerInterface.
+// CreateChildRequestChan implements RunnerSession.
 func (m *MockRunner) CreateChildRequestChan() <-chan mcp.CreateChildRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -498,7 +501,7 @@ func (m *MockRunner) CreateChildRequestChan() <-chan mcp.CreateChildRequest {
 	return m.createChild.Req
 }
 
-// SendCreateChildResponse implements RunnerInterface.
+// SendCreateChildResponse implements RunnerSession.
 func (m *MockRunner) SendCreateChildResponse(resp mcp.CreateChildResponse) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -511,7 +514,7 @@ func (m *MockRunner) SendCreateChildResponse(resp mcp.CreateChildResponse) {
 	}
 }
 
-// ListChildrenRequestChan implements RunnerInterface.
+// ListChildrenRequestChan implements RunnerSession.
 func (m *MockRunner) ListChildrenRequestChan() <-chan mcp.ListChildrenRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -521,7 +524,7 @@ func (m *MockRunner) ListChildrenRequestChan() <-chan mcp.ListChildrenRequest {
 	return m.listChildren.Req
 }
 
-// SendListChildrenResponse implements RunnerInterface.
+// SendListChildrenResponse implements RunnerSession.
 func (m *MockRunner) SendListChildrenResponse(resp mcp.ListChildrenResponse) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -534,7 +537,7 @@ func (m *MockRunner) SendListChildrenResponse(resp mcp.ListChildrenResponse) {
 	}
 }
 
-// MergeChildRequestChan implements RunnerInterface.
+// MergeChildRequestChan implements RunnerSession.
 func (m *MockRunner) MergeChildRequestChan() <-chan mcp.MergeChildRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -544,7 +547,7 @@ func (m *MockRunner) MergeChildRequestChan() <-chan mcp.MergeChildRequest {
 	return m.mergeChild.Req
 }
 
-// SendMergeChildResponse implements RunnerInterface.
+// SendMergeChildResponse implements RunnerSession.
 func (m *MockRunner) SendMergeChildResponse(resp mcp.MergeChildResponse) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -557,7 +560,7 @@ func (m *MockRunner) SendMergeChildResponse(resp mcp.MergeChildResponse) {
 	}
 }
 
-// SetHostTools implements RunnerInterface.
+// SetHostTools implements RunnerConfig.
 func (m *MockRunner) SetHostTools(hostTools bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -568,7 +571,7 @@ func (m *MockRunner) SetHostTools(hostTools bool) {
 	}
 }
 
-// CreatePRRequestChan implements RunnerInterface.
+// CreatePRRequestChan implements RunnerSession.
 func (m *MockRunner) CreatePRRequestChan() <-chan mcp.CreatePRRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -578,7 +581,7 @@ func (m *MockRunner) CreatePRRequestChan() <-chan mcp.CreatePRRequest {
 	return m.createPR.Req
 }
 
-// SendCreatePRResponse implements RunnerInterface.
+// SendCreatePRResponse implements RunnerSession.
 func (m *MockRunner) SendCreatePRResponse(resp mcp.CreatePRResponse) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -591,7 +594,7 @@ func (m *MockRunner) SendCreatePRResponse(resp mcp.CreatePRResponse) {
 	}
 }
 
-// PushBranchRequestChan implements RunnerInterface.
+// PushBranchRequestChan implements RunnerSession.
 func (m *MockRunner) PushBranchRequestChan() <-chan mcp.PushBranchRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -601,7 +604,7 @@ func (m *MockRunner) PushBranchRequestChan() <-chan mcp.PushBranchRequest {
 	return m.pushBranch.Req
 }
 
-// SendPushBranchResponse implements RunnerInterface.
+// SendPushBranchResponse implements RunnerSession.
 func (m *MockRunner) SendPushBranchResponse(resp mcp.PushBranchResponse) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -614,7 +617,7 @@ func (m *MockRunner) SendPushBranchResponse(resp mcp.PushBranchResponse) {
 	}
 }
 
-// GetReviewCommentsRequestChan implements RunnerInterface.
+// GetReviewCommentsRequestChan implements RunnerSession.
 func (m *MockRunner) GetReviewCommentsRequestChan() <-chan mcp.GetReviewCommentsRequest {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -624,7 +627,7 @@ func (m *MockRunner) GetReviewCommentsRequestChan() <-chan mcp.GetReviewComments
 	return m.getReviewComments.Req
 }
 
-// SendGetReviewCommentsResponse implements RunnerInterface.
+// SendGetReviewCommentsResponse implements RunnerSession.
 func (m *MockRunner) SendGetReviewCommentsResponse(resp mcp.GetReviewCommentsResponse) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -637,7 +640,7 @@ func (m *MockRunner) SendGetReviewCommentsResponse(resp mcp.GetReviewCommentsRes
 	}
 }
 
-// Stop implements RunnerInterface.
+// Stop implements RunnerSession.
 func (m *MockRunner) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -695,11 +698,13 @@ func (m *MockRunner) CompleteStreaming(content string) {
 	}
 }
 
-// Interrupt implements RunnerInterface.Interrupt for mock.
+// Interrupt implements RunnerSession.Interrupt for mock.
 // In tests, this is a no-op since there's no real Claude process.
 func (m *MockRunner) Interrupt() error {
 	return nil
 }
 
-// Ensure MockRunner implements RunnerInterface at compile time.
+// Ensure MockRunner implements all runner interfaces at compile time.
 var _ RunnerInterface = (*MockRunner)(nil)
+var _ RunnerConfig = (*MockRunner)(nil)
+var _ RunnerSession = (*MockRunner)(nil)

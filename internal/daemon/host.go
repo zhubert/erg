@@ -40,7 +40,7 @@ func (d *Daemon) CleanupSession(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-func (d *Daemon) SaveRunnerMessages(sessionID string, runner claude.RunnerInterface) {
+func (d *Daemon) SaveRunnerMessages(sessionID string, runner claude.RunnerSession) {
 	d.saveRunnerMessages(sessionID, runner)
 }
 
