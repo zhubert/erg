@@ -7,7 +7,6 @@ import (
 	"github.com/zhubert/erg/internal/agentconfig"
 	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/git"
-	"github.com/zhubert/erg/internal/manager"
 )
 
 // Host is the interface that SessionWorker uses to access its owning daemon.
@@ -19,8 +18,12 @@ type Host interface {
 	// GitService returns the git service.
 	GitService() *git.GitService
 
-	// SessionManager returns the session manager.
-	SessionManager() *manager.SessionManager
+	// GetPendingMessage returns and clears the pending message for a session.
+	// This is a consuming get — the message is cleared after retrieval.
+	GetPendingMessage(sessionID string) string
+
+	// SetPendingMessage queues a message to be sent to a session on its next turn.
+	SetPendingMessage(sessionID, msg string)
 
 	// Logger returns the structured logger.
 	Logger() *slog.Logger
