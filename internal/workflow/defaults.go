@@ -155,6 +155,7 @@ func DefaultWorkflowConfig() *Config {
 					"cleanup": true,
 				},
 				Next:  "done",
+				Error: "rebase",
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"done": {
