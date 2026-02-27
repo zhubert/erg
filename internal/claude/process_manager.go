@@ -359,6 +359,11 @@ func (pm *ProcessManager) Start() error {
 		cmd.Dir = pm.config.WorkingDir
 	}
 
+	// Set git identity env vars so Claude Code uses the host's identity
+	// instead of inventing one (e.g., "erg agent"). These env vars override
+	// any git config and prevent Claude from writing to the repo's .git/config.
+	cmd.Env = appendGitIdentityEnv(os.Environ())
+
 	// Get stdin pipe for writing messages
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

@@ -2203,6 +2203,97 @@ func TestFriendlyContainerError(t *testing.T) {
 	}
 }
 
+func TestBuildContainerRunArgs_ForwardsHostGitIdentity(t *testing.T) {
+	// gitConfigValue reads from the real host git config.
+	// On any dev machine (and CI), user.name and user.email are typically set.
+	// We test the integration: if the host has a git identity, the container
+	// args must include the corresponding GIT_AUTHOR_*/GIT_COMMITTER_* env vars.
+	hostName := gitConfigValue("user.name")
+	hostEmail := gitConfigValue("user.email")
+
+	config := ProcessConfig{
+		SessionID:      "git-identity-test",
+		WorkingDir:     "/tmp/worktree",
+		ContainerImage: "test-image",
+	}
+
+	result, err := buildContainerRunArgs(config, []string{"--print"})
+	if err != nil {
+		t.Fatalf("buildContainerRunArgs failed: %v", err)
+	}
+
+	if hostName != "" {
+		if !containsArg(result.Args, "GIT_AUTHOR_NAME="+hostName) {
+			t.Errorf("expected GIT_AUTHOR_NAME=%s in args, got %v", hostName, result.Args)
+		}
+		if !containsArg(result.Args, "GIT_COMMITTER_NAME="+hostName) {
+			t.Errorf("expected GIT_COMMITTER_NAME=%s in args, got %v", hostName, result.Args)
+		}
+	}
+
+	if hostEmail != "" {
+		if !containsArg(result.Args, "GIT_AUTHOR_EMAIL="+hostEmail) {
+			t.Errorf("expected GIT_AUTHOR_EMAIL=%s in args, got %v", hostEmail, result.Args)
+		}
+		if !containsArg(result.Args, "GIT_COMMITTER_EMAIL="+hostEmail) {
+			t.Errorf("expected GIT_COMMITTER_EMAIL=%s in args, got %v", hostEmail, result.Args)
+		}
+	}
+}
+
+func TestAppendGitIdentityEnv(t *testing.T) {
+	hostName := gitConfigValue("user.name")
+	hostEmail := gitConfigValue("user.email")
+	if hostName == "" || hostEmail == "" {
+		t.Skip("git user.name/user.email not configured on this host")
+	}
+
+	t.Run("adds identity to empty env", func(t *testing.T) {
+		env := appendGitIdentityEnv(nil)
+		found := map[string]bool{}
+		for _, e := range env {
+			parts := strings.SplitN(e, "=", 2)
+			found[parts[0]] = true
+		}
+		for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+			if !found[key] {
+				t.Errorf("expected %s in env", key)
+			}
+		}
+	})
+
+	t.Run("does not override existing values", func(t *testing.T) {
+		env := appendGitIdentityEnv([]string{
+			"GIT_AUTHOR_NAME=Custom Author",
+			"GIT_COMMITTER_NAME=Custom Committer",
+			"GIT_AUTHOR_EMAIL=custom@example.com",
+			"GIT_COMMITTER_EMAIL=custom@example.com",
+		})
+		for _, e := range env {
+			if e == "GIT_AUTHOR_NAME="+hostName {
+				t.Error("should not override existing GIT_AUTHOR_NAME")
+			}
+		}
+	})
+}
+
+func TestGitConfigValue(t *testing.T) {
+	// user.name should be set on any machine that can commit
+	name := gitConfigValue("user.name")
+	if name == "" {
+		t.Skip("git user.name not configured on this host")
+	}
+	if strings.ContainsAny(name, "\n\r") {
+		t.Errorf("gitConfigValue should trim whitespace, got %q", name)
+	}
+
+	// Non-existent key should return empty string
+	val := gitConfigValue("user.nonexistent.key.that.does.not.exist")
+	if val != "" {
+		t.Errorf("expected empty string for non-existent key, got %q", val)
+	}
+}
+
 func TestBuildContainerRunArgs_WithRepoPath(t *testing.T) {
 	config := ProcessConfig{
 		SessionID:      "test-session",

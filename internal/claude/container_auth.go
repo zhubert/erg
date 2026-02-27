@@ -78,6 +78,17 @@ func buildContainerRunArgs(config ProcessConfig, claudeArgs []string) (container
 		args = append(args, "-v", config.MCPConfigPath+":"+containerMCPConfigPath+":ro")
 	}
 
+	// Forward the host's git identity into the container so Claude Code
+	// doesn't invent its own (e.g., "erg agent" or "Plural Agent").
+	// GIT_AUTHOR_*/GIT_COMMITTER_* env vars override any git config inside
+	// the container and are respected by all git operations.
+	if name := gitConfigValue("user.name"); name != "" {
+		args = append(args, "-e", "GIT_AUTHOR_NAME="+name, "-e", "GIT_COMMITTER_NAME="+name)
+	}
+	if email := gitConfigValue("user.email"); email != "" {
+		args = append(args, "-e", "GIT_AUTHOR_EMAIL="+email, "-e", "GIT_COMMITTER_EMAIL="+email)
+	}
+
 	// Mount main repository for git worktree support.
 	// Git worktrees have a .git file pointing to /path/to/repo/.git/worktrees/<id>.
 	// We mount the repo at its original absolute path so these references work transparently.
@@ -266,6 +277,49 @@ func writeContainerAuthFile(sessionID string) containerAuthResult {
 		return containerAuthResult{}
 	}
 	return containerAuthResult{Path: path, Source: source}
+}
+
+// gitConfigValue reads a git config value from the host machine.
+// Returns empty string if the key is not set or git is not available.
+func gitConfigValue(key string) string {
+	out, err := exec.Command("git", "config", "--get", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// appendGitIdentityEnv appends GIT_AUTHOR_*/GIT_COMMITTER_* env vars to the
+// given environment slice if the host has git user.name/user.email configured
+// and they aren't already set in the environment. This ensures Claude Code
+// uses the host's identity rather than inventing one.
+func appendGitIdentityEnv(env []string) []string {
+	has := func(prefix string) bool {
+		for _, e := range env {
+			if strings.HasPrefix(e, prefix+"=") {
+				return true
+			}
+		}
+		return false
+	}
+
+	if name := gitConfigValue("user.name"); name != "" {
+		if !has("GIT_AUTHOR_NAME") {
+			env = append(env, "GIT_AUTHOR_NAME="+name)
+		}
+		if !has("GIT_COMMITTER_NAME") {
+			env = append(env, "GIT_COMMITTER_NAME="+name)
+		}
+	}
+	if email := gitConfigValue("user.email"); email != "" {
+		if !has("GIT_AUTHOR_EMAIL") {
+			env = append(env, "GIT_AUTHOR_EMAIL="+email)
+		}
+		if !has("GIT_COMMITTER_EMAIL") {
+			env = append(env, "GIT_COMMITTER_EMAIL="+email)
+		}
+	}
+	return env
 }
 
 // readKeychainPassword reads a password from the macOS keychain.
