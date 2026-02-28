@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -68,6 +69,13 @@ func daemonize(cmd *cobra.Command, args []string) error {
 
 	if err := checkDockerDaemon(); err != nil {
 		return err
+	}
+
+	// Run `claude -v` on the host to force an OAuth token refresh (so the
+	// keychain token is fresh when we pass it into the container) and to
+	// show the user which Claude CLI version is installed.
+	if out, err := exec.Command("claude", "-v").Output(); err == nil {
+		fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
 	}
 
 	if authSource := claude.ContainerAuthSource(); authSource != "" {
@@ -255,6 +263,13 @@ func runForeground(_ *cobra.Command, _ []string) error {
 
 	if err := checkDockerDaemon(); err != nil {
 		return err
+	}
+
+	// Run `claude -v` on the host to force an OAuth token refresh (so the
+	// keychain token is fresh when we pass it into the container) and to
+	// show the user which Claude CLI version is installed.
+	if out, err := exec.Command("claude", "-v").Output(); err == nil {
+		fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
 	}
 
 	if authSource := claude.ContainerAuthSource(); authSource != "" {
