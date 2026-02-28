@@ -2118,3 +2118,433 @@ func TestCheckEvent_CIWaitForChecks_Routed(t *testing.T) {
 		t.Errorf("expected ci_status=passing, got %v", data["ci_status"])
 	}
 }
+
+// =============================================================================
+// plan.user_replied event tests
+// =============================================================================
+
+func TestCheckPlanUserReplied_FiresOnNewComment(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Comment posted after step entry
+	commentsJSON := []byte(`{"comments":[{"author":{"login":"alice"},"body":"Can you add more detail about the error handling?","createdAt":"2020-01-01T10:05:00Z"}]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	fired, data, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fired {
+		t.Error("expected fired=true when new comment exists")
+	}
+	if data["plan_approved"] != false {
+		t.Errorf("expected plan_approved=false (no approval_pattern), got %v", data["plan_approved"])
+	}
+	if data["user_feedback"] != "Can you add more detail about the error handling?" {
+		t.Errorf("unexpected user_feedback: %v", data["user_feedback"])
+	}
+	if data["user_feedback_author"] != "alice" {
+		t.Errorf("expected user_feedback_author=alice, got %v", data["user_feedback_author"])
+	}
+}
+
+func TestCheckPlanUserReplied_ApprovalPatternMatches(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	commentsJSON := []byte(`{"comments":[{"author":{"login":"bob"},"body":"LGTM, proceed with implementation","createdAt":"2020-01-01T10:05:00Z"}]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{"approval_pattern": "^LGTM"})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	fired, data, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fired {
+		t.Error("expected fired=true when new comment exists")
+	}
+	if data["plan_approved"] != true {
+		t.Errorf("expected plan_approved=true when comment matches approval_pattern, got %v", data["plan_approved"])
+	}
+	if data["user_feedback_author"] != "bob" {
+		t.Errorf("expected user_feedback_author=bob, got %v", data["user_feedback_author"])
+	}
+}
+
+func TestCheckPlanUserReplied_ApprovalPatternNoMatch(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	commentsJSON := []byte(`{"comments":[{"author":{"login":"carol"},"body":"What about error handling?","createdAt":"2020-01-01T10:05:00Z"}]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{"approval_pattern": "^LGTM"})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	fired, data, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fired {
+		t.Error("expected fired=true when new comment exists")
+	}
+	if data["plan_approved"] != false {
+		t.Errorf("expected plan_approved=false when comment does not match approval_pattern, got %v", data["plan_approved"])
+	}
+}
+
+func TestCheckPlanUserReplied_OldCommentIgnored(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Comment posted BEFORE step was entered
+	commentsJSON := []byte(`{"comments":[{"author":{"login":"dave"},"body":"old comment","createdAt":"2020-01-01T09:55:00Z"}]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false when only old comments exist")
+	}
+}
+
+func TestCheckPlanUserReplied_NoComments(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	commentsJSON := []byte(`{"comments":[]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false when no comments exist")
+	}
+}
+
+func TestCheckPlanUserReplied_NonGitHubIssue(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "asana", ID: "task-abc"},
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false for non-github issue")
+	}
+}
+
+func TestCheckPlanUserReplied_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	view := &workflow.WorkItemView{ID: "nonexistent", RepoPath: "/test/repo"}
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false for missing work item")
+	}
+}
+
+func TestCheckPlanUserReplied_InvalidIssueNumber(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "not-a-number"},
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false for invalid issue number")
+	}
+}
+
+func TestCheckPlanUserReplied_CLIError(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Err: fmt.Errorf("gh: not found"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false on CLI error")
+	}
+}
+
+func TestCheckPlanUserReplied_InvalidApprovalPattern(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Comment exists but approval_pattern is invalid regex — should still fire
+	// with plan_approved=false (pattern treated as absent).
+	commentsJSON := []byte(`{"comments":[{"author":{"login":"eve"},"body":"looks good to me","createdAt":"2020-01-01T10:05:00Z"}]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{"approval_pattern": `[invalid`})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	fired, data, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fired {
+		t.Error("expected fired=true even with invalid approval_pattern (pattern ignored)")
+	}
+	if data["plan_approved"] != false {
+		t.Errorf("expected plan_approved=false when approval_pattern is invalid, got %v", data["plan_approved"])
+	}
+}
+
+func TestCheckPlanUserReplied_NoRepoPath(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	// view with no RepoPath and no session
+	view := &workflow.WorkItemView{ID: "item-1", RepoPath: ""}
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false when no repo path")
+	}
+}
+
+func TestCheckEvent_PlanUserReplied_Routed(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	commentsJSON := []byte(`{"comments":[{"author":{"login":"frank"},"body":"Please reconsider the approach","createdAt":"2020-01-01T10:05:00Z"}]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "plan_review",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(nil)
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	fired, data, err := checker.CheckEvent(context.Background(), "plan.user_replied", params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fired {
+		t.Error("expected fired=true via CheckEvent dispatch")
+	}
+	if data["user_feedback_author"] != "frank" {
+		t.Errorf("expected user_feedback_author=frank, got %v", data["user_feedback_author"])
+	}
+}

@@ -196,11 +196,12 @@ func DefaultRetryForAction(action string) []RetryConfig {
 
 // ValidEvents is the set of recognized event names for wait states.
 var ValidEvents = map[string]bool{
-	"pr.reviewed":       true,
-	"ci.complete":       true,
+	"pr.reviewed":        true,
+	"ci.complete":        true,
 	"ci.wait_for_checks": true,
-	"pr.mergeable":      true,
-	"gate.approved":     true,
+	"pr.mergeable":       true,
+	"gate.approved":      true,
+	"plan.user_replied":  true,
 }
 
 // ValidStateTypes is the set of recognized state types.

@@ -83,6 +83,14 @@ The plan should include:
 - Potential risks or edge cases
 - Any questions or clarifications needed before coding begins
 
+RE-PLANNING WITH USER FEEDBACK:
+If the task description includes a "User feedback on the previous plan" section, a human has
+reviewed your earlier plan and provided feedback. In that case:
+- Carefully read their feedback
+- Revise the plan to address their concerns
+- Post a new, updated plan as an issue comment
+- Acknowledge the feedback and explain what changed
+
 POSTING THE PLAN:
 Use the comment_issue MCP tool to post the plan to the issue. Do NOT use "gh issue comment" or
 any other CLI command. The comment_issue tool routes through the daemon and handles authentication
