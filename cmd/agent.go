@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zhubert/erg/internal/agentconfig"
+	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/container"
 	"github.com/zhubert/erg/internal/daemon"
 	"github.com/zhubert/erg/internal/daemonstate"
@@ -67,6 +68,12 @@ func daemonize(cmd *cobra.Command, args []string) error {
 
 	if err := checkDockerDaemon(); err != nil {
 		return err
+	}
+
+	if authSource := claude.ContainerAuthSource(); authSource != "" {
+		fmt.Printf("Auth: %s\n", authSource)
+	} else {
+		fmt.Println("Warning: no container auth credentials found")
 	}
 
 	fmt.Println("Starting to erg...")
@@ -248,6 +255,12 @@ func runForeground(_ *cobra.Command, _ []string) error {
 
 	if err := checkDockerDaemon(); err != nil {
 		return err
+	}
+
+	if authSource := claude.ContainerAuthSource(); authSource != "" {
+		fmt.Printf("Auth: %s\n", authSource)
+	} else {
+		fmt.Println("Warning: no container auth credentials found")
 	}
 
 	// Enable debug logging

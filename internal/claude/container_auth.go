@@ -135,6 +135,24 @@ func containerAuthFilePath(sessionID string) string {
 	return filepath.Join(dir, fmt.Sprintf("erg-auth-%s", sessionID))
 }
 
+// ContainerAuthSource returns a human-readable description of where container
+// credentials will come from. Returns empty string if no credentials are found.
+func ContainerAuthSource() string {
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		return "ANTHROPIC_API_KEY env var"
+	}
+	if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") != "" {
+		return "CLAUDE_CODE_OAUTH_TOKEN env var"
+	}
+	if cred := readKeychainCredential(); cred.Value != "" {
+		return cred.Source
+	}
+	if credentialsFileExists() {
+		return "~/.claude/.credentials.json (OAuth via claude login)"
+	}
+	return ""
+}
+
 // ContainerAuthAvailable checks whether credentials are available for
 // container mode. Returns true if any of the following are set:
 //   - ANTHROPIC_API_KEY environment variable
@@ -142,19 +160,7 @@ func containerAuthFilePath(sessionID string) string {
 //   - "anthropic_api_key", "Claude Code", or "Claude Code-credentials" macOS keychain entry
 //   - ~/.claude/.credentials.json file (from "claude login" interactive OAuth)
 func ContainerAuthAvailable() bool {
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		return true
-	}
-	if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") != "" {
-		return true
-	}
-	if cred := readKeychainCredential(); cred.Value != "" {
-		return true
-	}
-	if credentialsFileExists() {
-		return true
-	}
-	return false
+	return ContainerAuthSource() != ""
 }
 
 // keychainCredential holds a credential read from the macOS keychain.
