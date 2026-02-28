@@ -1414,123 +1414,19 @@
           </button>
         </div>
 
-        <h3 id="quickstart-github">Quick start: GitHub</h3>
+        <h3 id="quickstart">Quick start</h3>
         <p>
-          GitHub issues are the simplest starting point. erg uses the
-          <code>gh</code> CLI for all GitHub operations, so install and
-          authenticate it first.
+          Run <code>erg setup</code> inside your repo. It will walk you through
+          choosing an issue provider (GitHub, Asana, or Linear), configuring
+          credentials, and scaffolding a workflow — then start the daemon.
         </p>
         <div class="install-block">
           <span class="prompt-char">$</span>
-          <code>gh auth login</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'gh auth login')">
+          <code>erg setup</code>
+          <button class="copy-btn" onclick="copyCmd(this, 'erg setup')">
             copy
           </button>
         </div>
-        <p>
-          Scaffold a default workflow config in your repo, then start the
-          daemon:
-        </p>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>erg workflow init --repo /path/to/repo</code>
-          <button
-            class="copy-btn"
-            onclick="copyCmd(this, 'erg workflow init --repo /path/to/repo')"
-          >
-            copy
-          </button>
-        </div>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>erg start --repo owner/repo</code>
-          <button
-            class="copy-btn"
-            onclick="copyCmd(this, 'erg start --repo owner/repo')"
-          >
-            copy
-          </button>
-        </div>
-        <p>
-          Label a GitHub issue <code>queued</code> and erg will pick it up on
-          the next poll cycle. Use <code>erg status</code> to check progress or
-          <code>erg stop</code> to shut down the daemon.
-        </p>
-
-        <h3 id="quickstart-asana">Quick start: Asana</h3>
-        <p>
-          To poll Asana tasks, create a Personal Access Token at
-          <a href="https://app.asana.com/0/my-apps">app.asana.com/0/my-apps</a>
-          and export it:
-        </p>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>export ASANA_PAT=your_personal_access_token</code>
-          <button
-            class="copy-btn"
-            onclick="
-              copyCmd(this, 'export ASANA_PAT=your_personal_access_token')
-            "
-          >
-            copy
-          </button>
-        </div>
-        <p>
-          Scaffold a workflow, then edit <code>.erg/workflow.yaml</code> to set
-          the Asana provider and your project GID (found in the Asana project
-          URL: <code>app.asana.com/0/&lt;PROJECT_GID&gt;/...</code>):
-        </p>
-        <div class="code-block">
-          <div class="code-header">
-            <span class="code-filename">.erg/workflow.yaml (source block)</span>
-          </div>
-          <pre><span class="ck">source:</span>
-  <span class="ck">provider:</span> <span class="cv">asana</span>
-  <span class="ck">filter:</span>
-    <span class="ck">project:</span> <span class="cv">YOUR_ASANA_PROJECT_GID</span>
-    <span class="ck">label:</span> <span class="cv">queued</span>    <span class="cc"># Asana tag name (case-insensitive)</span></pre>
-        </div>
-        <p>
-          Start the daemon and tag an Asana task with <code>queued</code>. erg
-          will poll the project and pick it up automatically.
-        </p>
-
-        <h3 id="quickstart-linear">Quick start: Linear</h3>
-        <p>
-          To poll Linear issues, create a Personal API key at
-          <strong>Linear → Settings → API → Personal API keys</strong>
-          and export it:
-        </p>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>export LINEAR_API_KEY=your_api_key</code>
-          <button
-            class="copy-btn"
-            onclick="copyCmd(this, 'export LINEAR_API_KEY=your_api_key')"
-          >
-            copy
-          </button>
-        </div>
-        <p>
-          Find your team ID at
-          <strong
-            >Linear → Settings → Teams → &lt;Your Team&gt; → Team ID</strong
-          >, then configure the workflow:
-        </p>
-        <div class="code-block">
-          <div class="code-header">
-            <span class="code-filename">.erg/workflow.yaml (source block)</span>
-          </div>
-          <pre><span class="ck">source:</span>
-  <span class="ck">provider:</span> <span class="cv">linear</span>
-  <span class="ck">filter:</span>
-    <span class="ck">team:</span> <span class="cv">YOUR_LINEAR_TEAM_ID</span>
-    <span class="ck">label:</span> <span class="cv">queued</span>    <span class="cc"># Linear label (case-insensitive)</span></pre>
-        </div>
-        <p>
-          Start the daemon and label a Linear issue <code>queued</code>. erg
-          will poll the team and begin processing it.
-        </p>
 
         <!-- Workflow configuration -->
         <h2 id="workflow">Workflow configuration</h2>
