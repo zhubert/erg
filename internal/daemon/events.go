@@ -33,6 +33,8 @@ func (c *eventChecker) CheckEvent(ctx context.Context, event string, params *wor
 		return c.checkPRMergeable(ctx, params, item)
 	case "gate.approved":
 		return c.checkGateApproved(ctx, params, item)
+	case "plan.user_replied":
+		return c.checkPlanUserReplied(ctx, params, item)
 	default:
 		return false, nil, nil
 	}
@@ -452,6 +454,87 @@ func (c *eventChecker) checkGateApproved(ctx context.Context, params *workflow.P
 		log.Warn("unknown gate trigger", "trigger", trigger)
 		return false, nil, nil
 	}
+}
+
+// checkPlanUserReplied implements the plan.user_replied event.
+// It fires when a human posts a comment on the GitHub issue after the current
+// plan_review step was entered, allowing the workflow to loop back for re-planning
+// or advance to coding based on the comment content.
+//
+// Params:
+//
+//	approval_pattern - optional regex; if set and the comment matches, fires with
+//	                   plan_approved=true; otherwise fires with plan_approved=false
+//	                   and user_feedback set to the comment body.
+//
+// Data returned on fire:
+//
+//	plan_approved        - true if the comment matched approval_pattern, false otherwise
+//	user_feedback        - comment body (always set; useful for re-planning context)
+//	user_feedback_author - GitHub username of the commenter
+func (c *eventChecker) checkPlanUserReplied(ctx context.Context, params *workflow.ParamHelper, item *workflow.WorkItemView) (bool, map[string]any, error) {
+	d := c.daemon
+	log := d.logger.With("workItem", item.ID, "event", "plan.user_replied")
+
+	workItem, ok := d.state.GetWorkItem(item.ID)
+	if !ok {
+		log.Warn("work item not found")
+		return false, nil, nil
+	}
+	if workItem.IssueRef.Source != "github" {
+		log.Debug("plan.user_replied only supports github issues", "source", workItem.IssueRef.Source)
+		return false, nil, nil
+	}
+	issueNumber, err := strconv.Atoi(workItem.IssueRef.ID)
+	if err != nil {
+		log.Warn("invalid issue number", "id", workItem.IssueRef.ID, "error", err)
+		return false, nil, nil
+	}
+
+	repoPath := item.RepoPath
+	if repoPath == "" {
+		log.Warn("no repo path for work item")
+		return false, nil, nil
+	}
+
+	pollCtx, cancel := context.WithTimeout(ctx, timeoutQuickAPI)
+	defer cancel()
+
+	comments, err := d.gitService.GetIssueComments(pollCtx, repoPath, issueNumber)
+	if err != nil {
+		log.Debug("failed to fetch issue comments", "error", err)
+		return false, nil, nil
+	}
+
+	approvalPattern := params.String("approval_pattern", "")
+	var approvalRe *regexp.Regexp
+	if approvalPattern != "" {
+		re, err := regexp.Compile(approvalPattern)
+		if err != nil {
+			log.Warn("invalid approval_pattern regex", "pattern", approvalPattern, "error", err)
+		} else {
+			approvalRe = re
+		}
+	}
+
+	for _, comment := range comments {
+		// Only consider comments posted after the step was entered.
+		if !item.StepEnteredAt.IsZero() && !comment.CreatedAt.After(item.StepEnteredAt) {
+			continue
+		}
+
+		// Found a new comment — check if it's an approval.
+		approved := approvalRe != nil && approvalRe.MatchString(comment.Body)
+		log.Info("user replied to plan", "author", comment.Author, "approved", approved)
+		return true, map[string]any{
+			"plan_approved":        approved,
+			"user_feedback":        comment.Body,
+			"user_feedback_author": comment.Author,
+		}, nil
+	}
+
+	log.Debug("no new user comments found", "since", item.StepEnteredAt)
+	return false, nil, nil
 }
 
 // isRecentCleanRebase returns true if the step data indicates the most recent
