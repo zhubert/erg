@@ -359,26 +359,51 @@
         border-left: 3px solid var(--accent);
         border-radius: 8px;
         padding: 1.25rem 1.4rem;
-        transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+        transition:
+          transform 0.15s,
+          border-color 0.15s,
+          box-shadow 0.15s;
       }
 
-      .feature-item:nth-child(2) { border-left-color: var(--cyan); }
-      .feature-item:nth-child(3) { border-left-color: var(--violet); }
-      .feature-item:nth-child(4) { border-left-color: var(--green); }
-      .feature-item:nth-child(5) { border-left-color: var(--cyan); }
-      .feature-item:nth-child(6) { border-left-color: var(--violet); }
+      .feature-item:nth-child(2) {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(3) {
+        border-left-color: var(--violet);
+      }
+      .feature-item:nth-child(4) {
+        border-left-color: var(--green);
+      }
+      .feature-item:nth-child(5) {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(6) {
+        border-left-color: var(--violet);
+      }
 
       .feature-item:hover {
         border-color: var(--border-light);
         transform: scale(1.01);
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
       }
-      .feature-item:hover { border-left-color: var(--accent); }
-      .feature-item:nth-child(2):hover { border-left-color: var(--cyan); }
-      .feature-item:nth-child(3):hover { border-left-color: var(--violet); }
-      .feature-item:nth-child(4):hover { border-left-color: var(--green); }
-      .feature-item:nth-child(5):hover { border-left-color: var(--cyan); }
-      .feature-item:nth-child(6):hover { border-left-color: var(--violet); }
+      .feature-item:hover {
+        border-left-color: var(--accent);
+      }
+      .feature-item:nth-child(2):hover {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(3):hover {
+        border-left-color: var(--violet);
+      }
+      .feature-item:nth-child(4):hover {
+        border-left-color: var(--green);
+      }
+      .feature-item:nth-child(5):hover {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(6):hover {
+        border-left-color: var(--violet);
+      }
 
       .feature-item h4 {
         font-size: 0.9rem;
@@ -1215,8 +1240,6 @@
             <a href="#example-label-tracking" class="sidebar-link"
               >Label tracking</a
             >
-            <a href="#example-asana" class="sidebar-link">Asana</a>
-            <a href="#example-linear" class="sidebar-link">Linear</a>
           </li>
         </ul>
         <div class="sidebar-footer">
@@ -1230,7 +1253,9 @@
         <!-- Overview -->
         <section id="overview">
           <span class="hero-badge">autonomous coding daemon</span>
-          <p class="hero-tagline"><span class="hero-tagline-accent">does the work.</span></p>
+          <p class="hero-tagline">
+            <span class="hero-tagline-accent">does the work.</span>
+          </p>
           <p>
             Autonomous headless daemon for Claude Code. Polls GitHub, Asana, or
             Linear for issues, starts containerized Claude sessions, and drives
@@ -1299,12 +1324,13 @@
         <!-- How it works -->
         <h2 id="how-it-works">How it works</h2>
         <p>
-          At its core, erg is a <strong>state machine engine paired with AI
-          coding</strong>. Each issue becomes a work item that advances through
-          a configurable flowchart of states — from AI-generated code to a
-          merged PR. You define exactly how much automation applies: require
-          human review, auto-merge after CI, loop back for fixes, or notify
-          external systems at any step.
+          At its core, erg is a
+          <strong>state machine engine paired with AI coding</strong>. Each
+          issue becomes a work item that advances through a configurable
+          flowchart of states — from AI-generated code to a merged PR. You
+          define exactly how much automation applies: require human review,
+          auto-merge after CI, loop back for fixes, or notify external systems
+          at any step.
         </p>
         <ol class="steps-list">
           <li>
@@ -1321,8 +1347,8 @@
               <h4>Daemon picks it up</h4>
               <p>
                 erg starts a containerized Claude session. With planning
-                enabled, no branch is created yet — Claude reads the codebase
-                in read-only mode.
+                enabled, no branch is created yet — Claude reads the codebase in
+                read-only mode.
               </p>
             </div>
           </li>
@@ -1330,9 +1356,9 @@
             <div class="step-body">
               <h4>Claude analyzes and posts a plan</h4>
               <p>
-                The <code>ai.plan</code> session explores the codebase and
-                posts a structured implementation plan as an issue comment —
-                no code written yet.
+                The <code>ai.plan</code> session explores the codebase and posts
+                a structured implementation plan as an issue comment — no code
+                written yet.
               </p>
             </div>
           </li>
@@ -1340,9 +1366,8 @@
             <div class="step-body">
               <h4>You review and approve</h4>
               <p>
-                Reply with approval (e.g. "LGTM") to proceed, or leave
-                feedback. Claude revises the plan and loops back until you
-                approve.
+                Reply with approval (e.g. "LGTM") to proceed, or leave feedback.
+                Claude revises the plan and loops back until you approve.
               </p>
             </div>
           </li>
@@ -1350,8 +1375,8 @@
             <div class="step-body">
               <h4>Claude writes the code</h4>
               <p>
-                Once approved, <code>ai.code</code> creates a branch,
-                implements the changes, runs tests, and commits.
+                Once approved, <code>ai.code</code> creates a branch, implements
+                the changes, runs tests, and commits.
               </p>
             </div>
           </li>
@@ -1398,7 +1423,9 @@
         <div class="install-block">
           <span class="prompt-char">$</span>
           <code>gh auth login</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'gh auth login')">copy</button>
+          <button class="copy-btn" onclick="copyCmd(this, 'gh auth login')">
+            copy
+          </button>
         </div>
         <p>
           Scaffold a default workflow config in your repo, then start the
@@ -1407,12 +1434,22 @@
         <div class="install-block">
           <span class="prompt-char">$</span>
           <code>erg workflow init --repo /path/to/repo</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'erg workflow init --repo /path/to/repo')">copy</button>
+          <button
+            class="copy-btn"
+            onclick="copyCmd(this, 'erg workflow init --repo /path/to/repo')"
+          >
+            copy
+          </button>
         </div>
         <div class="install-block">
           <span class="prompt-char">$</span>
           <code>erg start --repo owner/repo</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'erg start --repo owner/repo')">copy</button>
+          <button
+            class="copy-btn"
+            onclick="copyCmd(this, 'erg start --repo owner/repo')"
+          >
+            copy
+          </button>
         </div>
         <p>
           Label a GitHub issue <code>queued</code> and erg will pick it up on
@@ -1429,7 +1466,14 @@
         <div class="install-block">
           <span class="prompt-char">$</span>
           <code>export ASANA_PAT=your_personal_access_token</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'export ASANA_PAT=your_personal_access_token')">copy</button>
+          <button
+            class="copy-btn"
+            onclick="
+              copyCmd(this, 'export ASANA_PAT=your_personal_access_token')
+            "
+          >
+            copy
+          </button>
         </div>
         <p>
           Scaffold a workflow, then edit <code>.erg/workflow.yaml</code> to set
@@ -1460,11 +1504,18 @@
         <div class="install-block">
           <span class="prompt-char">$</span>
           <code>export LINEAR_API_KEY=your_api_key</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'export LINEAR_API_KEY=your_api_key')">copy</button>
+          <button
+            class="copy-btn"
+            onclick="copyCmd(this, 'export LINEAR_API_KEY=your_api_key')"
+          >
+            copy
+          </button>
         </div>
         <p>
-          Find your team ID at <strong>Linear → Settings → Teams → &lt;Your
-          Team&gt; → Team ID</strong>, then configure the workflow:
+          Find your team ID at
+          <strong
+            >Linear → Settings → Teams → &lt;Your Team&gt; → Team ID</strong
+          >, then configure the workflow:
         </p>
         <div class="code-block">
           <div class="code-header">
@@ -1485,11 +1536,11 @@
         <h2 id="workflow">Workflow configuration</h2>
         <p>
           A workflow is a directed flowchart that routes each issue from the
-          first commit to a merged PR. You define <em>states</em> (nodes),
-          the actions or events that drive each state, and the transitions
-          between them. Run <code>erg workflow init</code> inside your repo to
-          scaffold a starting point, or omit the file entirely to use the
-          built-in defaults.
+          first commit to a merged PR. You define <em>states</em> (nodes), the
+          actions or events that drive each state, and the transitions between
+          them. Run <code>erg workflow init</code> inside your repo to scaffold
+          a starting point, or omit the file entirely to use the built-in
+          defaults.
         </p>
         <p>
           The <code>settings</code> block controls daemon-level behaviour:
@@ -1499,9 +1550,15 @@
         </p>
 
         <h3>Pipeline overview</h3>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-          The recommended workflow begins with a planning step — Claude posts
-          an implementation plan for human approval before writing any code.
+        <p
+          style="
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+          "
+        >
+          The recommended workflow begins with a planning step — Claude posts an
+          implementation plan for human approval before writing any code.
         </p>
         <div class="state-flow">
           <div class="sf-step">
@@ -1545,8 +1602,8 @@
           </div>
         </div>
         <p class="state-note">
-          <code>plan.user_replied</code> loops back for re-planning on feedback &middot;
-          <code>retry</code> with exponential backoff &middot;
+          <code>plan.user_replied</code> loops back for re-planning on feedback
+          &middot; <code>retry</code> with exponential backoff &middot;
           <code>timeout</code> enforced on wait states
         </p>
 
@@ -1648,12 +1705,14 @@
           A <code>task</code> state executes a registered action and then
           transitions to <code>next</code> on success or <code>error</code> on
           failure. Every action that calls an external API (GitHub, Asana,
-          Linear, git remotes) should define a <code>retry</code> block.
-          Network failures are transient — without retry, a momentary outage
-          permanently fails the work item.
+          Linear, git remotes) should define a <code>retry</code> block. Network
+          failures are transient — without retry, a momentary outage permanently
+          fails the work item.
         </p>
         <div class="code-block">
-          <div class="code-header"><span class="code-filename">retry example</span></div>
+          <div class="code-header">
+            <span class="code-filename">retry example</span>
+          </div>
           <pre><span class="ck">open_pr:</span>
   <span class="ck">type:</span> <span class="cs">task</span>
   <span class="ck">action:</span> <span class="ca">github.create_pr</span>
@@ -1680,7 +1739,9 @@
           (e.g. post a comment) rather than the generic <code>error</code> edge.
         </p>
         <div class="code-block">
-          <div class="code-header"><span class="code-filename">wait example</span></div>
+          <div class="code-header">
+            <span class="code-filename">wait example</span>
+          </div>
           <pre><span class="ck">await_review:</span>
   <span class="ck">type:</span> <span class="cs">wait</span>
   <span class="ck">event:</span> <span class="ca">pr.reviewed</span>
@@ -1703,12 +1764,14 @@
         <p>
           A <code>choice</code> state reads values from the accumulated step
           data and branches to different states based on rules. Each rule
-          specifies a <code>variable</code>, an <code>equals</code> value, and
-          a <code>next</code> state. The <code>default</code> route fires when
-          no rule matches.
+          specifies a <code>variable</code>, an <code>equals</code> value, and a
+          <code>next</code> state. The <code>default</code> route fires when no
+          rule matches.
         </p>
         <div class="code-block">
-          <div class="code-header"><span class="code-filename">choice example</span></div>
+          <div class="code-header">
+            <span class="code-filename">choice example</span>
+          </div>
           <pre><span class="ck">check_ci:</span>
   <span class="ck">type:</span> <span class="cs">choice</span>
   <span class="ck">choices:</span>
@@ -1721,8 +1784,8 @@
   <span class="ck">default:</span> <span class="cv">failed</span></pre>
         </div>
         <p>
-          Choice states are the branching points of your flowchart. Combine
-          them with <code>pass</code> states to make decisions on injected
+          Choice states are the branching points of your flowchart. Combine them
+          with <code>pass</code> states to make decisions on injected
           configuration flags, or with CI/review wait states to route on
           outcomes.
         </p>
@@ -1735,7 +1798,9 @@
           <code>choice</code> states can inspect.
         </p>
         <div class="code-block">
-          <div class="code-header"><span class="code-filename">pass example</span></div>
+          <div class="code-header">
+            <span class="code-filename">pass example</span>
+          </div>
           <pre><span class="ck">configure:</span>
   <span class="ck">type:</span> <span class="cs">pass</span>
   <span class="ck">data:</span>
@@ -1792,7 +1857,6 @@
           <code>$ERG_ISSUE_URL</code>, and more.
         </p>
 
-
         <!-- CLI reference -->
         <h2 id="cli">CLI commands</h2>
         <p>
@@ -1825,11 +1889,15 @@
             </tr>
             <tr>
               <td><code>erg status --tail</code></td>
-              <td>Live split-screen log view — one column per active session</td>
+              <td>
+                Live split-screen log view — one column per active session
+              </td>
             </tr>
             <tr>
               <td><code>erg workflow init</code></td>
-              <td>Scaffold a <code>.erg/workflow.yaml</code> in the current repo</td>
+              <td>
+                Scaffold a <code>.erg/workflow.yaml</code> in the current repo
+              </td>
             </tr>
             <tr>
               <td><code>erg workflow validate</code></td>
@@ -1924,8 +1992,8 @@
                   <td>string</td>
                   <td>Apply auto-formatting</td>
                   <td>
-                    Commit message used when the daemon commits the
-                    post-coding format pass. Only used when
+                    Commit message used when the daemon commits the post-coding
+                    format pass. Only used when
                     <code>format_command</code> is set.
                   </td>
                 </tr>
@@ -1950,8 +2018,8 @@
               "
             >
               <li>
-                If the branch already has an open PR, coding is skipped and
-                the workflow advances to <code>github.create_pr</code>, which
+                If the branch already has an open PR, coding is skipped and the
+                workflow advances to <code>github.create_pr</code>, which
                 detects the existing PR.
               </li>
               <li>
@@ -1969,8 +2037,8 @@
           </div>
           <p class="action-desc">
             Resumes the existing Claude session to fix failing CI. Fetches
-            failure logs from the most recent GitHub Actions run and passes
-            them to Claude as context.
+            failure logs from the most recent GitHub Actions run and passes them
+            to Claude as context.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -1989,8 +2057,7 @@
                   <td>int</td>
                   <td>3</td>
                   <td>
-                    Maximum number of CI fix attempts before returning an
-                    error.
+                    Maximum number of CI fix attempts before returning an error.
                   </td>
                 </tr>
                 <tr>
@@ -2004,10 +2071,10 @@
                   <td>string</td>
                   <td><em>inherited</em></td>
                   <td>
-                    Shell command to run as a formatter after each CI fix
-                    round (e.g. <code>go fmt ./...</code>). Overrides the
-                    value inherited from the <code>ai.code</code> step. Omit
-                    to keep the inherited formatter or skip formatting.
+                    Shell command to run as a formatter after each CI fix round
+                    (e.g. <code>go fmt ./...</code>). Overrides the value
+                    inherited from the <code>ai.code</code> step. Omit to keep
+                    the inherited formatter or skip formatting.
                   </td>
                 </tr>
                 <tr>
@@ -2017,8 +2084,7 @@
                   <td>
                     Commit message used when the daemon commits the
                     post-fix-round format pass. Only used when
-                    <code>format_command</code> is set (directly or
-                    inherited).
+                    <code>format_command</code> is set (directly or inherited).
                   </td>
                 </tr>
               </tbody>
@@ -2075,7 +2141,10 @@
                   <td>max_review_rounds</td>
                   <td>int</td>
                   <td>3</td>
-                  <td>Maximum number of review-address attempts before returning an error.</td>
+                  <td>
+                    Maximum number of review-address attempts before returning
+                    an error.
+                  </td>
                 </tr>
                 <tr>
                   <td>system_prompt</td>
@@ -2100,7 +2169,10 @@
                 <tr>
                   <td>review_rounds</td>
                   <td>int</td>
-                  <td>Incremented on each attempt. Inspect in <code>choice</code> states to check round count.</td>
+                  <td>
+                    Incremented on each attempt. Inspect in
+                    <code>choice</code> states to check round count.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -2154,7 +2226,10 @@
                   <td>max_conflict_rounds</td>
                   <td>int</td>
                   <td>3</td>
-                  <td>Maximum number of conflict resolution attempts before returning an error.</td>
+                  <td>
+                    Maximum number of conflict resolution attempts before
+                    returning an error.
+                  </td>
                 </tr>
                 <tr>
                   <td>system_prompt</td>
@@ -2179,7 +2254,10 @@
                 <tr>
                   <td>conflict_rounds</td>
                   <td>int</td>
-                  <td>Incremented on each attempt. Inspect in <code>choice</code> states to check round count.</td>
+                  <td>
+                    Incremented on each attempt. Inspect in
+                    <code>choice</code> states to check round count.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -2223,7 +2301,9 @@
                   <td>max_turns</td>
                   <td>int</td>
                   <td><em>unlimited</em></td>
-                  <td>Maximum number of Claude turns for the planning session.</td>
+                  <td>
+                    Maximum number of Claude turns for the planning session.
+                  </td>
                 </tr>
                 <tr>
                   <td>max_duration</td>
@@ -2259,12 +2339,12 @@
             <span class="badge badge-async">async</span>
           </div>
           <p class="action-desc">
-            Runs a Claude session to self-review the branch diff before
-            pushing, acting as a quality gate. Claude examines the diff, checks
-            for correctness, test coverage, security issues, and code quality,
-            then reports via the <code>submit_review</code> MCP tool. If the
-            review fails (<code>passed=false</code>), the step returns an error
-            and the workflow follows the error edge.
+            Runs a Claude session to self-review the branch diff before pushing,
+            acting as a quality gate. Claude examines the diff, checks for
+            correctness, test coverage, security issues, and code quality, then
+            reports via the <code>submit_review</code> MCP tool. If the review
+            fails (<code>passed=false</code>), the step returns an error and the
+            workflow follows the error edge.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -2283,8 +2363,7 @@
                   <td>int</td>
                   <td>1</td>
                   <td>
-                    Maximum number of review attempts before returning an
-                    error.
+                    Maximum number of review attempts before returning an error.
                   </td>
                 </tr>
                 <tr>
@@ -2324,7 +2403,10 @@
                 <tr>
                   <td>ai_review_rounds</td>
                   <td>int</td>
-                  <td>Incremented on each attempt. Inspect in <code>choice</code> states to check round count.</td>
+                  <td>
+                    Incremented on each attempt. Inspect in
+                    <code>choice</code> states to check round count.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -2431,7 +2513,10 @@
                   <td>link_issue</td>
                   <td>bool</td>
                   <td>true</td>
-                  <td>Add a closing reference to the source issue in the PR body (e.g. <code>Closes #42</code>).</td>
+                  <td>
+                    Add a closing reference to the source issue in the PR body
+                    (e.g. <code>Closes #42</code>).
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -2463,8 +2548,8 @@
             <span class="badge badge-sync">sync</span>
           </div>
           <p class="action-desc">
-            Pushes committed changes to the remote branch. Typically used
-            after Claude addresses review feedback.
+            Pushes committed changes to the remote branch. Typically used after
+            Claude addresses review feedback.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -2502,8 +2587,8 @@
                   <td>string</td>
                   <td>rebase</td>
                   <td>
-                    Merge strategy: <code>rebase</code>, <code>squash</code>,
-                    or <code>merge</code>.
+                    Merge strategy: <code>rebase</code>, <code>squash</code>, or
+                    <code>merge</code>.
                   </td>
                 </tr>
                 <tr>
@@ -2529,8 +2614,7 @@
             <span class="badge badge-sync">sync</span>
           </div>
           <p class="action-desc">
-            Posts a comment on the original issue associated with the work
-            item.
+            Posts a comment on the original issue associated with the work item.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -2549,8 +2633,8 @@
                   <td>string</td>
                   <td><em>required</em></td>
                   <td>
-                    Comment text. Prefix with <code>file:</code> to load
-                    content from a repo path, e.g.
+                    Comment text. Prefix with <code>file:</code> to load content
+                    from a repo path, e.g.
                     <code>file:.erg/comments/msg.md</code>.
                   </td>
                 </tr>
@@ -2588,8 +2672,8 @@
                   <td>string</td>
                   <td><em>required</em></td>
                   <td>
-                    Comment text. Prefix with <code>file:</code> to load
-                    content from a repo path, e.g.
+                    Comment text. Prefix with <code>file:</code> to load content
+                    from a repo path, e.g.
                     <code>file:.erg/comments/msg.md</code>.
                   </td>
                 </tr>
@@ -2865,8 +2949,8 @@
                   <td>string</td>
                   <td><em>required</em></td>
                   <td>
-                    Comment text. Prefix with <code>file:</code> to load
-                    content from a repo path, e.g.
+                    Comment text. Prefix with <code>file:</code> to load content
+                    from a repo path, e.g.
                     <code>file:.erg/comments/msg.md</code>.
                   </td>
                 </tr>
@@ -2908,8 +2992,8 @@
                   <td>string</td>
                   <td><em>required</em></td>
                   <td>
-                    Comment text. Prefix with <code>file:</code> to load
-                    content from a repo path, e.g.
+                    Comment text. Prefix with <code>file:</code> to load content
+                    from a repo path, e.g.
                     <code>file:.erg/comments/msg.md</code>.
                   </td>
                 </tr>
@@ -2930,9 +3014,9 @@
             <span class="badge badge-sync">sync</span>
           </div>
           <p class="action-desc">
-            Runs a formatter command in the session worktree, stages all
-            changes with <code>git add -A</code>, and commits them. Silently
-            succeeds if the formatter produces no changes.
+            Runs a formatter command in the session worktree, stages all changes
+            with <code>git add -A</code>, and commits them. Silently succeeds if
+            the formatter produces no changes.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3019,9 +3103,7 @@
                 <tr>
                   <td>rebase_rounds</td>
                   <td>int</td>
-                  <td>
-                    Incremented on each attempt.
-                  </td>
+                  <td>Incremented on each attempt.</td>
                 </tr>
               </tbody>
             </table>
@@ -3054,7 +3136,10 @@
                   <td>message</td>
                   <td>string</td>
                   <td><em>auto-generated</em></td>
-                  <td>Commit message for the squashed commit. Defaults to a summary generated from the original commit messages.</td>
+                  <td>
+                    Commit message for the squashed commit. Defaults to a
+                    summary generated from the original commit messages.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -3091,43 +3176,67 @@
                   <td>max_diff_lines</td>
                   <td>int</td>
                   <td>0 (disabled)</td>
-                  <td>Fail if total added + deleted lines exceed this value.</td>
+                  <td>
+                    Fail if total added + deleted lines exceed this value.
+                  </td>
                 </tr>
                 <tr>
                   <td>forbidden_patterns</td>
                   <td>[]string</td>
                   <td><em>none</em></td>
-                  <td>Fail if any changed file matches one of these glob patterns, e.g. <code>[".env", "*.pem"]</code>.</td>
+                  <td>
+                    Fail if any changed file matches one of these glob patterns,
+                    e.g. <code>[".env", "*.pem"]</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>require_tests</td>
                   <td>bool</td>
                   <td>false</td>
-                  <td>Fail if source files were modified but no test files appear in the diff.</td>
+                  <td>
+                    Fail if source files were modified but no test files appear
+                    in the diff.
+                  </td>
                 </tr>
                 <tr>
                   <td>source_patterns</td>
                   <td>[]string</td>
                   <td><em>common extensions</em></td>
-                  <td>Glob patterns identifying source files for the <code>require_tests</code> check. Defaults to <code>*.go</code>, <code>*.py</code>, <code>*.js</code>, etc.</td>
+                  <td>
+                    Glob patterns identifying source files for the
+                    <code>require_tests</code> check. Defaults to
+                    <code>*.go</code>, <code>*.py</code>, <code>*.js</code>,
+                    etc.
+                  </td>
                 </tr>
                 <tr>
                   <td>test_patterns</td>
                   <td>[]string</td>
                   <td><em>common patterns</em></td>
-                  <td>Glob patterns identifying test files. Defaults to <code>*_test.go</code>, <code>test_*.py</code>, <code>*.test.js</code>, etc.</td>
+                  <td>
+                    Glob patterns identifying test files. Defaults to
+                    <code>*_test.go</code>, <code>test_*.py</code>,
+                    <code>*.test.js</code>, etc.
+                  </td>
                 </tr>
                 <tr>
                   <td>max_lock_file_lines</td>
                   <td>int</td>
                   <td>0 (disabled)</td>
-                  <td>Fail if any single lock file has more than this many lines changed.</td>
+                  <td>
+                    Fail if any single lock file has more than this many lines
+                    changed.
+                  </td>
                 </tr>
                 <tr>
                   <td>lock_file_patterns</td>
                   <td>[]string</td>
                   <td><em>common lock files</em></td>
-                  <td>Glob patterns for lock files. Defaults to <code>go.sum</code>, <code>package-lock.json</code>, <code>yarn.lock</code>, etc.</td>
+                  <td>
+                    Glob patterns for lock files. Defaults to
+                    <code>go.sum</code>, <code>package-lock.json</code>,
+                    <code>yarn.lock</code>, etc.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -3179,7 +3288,10 @@
                   <td>commits</td>
                   <td>[]string | string</td>
                   <td><em>required</em></td>
-                  <td>List of commit SHAs to cherry-pick. Accepts a YAML sequence or a space-separated string.</td>
+                  <td>
+                    List of commit SHAs to cherry-pick. Accepts a YAML sequence
+                    or a space-separated string.
+                  </td>
                 </tr>
                 <tr>
                   <td>target_branch</td>
@@ -3204,11 +3316,10 @@
             <span class="badge badge-sync">sync</span>
           </div>
           <p class="action-desc">
-            Posts a notification to a Slack channel via an incoming webhook.
-            The message supports Go <code>text/template</code> syntax with
-            work item variables. The webhook URL supports
-            <code>$ENV_VAR</code> expansion so secrets stay out of config
-            files.
+            Posts a notification to a Slack channel via an incoming webhook. The
+            message supports Go <code>text/template</code> syntax with work item
+            variables. The webhook URL supports <code>$ENV_VAR</code> expansion
+            so secrets stay out of config files.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3226,13 +3337,22 @@
                   <td>webhook_url</td>
                   <td>string</td>
                   <td><em>required</em></td>
-                  <td>Slack incoming webhook URL. Supports <code>$ENV_VAR</code> substitution, e.g. <code>$SLACK_WEBHOOK_URL</code>.</td>
+                  <td>
+                    Slack incoming webhook URL. Supports
+                    <code>$ENV_VAR</code> substitution, e.g.
+                    <code>$SLACK_WEBHOOK_URL</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>message</td>
                   <td>string</td>
                   <td><em>required</em></td>
-                  <td>Message text. Go <code>text/template</code> variables: <code>{{.Title}}</code>, <code>{{.IssueID}}</code>, <code>{{.IssueURL}}</code>, <code>{{.PRURL}}</code>, <code>{{.Branch}}</code>, <code>{{.Status}}</code>.</td>
+                  <td>
+                    Message text. Go <code>text/template</code> variables:
+                    <code>{{.Title}}</code>, <code>{{.IssueID}}</code>,
+                    <code>{{.IssueURL}}</code>, <code>{{.PRURL}}</code>,
+                    <code>{{.Branch}}</code>, <code>{{.Status}}</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>username</td>
@@ -3250,7 +3370,10 @@
                   <td>channel</td>
                   <td>string</td>
                   <td><em>webhook default</em></td>
-                  <td>Override the channel configured in the webhook, e.g. <code>#alerts</code>.</td>
+                  <td>
+                    Override the channel configured in the webhook, e.g.
+                    <code>#alerts</code>.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -3262,26 +3385,61 @@
           <div class="param-section">
             <div class="param-section-title">Setup</div>
             <p class="param-none">
-              Slack uses <strong>Incoming Webhooks</strong> for authentication
-              — there is no separate API token. To get a webhook URL:
+              Slack uses <strong>Incoming Webhooks</strong> for authentication —
+              there is no separate API token. To get a webhook URL:
             </p>
-            <ol style="margin: 0.35rem 0 0; padding-left: 1.25rem; font-size: 0.82rem; color: var(--text-muted);">
-              <li>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener" style="color: var(--cyan);">api.slack.com/apps</a> and create a new app (or open an existing one).</li>
-              <li>Under <strong>Features</strong>, click <strong>Incoming Webhooks</strong> and toggle it on.</li>
-              <li>Click <strong>Add New Webhook to Workspace</strong>, choose a channel, and authorise.</li>
-              <li>Copy the generated URL (e.g. <code>https://hooks.slack.com/services/T.../B.../...</code>).</li>
-              <li>Set it as an environment variable on the host running erg:<br>
-                <code>export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...</code></li>
-              <li>Reference it in your workflow config as <code>webhook_url: $SLACK_WEBHOOK_URL</code>.</li>
+            <ol
+              style="
+                margin: 0.35rem 0 0;
+                padding-left: 1.25rem;
+                font-size: 0.82rem;
+                color: var(--text-muted);
+              "
+            >
+              <li>
+                Go to
+                <a
+                  href="https://api.slack.com/apps"
+                  target="_blank"
+                  rel="noopener"
+                  style="color: var(--cyan)"
+                  >api.slack.com/apps</a
+                >
+                and create a new app (or open an existing one).
+              </li>
+              <li>
+                Under <strong>Features</strong>, click
+                <strong>Incoming Webhooks</strong> and toggle it on.
+              </li>
+              <li>
+                Click <strong>Add New Webhook to Workspace</strong>, choose a
+                channel, and authorise.
+              </li>
+              <li>
+                Copy the generated URL (e.g.
+                <code>https://hooks.slack.com/services/T.../B.../...</code>).
+              </li>
+              <li>
+                Set it as an environment variable on the host running erg:<br />
+                <code
+                  >export
+                  SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...</code
+                >
+              </li>
+              <li>
+                Reference it in your workflow config as
+                <code>webhook_url: $SLACK_WEBHOOK_URL</code>.
+              </li>
             </ol>
           </div>
           <div class="param-section">
             <div class="param-section-title">Example</div>
-            <div class="code-block" style="margin-top: 0.4rem;">
+            <div class="code-block" style="margin-top: 0.4rem">
               <div class="code-header">
                 <span class="code-filename">workflow.yaml (excerpt)</span>
               </div>
-              <pre>  notify_merged:
+              <pre>
+  notify_merged:
     type: task
     action: slack.notify
     params:
@@ -3290,17 +3448,28 @@
       username: erg
       icon_emoji: ":white_check_mark:"
       channel: "#eng-deployments"              # optional — overrides webhook default
-    next: done</pre>
+    next: done</pre
+              >
             </div>
-            <p style="margin: 0.6rem 0 0.25rem; font-size: 0.82rem; color: var(--text-muted);">
-              Given an issue titled <em>"Fix login redirect loop"</em> with ID <code>42</code> and a merged PR, the message posted to Slack would be:
+            <p
+              style="
+                margin: 0.6rem 0 0.25rem;
+                font-size: 0.82rem;
+                color: var(--text-muted);
+              "
+            >
+              Given an issue titled <em>"Fix login redirect loop"</em> with ID
+              <code>42</code> and a merged PR, the message posted to Slack would
+              be:
             </p>
-            <div class="code-block" style="margin-top: 0.25rem;">
+            <div class="code-block" style="margin-top: 0.25rem">
               <div class="code-header">
                 <span class="code-filename">Slack message (rendered)</span>
               </div>
-              <pre>Merged: Fix login redirect loop (#42)
-https://github.com/your-org/your-repo/pull/99</pre>
+              <pre>
+Merged: Fix login redirect loop (#42)
+https://github.com/your-org/your-repo/pull/99</pre
+              >
             </div>
           </div>
         </div>
@@ -3314,9 +3483,9 @@ https://github.com/your-org/your-repo/pull/99</pre>
           </div>
           <p class="action-desc">
             POSTs a JSON body to a configurable URL. The body is a Go
-            <code>text/template</code> string interpolated with work item
-            data. Use for integrating with external systems &mdash; CI
-            triggers, deployment pipelines, or custom notification endpoints.
+            <code>text/template</code> string interpolated with work item data.
+            Use for integrating with external systems &mdash; CI triggers,
+            deployment pipelines, or custom notification endpoints.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3340,25 +3509,39 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>body</td>
                   <td>string</td>
                   <td><em>required</em></td>
-                  <td>JSON body template. Go <code>text/template</code> variables: <code>{{.IssueID}}</code>, <code>{{.IssueTitle}}</code>, <code>{{.IssueURL}}</code>, <code>{{.IssueSource}}</code>, <code>{{.PRURL}}</code>, <code>{{.Branch}}</code>, <code>{{.State}}</code>, <code>{{.WorkItemID}}</code>.</td>
+                  <td>
+                    JSON body template. Go <code>text/template</code> variables:
+                    <code>{{.IssueID}}</code>, <code>{{.IssueTitle}}</code>,
+                    <code>{{.IssueURL}}</code>, <code>{{.IssueSource}}</code>,
+                    <code>{{.PRURL}}</code>, <code>{{.Branch}}</code>,
+                    <code>{{.State}}</code>, <code>{{.WorkItemID}}</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>headers</td>
                   <td>map[string]string</td>
                   <td><em>none</em></td>
-                  <td>Additional HTTP request headers, e.g. <code>Authorization: Bearer $TOKEN</code>.</td>
+                  <td>
+                    Additional HTTP request headers, e.g.
+                    <code>Authorization: Bearer $TOKEN</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>timeout</td>
                   <td>duration</td>
                   <td>30s</td>
-                  <td>Request timeout, e.g. <code>10s</code>, <code>1m</code>.</td>
+                  <td>
+                    Request timeout, e.g. <code>10s</code>, <code>1m</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>expected_status</td>
                   <td>int</td>
                   <td>200</td>
-                  <td>HTTP status code considered a success. Non-matching codes return an error.</td>
+                  <td>
+                    HTTP status code considered a success. Non-matching codes
+                    return an error.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -3394,10 +3577,10 @@ https://github.com/your-org/your-repo/pull/99</pre>
           <p class="action-desc">
             Meta-action that wraps another registered action with synchronous
             retry logic. On failure it sleeps for the configured interval
-            (scaled by <code>backoff_rate</code> on each subsequent attempt)
-            and re-executes the inner action. Async inner actions are passed
-            through unchanged on the first attempt since they cannot be
-            retried synchronously.
+            (scaled by <code>backoff_rate</code> on each subsequent attempt) and
+            re-executes the inner action. Async inner actions are passed through
+            unchanged on the first attempt since they cannot be retried
+            synchronously.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3415,7 +3598,10 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>action</td>
                   <td>string</td>
                   <td><em>required</em></td>
-                  <td>Name of the inner action to execute, e.g. <code>github.push</code>.</td>
+                  <td>
+                    Name of the inner action to execute, e.g.
+                    <code>github.push</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>max_attempts</td>
@@ -3427,13 +3613,20 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>interval</td>
                   <td>duration</td>
                   <td>0</td>
-                  <td>Base delay between retries, e.g. <code>10s</code>, <code>1m</code>.</td>
+                  <td>
+                    Base delay between retries, e.g. <code>10s</code>,
+                    <code>1m</code>.
+                  </td>
                 </tr>
                 <tr>
                   <td>backoff_rate</td>
                   <td>float</td>
                   <td>1.0</td>
-                  <td>Multiplier applied to <code>interval</code> after each failed attempt. <code>1.0</code> = fixed delay; <code>2.0</code> = double each time.</td>
+                  <td>
+                    Multiplier applied to <code>interval</code> after each
+                    failed attempt. <code>1.0</code> = fixed delay;
+                    <code>2.0</code> = double each time.
+                  </td>
                 </tr>
                 <tr>
                   <td>params</td>
@@ -3446,7 +3639,9 @@ https://github.com/your-org/your-repo/pull/99</pre>
           </div>
           <div class="param-section">
             <div class="param-section-title">Output data</div>
-            <p class="param-none">Returns the output data from the inner action on success.</p>
+            <p class="param-none">
+              Returns the output data from the inner action on success.
+            </p>
           </div>
         </div>
 
@@ -3457,8 +3652,8 @@ https://github.com/your-org/your-repo/pull/99</pre>
           </div>
           <p class="action-desc">
             Pauses workflow execution for a configurable duration. Cancels
-            cleanly on daemon shutdown. Useful as a delay between polling
-            cycles or before time-sensitive operations.
+            cleanly on daemon shutdown. Useful as a delay between polling cycles
+            or before time-sensitive operations.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3476,7 +3671,10 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>duration</td>
                   <td>duration</td>
                   <td><em>required</em></td>
-                  <td>How long to pause, e.g. <code>30s</code>, <code>5m</code>, <code>1h</code>.</td>
+                  <td>
+                    How long to pause, e.g. <code>30s</code>, <code>5m</code>,
+                    <code>1h</code>.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -3533,8 +3731,8 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>int</td>
                   <td>3</td>
                   <td>
-                    Maximum number of feedback rounds before
-                    auto-addressing stops.
+                    Maximum number of feedback rounds before auto-addressing
+                    stops.
                   </td>
                 </tr>
                 <tr>
@@ -3544,8 +3742,8 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>
                     Shell command to run as a formatter after each review
                     feedback round (e.g. <code>go fmt ./...</code>). Overrides
-                    the value inherited from the <code>ai.code</code> step.
-                    Omit to keep the inherited formatter or skip formatting.
+                    the value inherited from the <code>ai.code</code> step. Omit
+                    to keep the inherited formatter or skip formatting.
                   </td>
                 </tr>
                 <tr>
@@ -3555,8 +3753,7 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>
                     Commit message used when the daemon commits the
                     post-feedback format pass. Only used when
-                    <code>format_command</code> is set (directly or
-                    inherited).
+                    <code>format_command</code> is set (directly or inherited).
                   </td>
                 </tr>
               </tbody>
@@ -3597,9 +3794,9 @@ https://github.com/your-org/your-repo/pull/99</pre>
           </div>
           <p class="action-desc">
             Convenience event that combines <code>pr.reviewed</code> and
-            <code>ci.complete</code>. Fires only when both review approval
-            and CI pass simultaneously. Useful for minimal pipelines that
-            don't need separate wait states.
+            <code>ci.complete</code>. Fires only when both review approval and
+            CI pass simultaneously. Useful for minimal pipelines that don't need
+            separate wait states.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3671,9 +3868,9 @@ https://github.com/your-org/your-repo/pull/99</pre>
             <span class="action-title">ci.complete</span>
           </div>
           <p class="action-desc">
-            Fires when all CI checks on the PR pass. Configurable behaviour
-            on CI failure lets workflows route to <code>ai.fix_ci</code> or
-            other states.
+            Fires when all CI checks on the PR pass. Configurable behaviour on
+            CI failure lets workflows route to <code>ai.fix_ci</code> or other
+            states.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3693,10 +3890,10 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>retry</td>
                   <td>
                     Action when CI fails: <code>retry</code> — keep waiting
-                    (default); <code>fix</code> — fire the event so the
-                    workflow can route to <code>ai.fix_ci</code>;
-                    <code>abandon</code> or <code>notify</code> — emit data
-                    for downstream routing without advancing.
+                    (default); <code>fix</code> — fire the event so the workflow
+                    can route to <code>ai.fix_ci</code>; <code>abandon</code> or
+                    <code>notify</code> — emit data for downstream routing
+                    without advancing.
                   </td>
                 </tr>
               </tbody>
@@ -3743,14 +3940,14 @@ https://github.com/your-org/your-repo/pull/99</pre>
           </div>
           <p class="action-desc">
             Fires when a human comments on the issue after
-            <code>ai.plan</code> posts an implementation plan. The daemon
-            checks whether the comment matches an approval pattern. If it
-            does, <code>plan_approved</code> is <code>true</code> and the
-            workflow can proceed to <code>ai.code</code>. Non-matching
-            comments are treated as feedback — the text is automatically
-            injected into the next <code>ai.plan</code> session when looping
-            back, so Claude can revise the plan accordingly. Supported for
-            GitHub, Asana, and Linear providers.
+            <code>ai.plan</code> posts an implementation plan. The daemon checks
+            whether the comment matches an approval pattern. If it does,
+            <code>plan_approved</code> is <code>true</code> and the workflow can
+            proceed to <code>ai.code</code>. Non-matching comments are treated
+            as feedback — the text is automatically injected into the next
+            <code>ai.plan</code> session when looping back, so Claude can revise
+            the plan accordingly. Supported for GitHub, Asana, and Linear
+            providers.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -3771,8 +3968,10 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>
                     Regular expression matched against the comment body to
                     detect approval. Defaults to
-                    <code>(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)</code>.
-                    Override to match your team's preferred phrasing.
+                    <code
+                      >(?i)(LGTM|looks good|approved?|proceed|go ahead|ship
+                      it)</code
+                    >. Override to match your team's preferred phrasing.
                   </td>
                 </tr>
               </tbody>
@@ -3803,17 +4002,15 @@ https://github.com/your-org/your-repo/pull/99</pre>
                   <td>user_feedback</td>
                   <td>string</td>
                   <td>
-                    Full text of the comment. Automatically passed to the
-                    next <code>ai.plan</code> session when looping back for
+                    Full text of the comment. Automatically passed to the next
+                    <code>ai.plan</code> session when looping back for
                     re-planning.
                   </td>
                 </tr>
                 <tr>
                   <td>user_feedback_author</td>
                   <td>string</td>
-                  <td>
-                    Username or display name of the commenter.
-                  </td>
+                  <td>Username or display name of the commenter.</td>
                 </tr>
               </tbody>
             </table>
@@ -3951,12 +4148,11 @@ stateDiagram-v2
 
         <h3 id="example-supervised">Supervised</h3>
         <p>
-          The recommended starting workflow for most teams. Claude analyzes
-          the issue and posts a structured implementation plan as an issue
-          comment — <em>before writing any code</em>. A human approves the
-          approach or leaves feedback; Claude revises and loops back until
-          approved. Once the plan is signed off, the full PR lifecycle runs
-          automatically.
+          The recommended starting workflow for most teams. Claude analyzes the
+          issue and posts a structured implementation plan as an issue comment —
+          <em>before writing any code</em>. A human approves the approach or
+          leaves feedback; Claude revises and loops back until approved. Once
+          the plan is signed off, the full PR lifecycle runs automatically.
         </p>
         <div class="example-tabs">
           <div class="tab-bar">
@@ -4585,305 +4781,18 @@ stateDiagram-v2
           </div>
         </div>
 
-        <h3 id="example-asana">Asana</h3>
-        <p>
-          For teams that track work in Asana. Polls an Asana project for tasks
-          with a specific tag, codes in a container, and opens a PR. The
-          <code>label</code> filter matches Asana tag names (case-insensitive).
-        </p>
-        <div class="example-tabs">
-          <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab(this, 'yaml')">
-              yaml
-            </button>
-            <button class="tab-btn" onclick="switchTab(this, 'diagram')">
-              diagram
-            </button>
-          </div>
-          <div data-panel="yaml">
-            <div class="code-block">
-              <div class="code-header">
-                <span class="code-filename">asana.yaml</span>
-              </div>
-              <pre>
-# Asana integration — polls Asana tasks and processes them automatically.
-#
-# Use this for teams that track work in Asana instead of GitHub Issues.
-# Set your Asana project GID in source.filter.project. The label filter
-# narrows to only tasks tagged with a matching Asana tag (case-insensitive).
-#
-# Find your project GID in the Asana URL:
-#   https://app.asana.com/0/&lt;PROJECT_GID&gt;/...
-#
-# Requires: ASANA_PAT environment variable (Personal Access Token)
-#
-# Highlights:
-#   - asana provider with project + tag filter
-#   - label filter matches Asana tag names (case-insensitive)
-#   - squash merge for clean commit history
-
-workflow: asana-tasks
-start: coding
-
-source:
-  provider: asana
-  filter:
-    project: YOUR_ASANA_PROJECT_GID
-    label: queued                # Only pick up tasks with this Asana tag
-
-settings:
-  max_concurrent: 3
-  branch_prefix: asana/
-  cleanup_merged: true
-
-states:
-  coding:
-    type: task
-    action: ai.code
-    params:
-      max_turns: 50
-      max_duration: 30m
-    next: open_pr
-    error: failed
-
-  open_pr:
-    type: task
-    action: github.create_pr
-    params:
-      link_issue: true
-    next: await_ci
-    error: failed
-
-  await_ci:
-    type: wait
-    event: ci.complete
-    timeout: 2h
-    params:
-      on_failure: retry
-    next: await_review
-    error: failed
-
-  await_review:
-    type: wait
-    event: pr.reviewed
-    timeout: 48h
-    timeout_next: review_overdue
-    params:
-      auto_address: true
-      max_feedback_rounds: 3
-    next: merge
-    error: failed
-
-  review_overdue:
-    type: task
-    action: github.comment_pr
-    params:
-      body: "This PR has been awaiting review for 48h. Could a maintainer take a look?"
-    next: failed
-    error: failed
-
-  merge:
-    type: task
-    action: github.merge
-    params:
-      method: squash
-      cleanup: true
-    next: done
-
-  done:
-    type: succeed
-
-  failed:
-    type: fail</pre
-              >
-            </div>
-          </div>
-          <div data-panel="diagram" style="display: none">
-            <div class="diagram-panel">
-              <pre class="mermaid">
-stateDiagram-v2
-    [*] --> coding
-    coding --> open_pr : ai.code
-    open_pr --> await_ci : github.create_pr
-    await_ci --> await_review : ci.complete
-    await_review --> merge : pr.reviewed
-    await_review --> review_overdue : timeout
-    review_overdue --> failed : github.comment_pr
-    merge --> done : github.merge
-    done --> [*]
-    failed --> [*]</pre
-              >
-            </div>
-          </div>
-        </div>
-
-        <h3 id="example-linear">Linear</h3>
-        <p>
-          For teams that track work in Linear instead of GitHub Issues. Polls a
-          Linear team for issues with a specific label, runs an inline system
-          prompt, auto-formats code before opening the PR, and posts a Slack
-          notification after merge.
-        </p>
-        <div class="example-tabs">
-          <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab(this, 'yaml')">
-              yaml
-            </button>
-            <button class="tab-btn" onclick="switchTab(this, 'diagram')">
-              diagram
-            </button>
-          </div>
-          <div data-panel="yaml">
-            <div class="code-block">
-              <div class="code-header">
-                <span class="code-filename">linear.yaml</span>
-              </div>
-              <pre>
-# Linear integration — polls Linear issues and processes them automatically.
-#
-# Use this for teams that track work in Linear instead of GitHub Issues.
-# Set your Linear team ID in source.filter.team. The label filter narrows
-# to only issues with a matching Linear label (case-insensitive).
-#
-# Replace "YOUR_LINEAR_TEAM_ID" with your team ID from:
-#   Linear → Settings → Teams → &lt;Your Team&gt; → Team ID
-#
-# Highlights:
-#   - linear provider with team + label filter
-#   - label filter narrows to Linear issues with the "queued" label
-#   - inline system_prompt to embed AI instructions directly in the config
-#   - git.format to auto-format code before opening a PR
-#   - squash merge for a clean, linear commit history
-#   - Slack notification after merge via after hook
-
-workflow: linear-sprint
-start: coding
-
-source:
-  provider: linear
-  filter:
-    team: YOUR_LINEAR_TEAM_ID
-    label: queued                # Only pick up issues with this Linear label
-
-settings:
-  max_concurrent: 3
-  branch_prefix: linear/
-  cleanup_merged: true
-
-states:
-  coding:
-    type: task
-    action: ai.code
-    params:
-      max_turns: 50
-      max_duration: 30m
-      system_prompt: |
-        You are an expert software engineer working on this team's codebase.
-        Follow the existing code style and architecture patterns exactly.
-        Write tests for all new functionality.
-        Keep changes focused and minimal — only address what the issue asks for.
-        Do not refactor unrelated code or add unrequested features.
-    next: format
-    error: failed
-
-  # Auto-format code before opening the PR to ensure consistent style.
-  # Replace "make fmt" with your project's formatter command, e.g.:
-  #   "go fmt ./..." for Go
-  #   "npx prettier --write ." for JavaScript/TypeScript
-  #   "black ." for Python
-  format:
-    type: task
-    action: git.format
-    params:
-      command: "make fmt"
-    next: open_pr
-    error: open_pr             # If formatting fails, open the PR anyway
-
-  open_pr:
-    type: task
-    action: github.create_pr
-    params:
-      link_issue: true
-    next: await_ci
-    error: failed
-
-  await_ci:
-    type: wait
-    event: ci.complete
-    timeout: 2h
-    params:
-      on_failure: retry        # Keep polling; CI may still pass on a subsequent run
-    next: await_review
-    error: failed
-
-  await_review:
-    type: wait
-    event: pr.reviewed
-    timeout: 48h
-    timeout_next: review_overdue
-    params:
-      auto_address: true
-      max_feedback_rounds: 3
-    next: merge
-    error: failed
-
-  # Comment on the PR and fail if review takes too long.
-  review_overdue:
-    type: task
-    action: github.comment_pr
-    params:
-      body: "This PR has been awaiting review for 48h. Could a maintainer take a look?"
-    next: failed
-    error: failed
-
-  merge:
-    type: task
-    action: github.merge
-    params:
-      method: squash
-      cleanup: true
-    after:
-      # Post to Slack after merge. SLACK_WEBHOOK_URL must be set in the environment.
-      - run: |
-          curl -s -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-type: application/json' \
-            --data "{\"text\": \"Merged: $ERG_ISSUE_TITLE\\n$ERG_PR_URL\"}"
-    next: done
-
-  done:
-    type: succeed
-
-  failed:
-    type: fail</pre
-              >
-            </div>
-          </div>
-          <div data-panel="diagram" style="display: none">
-            <div class="diagram-panel">
-              <pre class="mermaid">
-stateDiagram-v2
-    [*] --> coding
-    coding --> format : ai.code
-    format --> open_pr : git.format
-    open_pr --> await_ci : github.create_pr
-    await_ci --> await_review : ci.complete
-    await_review --> merge : pr.reviewed
-    await_review --> review_overdue : timeout
-    review_overdue --> failed : github.comment_pr
-    merge --> done : github.merge
-    done --> [*]
-    failed --> [*]</pre
-              >
-            </div>
-          </div>
-        </div>
-
         <div
           style="
             margin-top: 3rem;
             padding-top: 1.5rem;
             border-top: 1px solid transparent;
-            border-image: linear-gradient(90deg, transparent, var(--border-light), transparent) 1;
+            border-image: linear-gradient(
+                90deg,
+                transparent,
+                var(--border-light),
+                transparent
+              )
+              1;
             font-size: 0.8rem;
             color: var(--text-dim);
             text-align: center;
@@ -4966,21 +4875,25 @@ stateDiagram-v2
       })();
 
       // Close sidebar on link click (mobile)
-      document.querySelectorAll(".sidebar-link, .sidebar-sublink").forEach(function (link) {
-        link.addEventListener("click", function () {
-          if (window.innerWidth <= 860) {
-            document.getElementById("sidebar").classList.remove("open");
-            document.getElementById("sidebarOverlay").classList.remove("open");
-          }
+      document
+        .querySelectorAll(".sidebar-link, .sidebar-sublink")
+        .forEach(function (link) {
+          link.addEventListener("click", function () {
+            if (window.innerWidth <= 860) {
+              document.getElementById("sidebar").classList.remove("open");
+              document
+                .getElementById("sidebarOverlay")
+                .classList.remove("open");
+            }
+          });
         });
-      });
 
       // Label param-table cells for responsive stacking
       document.querySelectorAll(".param-table").forEach(function (table) {
         var headers = Array.from(table.querySelectorAll("thead th")).map(
           function (th) {
             return th.textContent.trim();
-          }
+          },
         );
         table.querySelectorAll("tbody tr").forEach(function (row) {
           row.querySelectorAll("td").forEach(function (td, i) {
