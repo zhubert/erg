@@ -70,3 +70,65 @@ func TestGenerateMermaid_CustomProvider(t *testing.T) {
 		t.Errorf("expected valid mermaid output\n\nFull output:\n%s", out)
 	}
 }
+
+func TestGenerateMermaidCompact_NoErrorEdges(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	out := GenerateMermaidCompact(cfg)
+
+	if strings.Contains(out, ": error") {
+		t.Errorf("compact output should not contain error edges\n\nFull output:\n%s", out)
+	}
+}
+
+func TestGenerateMermaidCompact_NoHookNodes(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	cfg.States["coding"].Before = []HookConfig{{Run: "echo before"}}
+	cfg.States["coding"].After = []HookConfig{{Run: "echo after"}}
+
+	out := GenerateMermaidCompact(cfg)
+
+	if strings.Contains(out, "coding_before") || strings.Contains(out, "coding_hooks") {
+		t.Errorf("compact output should not contain hook pseudo-nodes\n\nFull output:\n%s", out)
+	}
+}
+
+func TestGenerateMermaidCompact_HappyPath(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	out := GenerateMermaidCompact(cfg)
+
+	mustContain := []string{
+		"stateDiagram-v2",
+		"[*] --> coding",
+		"coding -->",
+		"open_pr -->",
+		"await_ci -->",
+		"merge -->",
+		"done --> [*]",
+	}
+
+	for _, s := range mustContain {
+		if !strings.Contains(out, s) {
+			t.Errorf("compact output missing %q\n\nFull output:\n%s", s, out)
+		}
+	}
+}
+
+func TestGenerateMermaidCompact_PreservesTimeouts(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	out := GenerateMermaidCompact(cfg)
+
+	// Timeout transitions should still appear
+	if !strings.Contains(out, "timeout") {
+		t.Errorf("compact output should still contain timeout transitions\n\nFull output:\n%s", out)
+	}
+}
+
+func TestGenerateMermaidCompact_PreservesChoices(t *testing.T) {
+	cfg := DefaultWorkflowConfig()
+	out := GenerateMermaidCompact(cfg)
+
+	// Choice transitions should still appear (check_ci_result is the choice state in the default workflow)
+	if !strings.Contains(out, "check_ci_result -->") {
+		t.Errorf("compact output should still contain choice transitions\n\nFull output:\n%s", out)
+	}
+}

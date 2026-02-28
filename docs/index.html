@@ -3837,14 +3837,10 @@ states:
 stateDiagram-v2
     [*] --> coding
     coding --> open_pr : ai.code
-    coding --> failed : error
     open_pr --> await_merge : github.create_pr
-    open_pr --> failed : error
     await_merge --> merge : pr.mergeable
     await_merge --> timed_out : timeout
-    await_merge --> failed : error
     timed_out --> failed : github.comment_pr
-    timed_out --> failed : error
     merge --> done : github.merge
     done --> [*]
     failed --> [*]</pre
@@ -3999,23 +3995,14 @@ states:
               <pre class="mermaid">
 stateDiagram-v2
     [*] --> coding
-    coding_before --> coding : before hooks
-    coding --> coding_hooks : after hooks
     coding --> open_pr : ai.code
-    coding --> failed : error
     open_pr --> await_ci : github.create_pr
-    open_pr --> failed : error
     await_ci --> await_review : ci.complete
-    await_ci --> failed : error
     await_review --> merge : pr.reviewed
     await_review --> review_overdue : timeout
-    await_review --> failed : error
     review_overdue --> failed : github.comment_pr
-    review_overdue --> failed : error
     merge --> done : github.merge
-    merge --> merge_hooks : after hooks
     notify_container_failure --> failed : github.comment_issue
-    notify_container_failure --> failed : error
     done --> [*]
     failed --> [*]</pre
               >
@@ -4228,12 +4215,9 @@ states:
 stateDiagram-v2
     [*] --> coding
     coding --> open_pr : ai.code
-    coding --> notify_failed : error
     open_pr --> await_ci : github.create_pr
-    open_pr --> notify_failed : error
     await_ci --> check_ci : ci.complete
     await_ci --> ci_timed_out : timeout
-    await_ci --> notify_failed : error
     check_ci --> rebase : conflicting is true
     check_ci --> request_reviewer : ci_passed is true
     check_ci --> fix_ci : ci_failed is true
@@ -4241,20 +4225,15 @@ stateDiagram-v2
     rebase --> await_ci : git.rebase
     rebase --> resolve_conflicts : error
     resolve_conflicts --> push_conflict_fix : ai.resolve_conflicts
-    resolve_conflicts --> notify_failed : error
     push_conflict_fix --> await_ci : github.push
-    push_conflict_fix --> notify_failed : error
     fix_ci --> push_ci_fix : ai.fix_ci
     fix_ci --> ci_unfixable : error
     push_ci_fix --> await_ci : github.push
-    push_ci_fix --> notify_failed : error
     ci_unfixable --> notify_failed : github.comment_pr
     ci_timed_out --> notify_failed : github.comment_pr
     request_reviewer --> await_review : github.request_review
-    request_reviewer --> await_review : error
     await_review --> merge : pr.reviewed
     await_review --> review_overdue : timeout
-    await_review --> notify_failed : error
     review_overdue --> notify_failed : github.comment_issue
     merge --> done : github.merge
     notify_failed --> failed : github.comment_issue
@@ -4427,27 +4406,20 @@ stateDiagram-v2
     [*] --> configure
     configure --> start_coding : pass
     start_coding --> label_in_progress : github.remove_label
-    start_coding --> label_in_progress : error
     label_in_progress --> coding : github.add_label
-    label_in_progress --> coding : error
     coding --> label_in_review : ai.code
     coding --> label_failed : error
     label_in_review --> add_in_review : github.remove_label
-    label_in_review --> add_in_review : error
     add_in_review --> open_pr : github.add_label
-    add_in_review --> open_pr : error
     open_pr --> await_merge : github.create_pr
     open_pr --> label_failed : error
     await_merge --> merge : pr.mergeable
     await_merge --> label_failed : timeout
-    await_merge --> label_failed : error
     merge --> check_close : github.merge
     check_close --> close_issue : close_issue_on_merge is true
     check_close --> done : default
     close_issue --> done : github.close_issue
-    close_issue --> done : error
     label_failed --> failed : github.add_label
-    label_failed --> failed : error
     done --> [*]
     failed --> [*]</pre
               >
@@ -4574,16 +4546,11 @@ states:
 stateDiagram-v2
     [*] --> coding
     coding --> open_pr : ai.code
-    coding --> failed : error
     open_pr --> await_ci : github.create_pr
-    open_pr --> failed : error
     await_ci --> await_review : ci.complete
-    await_ci --> failed : error
     await_review --> merge : pr.reviewed
     await_review --> review_overdue : timeout
-    await_review --> failed : error
     review_overdue --> failed : github.comment_pr
-    review_overdue --> failed : error
     merge --> done : github.merge
     done --> [*]
     failed --> [*]</pre
@@ -4739,20 +4706,13 @@ states:
 stateDiagram-v2
     [*] --> coding
     coding --> format : ai.code
-    coding --> failed : error
     format --> open_pr : git.format
-    format --> open_pr : error
     open_pr --> await_ci : github.create_pr
-    open_pr --> failed : error
     await_ci --> await_review : ci.complete
-    await_ci --> failed : error
     await_review --> merge : pr.reviewed
     await_review --> review_overdue : timeout
-    await_review --> failed : error
     review_overdue --> failed : github.comment_pr
-    review_overdue --> failed : error
     merge --> done : github.merge
-    merge --> merge_hooks : after hooks
     done --> [*]
     failed --> [*]</pre
               >

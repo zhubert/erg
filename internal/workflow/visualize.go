@@ -7,6 +7,16 @@ import (
 
 // GenerateMermaid produces a mermaid stateDiagram-v2 string from a workflow config.
 func GenerateMermaid(cfg *Config) string {
+	return generateMermaid(cfg, false)
+}
+
+// GenerateMermaidCompact produces a compact mermaid stateDiagram-v2 string that omits
+// error transitions and hook pseudo-nodes for a cleaner overview of the happy path.
+func GenerateMermaidCompact(cfg *Config) string {
+	return generateMermaid(cfg, true)
+}
+
+func generateMermaid(cfg *Config, compact bool) string {
 	var sb strings.Builder
 
 	sb.WriteString("stateDiagram-v2\n")
@@ -24,20 +34,22 @@ func GenerateMermaid(cfg *Config) string {
 			if state.Next != "" {
 				sb.WriteString(fmt.Sprintf("    %s --> %s : %s\n", name, state.Next, label))
 			}
-			if state.Error != "" {
+			if !compact && state.Error != "" {
 				sb.WriteString(fmt.Sprintf("    %s --> %s : error\n", name, state.Error))
 			}
 
-			// Emit before-hooks
-			if len(state.Before) > 0 {
-				hookName := name + "_before"
-				sb.WriteString(fmt.Sprintf("    %s --> %s : before hooks\n", hookName, name))
-			}
+			if !compact {
+				// Emit before-hooks
+				if len(state.Before) > 0 {
+					hookName := name + "_before"
+					sb.WriteString(fmt.Sprintf("    %s --> %s : before hooks\n", hookName, name))
+				}
 
-			// Emit after-hooks
-			if len(state.After) > 0 {
-				hookName := name + "_hooks"
-				sb.WriteString(fmt.Sprintf("    %s --> %s : after hooks\n", name, hookName))
+				// Emit after-hooks
+				if len(state.After) > 0 {
+					hookName := name + "_hooks"
+					sb.WriteString(fmt.Sprintf("    %s --> %s : after hooks\n", name, hookName))
+				}
 			}
 
 		case StateTypeWait:
@@ -51,7 +63,7 @@ func GenerateMermaid(cfg *Config) string {
 			if state.TimeoutNext != "" {
 				sb.WriteString(fmt.Sprintf("    %s --> %s : timeout\n", name, state.TimeoutNext))
 			}
-			if state.Error != "" {
+			if !compact && state.Error != "" {
 				sb.WriteString(fmt.Sprintf("    %s --> %s : error\n", name, state.Error))
 			}
 
