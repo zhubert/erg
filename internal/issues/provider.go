@@ -30,6 +30,7 @@ type FilterConfig struct {
 	Label   string // Tag/label name to filter by (empty = no filtering)
 	Project string // Asana: project GID
 	Team    string // Linear: team ID
+	Section string // Asana: section name to filter by (fetches tasks in that section only)
 }
 
 // Provider defines the interface for fetching issues from different sources.

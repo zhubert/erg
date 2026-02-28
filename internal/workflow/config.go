@@ -94,6 +94,7 @@ type FilterConfig struct {
 	Label   string `yaml:"label"`   // GitHub: issue label to poll
 	Project string `yaml:"project"` // Asana: project GID
 	Team    string `yaml:"team"`    // Linear: team ID
+	Section string `yaml:"section"` // Asana: section name to poll (fetches tasks in that section only)
 }
 
 // HookConfig defines a hook to run after a workflow step.

@@ -252,6 +252,9 @@ func Merge(partial, defaults *Config) *Config {
 	if result.Source.Filter.Team == "" {
 		result.Source.Filter.Team = defaults.Source.Filter.Team
 	}
+	if result.Source.Filter.Section == "" {
+		result.Source.Filter.Section = defaults.Source.Filter.Section
+	}
 
 	// Copy defaults first
 	for name, state := range defaults.States {

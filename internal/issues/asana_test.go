@@ -188,6 +188,158 @@ func TestAsanaProvider_FetchIssues_APIError(t *testing.T) {
 	}
 }
 
+func TestAsanaProvider_FetchIssues_BySection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/projects/12345/sections"):
+			json.NewEncoder(w).Encode(asanaSectionsResponse{
+				Data: []asanaSection{
+					{GID: "sec-todo", Name: "Todo"},
+					{GID: "sec-doing", Name: "Doing"},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/sections/sec-todo/tasks"):
+			json.NewEncoder(w).Encode(asanaTasksResponse{
+				Data: []asanaTask{
+					{GID: "task-1", Name: "Todo Task 1", Notes: "desc1", Permalink: "https://app.asana.com/1"},
+					{GID: "task-2", Name: "Todo Task 2", Notes: "desc2", Permalink: "https://app.asana.com/2"},
+				},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	cfg := &config.Config{}
+	p := NewAsanaProviderWithClient(cfg, server.Client(), server.URL)
+
+	issues, err := p.FetchIssues(context.Background(), "/test/repo", FilterConfig{Project: "12345", Section: "Todo"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("expected 2 issues, got %d", len(issues))
+	}
+	if issues[0].ID != "task-1" {
+		t.Errorf("expected task-1, got %s", issues[0].ID)
+	}
+}
+
+func TestAsanaProvider_FetchIssues_BySectionCaseInsensitive(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/projects/12345/sections"):
+			json.NewEncoder(w).Encode(asanaSectionsResponse{
+				Data: []asanaSection{
+					{GID: "sec-todo", Name: "TODO"},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/sections/sec-todo/tasks"):
+			json.NewEncoder(w).Encode(asanaTasksResponse{
+				Data: []asanaTask{
+					{GID: "task-1", Name: "Task 1", Notes: "n", Permalink: "u"},
+				},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	p := NewAsanaProviderWithClient(nil, server.Client(), server.URL)
+
+	// Use lowercase "todo" to match "TODO" section — should match case-insensitively.
+	issues, err := p.FetchIssues(context.Background(), "/repo", FilterConfig{Project: "12345", Section: "todo"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(issues))
+	}
+}
+
+func TestAsanaProvider_FetchIssues_SectionNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(asanaSectionsResponse{
+			Data: []asanaSection{
+				{GID: "sec-doing", Name: "Doing"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	p := NewAsanaProviderWithClient(nil, server.Client(), server.URL)
+
+	_, err := p.FetchIssues(context.Background(), "/repo", FilterConfig{Project: "12345", Section: "Todo"})
+	if err == nil {
+		t.Error("expected error when section is not found")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
+
+func TestAsanaProvider_FetchIssues_SectionWithLabelFilter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/projects/12345/sections"):
+			json.NewEncoder(w).Encode(asanaSectionsResponse{
+				Data: []asanaSection{
+					{GID: "sec-todo", Name: "Todo"},
+				},
+			})
+		case strings.Contains(r.URL.Path, "/sections/sec-todo/tasks"):
+			json.NewEncoder(w).Encode(asanaTasksResponse{
+				Data: []asanaTask{
+					{GID: "task-1", Name: "Tagged Task", Tags: []asanaTag{{Name: "erg"}}},
+					{GID: "task-2", Name: "Untagged Task", Tags: []asanaTag{}},
+				},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	origPAT := os.Getenv(asanaPATEnvVar)
+	defer os.Setenv(asanaPATEnvVar, origPAT)
+	os.Setenv(asanaPATEnvVar, "test-pat")
+
+	p := NewAsanaProviderWithClient(nil, server.Client(), server.URL)
+
+	// Section filter + label filter: only the tagged task should come through.
+	issues, err := p.FetchIssues(context.Background(), "/repo", FilterConfig{Project: "12345", Section: "Todo", Label: "erg"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(issues))
+	}
+	if issues[0].ID != "task-1" {
+		t.Errorf("expected task-1, got %s", issues[0].ID)
+	}
+}
+
 func TestAsanaProvider_RemoveLabel(t *testing.T) {
 	var removeTagReqBody string
 	requestCount := 0

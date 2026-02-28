@@ -153,6 +153,7 @@ func (d *Daemon) fetchIssuesForProvider(ctx context.Context, repoPath string, wf
 			Label:   wfCfg.Source.Filter.Label,
 			Project: wfCfg.Source.Filter.Project,
 			Team:    wfCfg.Source.Filter.Team,
+			Section: wfCfg.Source.Filter.Section,
 		})
 
 	default:

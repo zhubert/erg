@@ -84,6 +84,9 @@ type asanaTasksResponse struct {
 
 // FetchIssues retrieves incomplete tasks from the Asana project.
 // The filter.Project should be the Asana project GID.
+// If filter.Section is set, only tasks in that section are returned (section name
+// is matched case-insensitively). If filter.Label is also set, it is applied as
+// an additional tag filter on top of the section results.
 func (p *AsanaProvider) FetchIssues(ctx context.Context, repoPath string, filter FilterConfig) ([]Issue, error) {
 	pat := os.Getenv(asanaPATEnvVar)
 	if pat == "" {
@@ -95,20 +98,48 @@ func (p *AsanaProvider) FetchIssues(ctx context.Context, repoPath string, filter
 		return nil, fmt.Errorf("Asana project GID not configured for this repository")
 	}
 
-	// Fetch incomplete tasks from the project
-	url := fmt.Sprintf("%s/projects/%s/tasks?opt_fields=gid,name,notes,permalink_url,tags.name&completed_since=now", p.apiBase, projectID)
+	var tasks []asanaTask
 
-	var tasksResp asanaTasksResponse
-	if err := apiRequest(ctx, p.httpClient, http.MethodGet, url, nil,
-		"Bearer "+pat, http.StatusOK,
-		"Asana API returned 403 Forbidden - check that your ASANA_PAT has access to this project",
-		"Asana", &tasksResp); err != nil {
-		return nil, err
+	if filter.Section != "" {
+		// Fetch tasks from the specific section rather than the whole project.
+		sections, err := p.fetchSections(ctx, pat, projectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch sections: %w", err)
+		}
+		var sectionGID string
+		for _, s := range sections {
+			if strings.EqualFold(s.Name, filter.Section) {
+				sectionGID = s.GID
+				break
+			}
+		}
+		if sectionGID == "" {
+			return nil, fmt.Errorf("section %q not found in project %s", filter.Section, projectID)
+		}
+
+		url := fmt.Sprintf("%s/sections/%s/tasks?opt_fields=gid,name,notes,permalink_url,tags.name&completed_since=now", p.apiBase, sectionGID)
+		var tasksResp asanaTasksResponse
+		if err := apiRequest(ctx, p.httpClient, http.MethodGet, url, nil,
+			"Bearer "+pat, http.StatusOK,
+			"Asana API returned 403 Forbidden - check that your ASANA_PAT has access to this project",
+			"Asana", &tasksResp); err != nil {
+			return nil, err
+		}
+		tasks = tasksResp.Data
+	} else {
+		// Fetch all incomplete tasks from the project.
+		url := fmt.Sprintf("%s/projects/%s/tasks?opt_fields=gid,name,notes,permalink_url,tags.name&completed_since=now", p.apiBase, projectID)
+		var tasksResp asanaTasksResponse
+		if err := apiRequest(ctx, p.httpClient, http.MethodGet, url, nil,
+			"Bearer "+pat, http.StatusOK,
+			"Asana API returned 403 Forbidden - check that your ASANA_PAT has access to this project",
+			"Asana", &tasksResp); err != nil {
+			return nil, err
+		}
+		tasks = tasksResp.Data
 	}
 
-	tasks := tasksResp.Data
-
-	// Filter by tag if label is configured
+	// Optionally narrow by tag.
 	if filter.Label != "" {
 		var filtered []asanaTask
 		for _, task := range tasks {

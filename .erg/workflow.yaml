@@ -1,26 +1,27 @@
-# Plan-then-code workflow — Claude creates a plan for human review before coding.
+# Asana kanban workflow — board sections drive the lifecycle.
 #
-# Label flow: plan → plan-review → in-progress
+# Section flow: Todo → Planned → Doing → In Review → Done
 #
-# 1. User adds "plan" label to an issue
+# 1. Tag a task "erg" while it sits in the Todo section
 # 2. Claude analyzes the issue, explores the codebase, and posts a plan as a comment
-# 3. Label changes to "plan-review" — waiting for human feedback
-# 4. User replies to the plan in the issue:
-#    - Approval ("LGTM", "looks good", "approved", "proceed", etc.) → coding begins
-#    - Any other comment → Claude revises the plan and posts an updated version
-# 5. Workflow resumes: label changes to "in-progress", Claude codes the solution
-# 6. PR opened, CI checked, reviewer assigned, merged on approval
+# 3. Card moves to "Planned" — human reads and optionally gives feedback
+# 4. Any comment that isn't an approval → Claude revises and re-posts the plan
+# 5. Approval comment ("LGTM", "go", etc.) OR 24h of silence → wait for card to move
+# 6. Drag the card to "Doing" — Claude picks up and codes the solution
+# 7. PR opened → card moves to "In Review" while CI runs
+# 8. CI passes → reviewer assigned → PR approved → merged → card moves to "Done"
 
-workflow: plan-then-code
+workflow: asana-kanban
 start: planning
 
 source:
-  provider: github
+  provider: asana
   filter:
-    label: plan
+    project: "1213476871486785"
+    section: Todo
 
 states:
-  # ── Planning phase ──────────────────────────────────────────────
+  # ── Planning phase (card in Todo) ───────────────────────────────
 
   planning:
     type: task
@@ -28,70 +29,58 @@ states:
     params:
       max_turns: 30
       max_duration: 15m
-    next: remove_plan_label
+    next: move_to_planned
     error: notify_failed
 
-  # Swap "plan" for "plan-review" to signal the plan is ready
-  remove_plan_label:
+  # Move card to "Planned" to signal the plan is ready for review
+  move_to_planned:
     type: task
-    action: github.remove_label
+    action: asana.move_to_section
     params:
-      label: plan
-    next: add_plan_review_label
-    error: add_plan_review_label
-
-  add_plan_review_label:
-    type: task
-    action: github.add_label
-    params:
-      label: plan-review
+      section: Planned
     next: await_plan_feedback
     error: await_plan_feedback
 
-  # Wait for the human to reply to the plan comment.
-  # Approval phrases advance to coding; any other reply triggers re-planning.
+  # Wait for human feedback on the plan.
+  # - Non-approval comments trigger re-planning.
+  # - Approval phrases advance to await_doing.
+  # - After 24h with no comments, silently move on to wait for "Doing".
   await_plan_feedback:
     type: wait
     event: plan.user_replied
     params:
-      approval_pattern: '(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)'
-    timeout: 72h
-    timeout_next: plan_expired
+      approval_pattern: "(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)"
+    timeout: 24h
+    timeout_next: await_doing
     next: check_plan_feedback
     error: notify_failed
 
-  # Route based on whether the reply was an approval or feedback.
   check_plan_feedback:
     type: choice
     choices:
       - variable: plan_approved
         equals: true
-        next: remove_plan_review_label
+        next: await_doing
       - variable: plan_approved
         equals: false
         next: planning
-    default: failed
+    default: planning
 
-  # ── Transition to coding ────────────────────────────────────────
+  # ── Waiting for card to move to "Doing" ─────────────────────────
 
-  # Clean up plan-review label, add "in-progress"
-  remove_plan_review_label:
-    type: task
-    action: github.remove_label
+  # Gate on a human dragging the card to "Doing" on the board.
+  # This is the signal that the plan is accepted and work should begin.
+  await_doing:
+    type: wait
+    event: asana.in_section
     params:
-      label: plan-review
-    next: add_in_progress_label
-    error: add_in_progress_label
-
-  add_in_progress_label:
-    type: task
-    action: github.add_label
-    params:
-      label: in-progress
+      section: Doing
+    timeout: 7d
+    timeout_next: plan_expired
     next: coding
-    error: coding
+    error: notify_failed
 
-  # ── Coding phase ───────────────────────────────────────────────
+  # ── Coding phase ─────────────────────────────────────────────────
 
   coding:
     type: task
@@ -107,8 +96,19 @@ states:
     action: github.create_pr
     params:
       link_issue: true
-    next: await_ci
+    next: move_to_in_review
     error: notify_failed
+
+  # Move card to "In Review" while CI runs and reviewer looks at the PR
+  move_to_in_review:
+    type: task
+    action: asana.move_to_section
+    params:
+      section: In Review
+    next: await_ci
+    error: await_ci
+
+  # ── CI phase ─────────────────────────────────────────────────────
 
   await_ci:
     type: wait
@@ -129,7 +129,7 @@ states:
       - variable: ci_passed
         equals: true
         next: request_reviewer
-      - variable: ci_notify_failed
+      - variable: ci_failed
         equals: true
         next: fix_ci
     default: notify_failed
@@ -186,6 +186,8 @@ states:
     next: notify_failed
     error: notify_failed
 
+  # ── Review phase ─────────────────────────────────────────────────
+
   request_reviewer:
     type: task
     action: github.request_review
@@ -207,11 +209,13 @@ states:
 
   review_overdue:
     type: task
-    action: github.comment_issue
+    action: github.comment_pr
     params:
       body: "This PR has been awaiting review for 48h. Could a maintainer take a look?"
     next: notify_failed
     error: notify_failed
+
+  # ── Merge and close ──────────────────────────────────────────────
 
   merge:
     type: task
@@ -219,31 +223,37 @@ states:
     params:
       method: rebase
       cleanup: true
-    next: done
-    error: rebase
+    next: move_to_done
+    error: notify_failed
 
-  # ── Planning timeout ────────────────────────────────────────────
+  move_to_done:
+    type: task
+    action: asana.move_to_section
+    params:
+      section: Done
+    next: done
+    error: done
+
+  # ── Terminal states ──────────────────────────────────────────────
 
   plan_expired:
     type: task
-    action: github.comment_issue
+    action: asana.comment
     params:
-      body: "The implementation plan has been awaiting approval for 72h. Removing from queue."
+      body: "The plan has been waiting 7 days for the card to move to 'Doing'. Move the card when ready to proceed, or remove the 'erg' tag to cancel."
     next: failed
     error: failed
 
-  # ── Terminal states ─────────────────────────────────────────────
-
-  done:
-    type: succeed
-
   notify_failed:
     type: task
-    action: github.comment_issue
+    action: asana.comment
     params:
       body: "Unable to complete automatically. Manual intervention required."
     next: failed
     error: failed
+
+  done:
+    type: succeed
 
   failed:
     type: fail
