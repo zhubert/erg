@@ -260,5 +260,8 @@ func (c *AgentConfig) HasAsanaProject(_ string) bool { return false }
 // GetAsanaProject returns empty string; Asana projects are not configured in agent mode.
 func (c *AgentConfig) GetAsanaProject(_ string) string { return "" }
 
+// SetAsanaProject is a no-op; Asana projects are not configured in agent mode.
+func (c *AgentConfig) SetAsanaProject(_, _ string) {}
+
 // HasLinearTeam returns false; Linear teams are not configured in agent mode.
 func (c *AgentConfig) HasLinearTeam(_ string) bool { return false }

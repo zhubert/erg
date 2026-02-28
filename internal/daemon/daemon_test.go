@@ -3108,6 +3108,64 @@ func TestCommentOnIssue_NoIssueRef(t *testing.T) {
 	}
 }
 
+func TestLoadWorkflowConfigs_SyncsAsanaProjectGID(t *testing.T) {
+	// Regression test: MoveToSection and IsInSection read from config.GetAsanaProject,
+	// but the project GID is only specified in .erg/workflow.yaml. loadWorkflowConfigs
+	// must sync the GID from the workflow config into the config store.
+	repoDir := t.TempDir()
+	ergDir := filepath.Join(repoDir, ".erg")
+	if err := os.MkdirAll(ergDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	wfYAML := `source:
+  provider: asana
+  filter:
+    project: "asana-project-gid-123"
+`
+	if err := os.WriteFile(filepath.Join(ergDir, "workflow.yaml"), []byte(wfYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig()
+	cfg.AddRepo(repoDir)
+	d := testDaemon(cfg)
+	d.loadWorkflowConfigs()
+
+	got := cfg.GetAsanaProject(repoDir)
+	if got != "asana-project-gid-123" {
+		t.Errorf("expected GetAsanaProject to return %q after loadWorkflowConfigs, got %q",
+			"asana-project-gid-123", got)
+	}
+}
+
+func TestLoadWorkflowConfigs_NonAsanaProviderDoesNotSetAsanaProject(t *testing.T) {
+	repoDir := t.TempDir()
+	ergDir := filepath.Join(repoDir, ".erg")
+	if err := os.MkdirAll(ergDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	wfYAML := `source:
+  provider: github
+  filter:
+    label: queued
+`
+	if err := os.WriteFile(filepath.Join(ergDir, "workflow.yaml"), []byte(wfYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := testConfig()
+	cfg.AddRepo(repoDir)
+	d := testDaemon(cfg)
+	d.loadWorkflowConfigs()
+
+	got := cfg.GetAsanaProject(repoDir)
+	if got != "" {
+		t.Errorf("expected GetAsanaProject to be empty for github provider, got %q", got)
+	}
+}
+
 func TestCommentOnIssue_UnregisteredProvider(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)

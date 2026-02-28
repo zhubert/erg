@@ -282,6 +282,13 @@ func (d *Daemon) loadWorkflowConfigs() {
 		}
 		d.workflowConfigs[repoPath] = cfg
 
+		// Sync Asana project GID from workflow config into the config store so
+		// MoveToSection and IsInSection (which read from config.GetAsanaProject)
+		// work without requiring a separate manual configuration step.
+		if cfg.Source.Provider == "asana" && cfg.Source.Filter.Project != "" {
+			d.config.SetAsanaProject(repoPath, cfg.Source.Filter.Project)
+		}
+
 		// Create engine with action registry and event checker
 		registry := d.buildActionRegistry()
 		checker := newEventChecker(d)
