@@ -103,4 +103,3 @@ func formatChoiceLabel(rule ChoiceRule) string {
 	}
 	return rule.Variable
 }
-

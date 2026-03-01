@@ -53,4 +53,3 @@ type Host interface {
 	// Linear) based on the issue source.
 	CommentOnIssue(ctx context.Context, sessionID, body string) error
 }
-

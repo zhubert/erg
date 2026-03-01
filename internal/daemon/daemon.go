@@ -26,19 +26,19 @@ const (
 
 // Daemon is the persistent orchestrator that manages the full lifecycle of work items.
 type Daemon struct {
-	config         agentconfig.Config
-	gitService     *git.GitService
-	sessionService *session.SessionService
-	sessionMgr     *manager.SessionManager
-	issueRegistry  *issues.ProviderRegistry
-	state          *daemonstate.DaemonState
-	lock           *daemonstate.DaemonLock
-	workers        map[string]*worker.SessionWorker
+	config          agentconfig.Config
+	gitService      *git.GitService
+	sessionService  *session.SessionService
+	sessionMgr      *manager.SessionManager
+	issueRegistry   *issues.ProviderRegistry
+	state           *daemonstate.DaemonState
+	lock            *daemonstate.DaemonLock
+	workers         map[string]*worker.SessionWorker
 	workflowConfigs map[string]*workflow.Config // keyed by repo path
-	engines        map[string]*workflow.Engine  // keyed by repo path
-	mu             sync.Mutex
-	workerDone     chan struct{} // buffered(1); workers signal when done to wake the main loop
-	logger         *slog.Logger
+	engines         map[string]*workflow.Engine // keyed by repo path
+	mu              sync.Mutex
+	workerDone      chan struct{} // buffered(1); workers signal when done to wake the main loop
+	logger          *slog.Logger
 
 	// Config save tracking
 	configSaveFailures int
@@ -236,11 +236,11 @@ func (d *Daemon) tick(ctx context.Context) {
 	d.collectCompletedWorkers(ctx) // Always: detect finished sessions
 	dockerOK := d.checkDockerHealth()
 	if dockerOK {
-		d.processRetryItems(ctx)   // Re-execute items whose retry delay has elapsed
+		d.processRetryItems(ctx)    // Re-execute items whose retry delay has elapsed
 		d.processIdleSyncItems(ctx) // Execute items idle on sync task steps (e.g. after recovery)
-		d.processWorkItems(ctx)    // Process active items via engine
-		d.pollForNewIssues(ctx)    // Find new issues (if slots available)
-		d.startQueuedItems(ctx)    // Start coding on queued items
+		d.processWorkItems(ctx)     // Process active items via engine
+		d.pollForNewIssues(ctx)     // Find new issues (if slots available)
+		d.startQueuedItems(ctx)     // Start coding on queued items
 	}
 	d.saveState() // Always: persist
 }

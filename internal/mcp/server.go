@@ -1097,4 +1097,3 @@ func formatArray(arr []any) string {
 	}
 	return fmt.Sprintf("(%d items)", len(arr))
 }
-

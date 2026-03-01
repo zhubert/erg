@@ -4223,9 +4223,9 @@ func TestAsanaCommentAction_NoProvider(t *testing.T) {
 
 // mockSectionMoverProvider is a test double for Provider + ProviderSectionMover.
 type mockSectionMoverProvider struct {
-	src          issues.Source
-	moveErr      error
-	moveCalls    []mockMoveSectionCall
+	src       issues.Source
+	moveErr   error
+	moveCalls []mockMoveSectionCall
 }
 
 type mockMoveSectionCall struct {

@@ -208,10 +208,10 @@ func TestEngine_AdvanceAfterAsync_Success(t *testing.T) {
 	cfg := &Config{
 		Start: "coding",
 		States: map[string]*State{
-			"coding": {Type: StateTypeTask, Action: "ai.code", Next: "open_pr", Error: "failed"},
+			"coding":  {Type: StateTypeTask, Action: "ai.code", Next: "open_pr", Error: "failed"},
 			"open_pr": {Type: StateTypeTask, Action: "github.create_pr", Next: "done"},
-			"done":   {Type: StateTypeSucceed},
-			"failed": {Type: StateTypeFail},
+			"done":    {Type: StateTypeSucceed},
+			"failed":  {Type: StateTypeFail},
 		},
 	}
 	engine := NewEngine(cfg, NewActionRegistry(), nil, testutil.DiscardLogger())
@@ -466,9 +466,9 @@ func TestEngine_ProcessStep_WaitTimeout_TimeoutNextEdge(t *testing.T) {
 	cfg := &Config{
 		Start: "wait",
 		States: map[string]*State{
-			"wait":  {Type: StateTypeWait, Event: "ci.complete", Timeout: &Duration{1 * time.Hour}, TimeoutNext: "nudge", Next: "done", Error: "failed"},
-			"nudge": {Type: StateTypeSucceed},
-			"done":  {Type: StateTypeSucceed},
+			"wait":   {Type: StateTypeWait, Event: "ci.complete", Timeout: &Duration{1 * time.Hour}, TimeoutNext: "nudge", Next: "done", Error: "failed"},
+			"nudge":  {Type: StateTypeSucceed},
+			"done":   {Type: StateTypeSucceed},
 			"failed": {Type: StateTypeFail},
 		},
 	}
@@ -1171,7 +1171,7 @@ func TestEngine_ProcessStep_Pass(t *testing.T) {
 				Type: StateTypePass,
 				Data: map[string]any{
 					"merge_method": "squash",
-					"cleanup":     true,
+					"cleanup":      true,
 				},
 				Next: "coding",
 			},
@@ -1495,9 +1495,9 @@ func TestEngine_FindRecoveryWaitStep_DefaultWorkflow(t *testing.T) {
 	engine := defaultWorkflowEngine()
 
 	tests := []struct {
-		currentStep  string
-		wantStep     string
-		description  string
+		currentStep string
+		wantStep    string
+		description string
 	}{
 		{"coding", "await_ci", "start of workflow — forward-search finds await_ci"},
 		{"open_pr", "await_ci", "before first wait state — forward-search finds await_ci"},
@@ -1527,13 +1527,13 @@ func TestEngine_FindRecoveryWaitStep_CustomWorkflow(t *testing.T) {
 	cfg := &Config{
 		Start: "implement",
 		States: map[string]*State{
-			"implement":       {Type: StateTypeTask, Action: "ai.code", Next: "create_pr"},
-			"create_pr":       {Type: StateTypeTask, Action: "github.create_pr", Next: "check_ci"},
-			"check_ci":        {Type: StateTypeWait, Event: "ci.complete", Next: "wait_for_approval"},
+			"implement":         {Type: StateTypeTask, Action: "ai.code", Next: "create_pr"},
+			"create_pr":         {Type: StateTypeTask, Action: "github.create_pr", Next: "check_ci"},
+			"check_ci":          {Type: StateTypeWait, Event: "ci.complete", Next: "wait_for_approval"},
 			"wait_for_approval": {Type: StateTypeWait, Event: "pr.reviewed", Next: "auto_merge"},
-			"auto_merge":      {Type: StateTypeTask, Action: "github.merge", Next: "finished"},
-			"finished":        {Type: StateTypeSucceed},
-			"error":           {Type: StateTypeFail},
+			"auto_merge":        {Type: StateTypeTask, Action: "github.merge", Next: "finished"},
+			"finished":          {Type: StateTypeSucceed},
+			"error":             {Type: StateTypeFail},
 		},
 	}
 	engine := NewEngine(cfg, NewActionRegistry(), nil, testutil.DiscardLogger())
@@ -1573,7 +1573,7 @@ func TestEngine_FindRecoveryWaitStep_NoWaitStates(t *testing.T) {
 	cfg := &Config{
 		Start: "start",
 		States: map[string]*State{
-			"start": {Type: StateTypeTask, Action: "ai.code", Next: "finish"},
+			"start":  {Type: StateTypeTask, Action: "ai.code", Next: "finish"},
 			"finish": {Type: StateTypeSucceed},
 		},
 	}

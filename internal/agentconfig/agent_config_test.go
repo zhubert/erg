@@ -10,7 +10,7 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ Config                    = (*AgentConfig)(nil)
+	_ Config                      = (*AgentConfig)(nil)
 	_ issues.AsanaConfigProvider  = (*AgentConfig)(nil)
 	_ issues.LinearConfigProvider = (*AgentConfig)(nil)
 )
@@ -116,10 +116,10 @@ func TestAgentConfig_SessionCRUD(t *testing.T) {
 
 	// Add a session
 	s1 := model.Session{
-		ID:       "s1",
-		RepoPath: "/repo",
-		Branch:   "feature/test",
-		Name:     "test session",
+		ID:        "s1",
+		RepoPath:  "/repo",
+		Branch:    "feature/test",
+		Name:      "test session",
 		CreatedAt: time.Now(),
 	}
 	c.AddSession(s1)
@@ -162,8 +162,8 @@ func TestAgentConfig_MarkSessionMethods(t *testing.T) {
 	c.AddSession(model.Session{ID: "s1"})
 
 	tests := []struct {
-		name   string
-		markFn func(string) bool
+		name    string
+		markFn  func(string) bool
 		checkFn func(*model.Session) bool
 	}{
 		{"Started", c.MarkSessionStarted, func(s *model.Session) bool { return s.Started }},

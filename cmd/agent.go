@@ -14,15 +14,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zhubert/erg/internal/agentconfig"
 	"github.com/zhubert/erg/internal/claude"
+	"github.com/zhubert/erg/internal/cli"
 	"github.com/zhubert/erg/internal/container"
 	"github.com/zhubert/erg/internal/daemon"
 	"github.com/zhubert/erg/internal/daemonstate"
-	"github.com/zhubert/erg/internal/workflow"
-	"github.com/zhubert/erg/internal/cli"
 	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/issues"
 	"github.com/zhubert/erg/internal/logger"
 	"github.com/zhubert/erg/internal/session"
+	"github.com/zhubert/erg/internal/workflow"
 )
 
 var (
@@ -584,4 +584,3 @@ func displaySummary(repo string) error {
 	fmt.Printf("Logs:   %s\n", logPath)
 	return nil
 }
-

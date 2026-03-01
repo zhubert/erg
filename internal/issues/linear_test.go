@@ -791,8 +791,12 @@ func TestLinearProvider_GetIssueComments_ReturnsComments(t *testing.T) {
 				Name string `json:"name"`
 			} `json:"user"`
 		}{
-			{Body: "Looks good!", CreatedAt: "2024-01-15T10:00:00Z", User: struct{ Name string `json:"name"` }{Name: "alice"}},
-			{Body: "Please fix the tests", CreatedAt: "2024-01-14T09:00:00Z", User: struct{ Name string `json:"name"` }{Name: "bob"}},
+			{Body: "Looks good!", CreatedAt: "2024-01-15T10:00:00Z", User: struct {
+				Name string `json:"name"`
+			}{Name: "alice"}},
+			{Body: "Please fix the tests", CreatedAt: "2024-01-14T09:00:00Z", User: struct {
+				Name string `json:"name"`
+			}{Name: "bob"}},
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -836,8 +840,12 @@ func TestLinearProvider_GetIssueComments_EmptyBodyExcluded(t *testing.T) {
 				Name string `json:"name"`
 			} `json:"user"`
 		}{
-			{Body: "", CreatedAt: "2024-01-15T10:00:00Z", User: struct{ Name string `json:"name"` }{Name: "alice"}},
-			{Body: "real comment", CreatedAt: "2024-01-15T11:00:00Z", User: struct{ Name string `json:"name"` }{Name: "bob"}},
+			{Body: "", CreatedAt: "2024-01-15T10:00:00Z", User: struct {
+				Name string `json:"name"`
+			}{Name: "alice"}},
+			{Body: "real comment", CreatedAt: "2024-01-15T11:00:00Z", User: struct {
+				Name string `json:"name"`
+			}{Name: "bob"}},
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))

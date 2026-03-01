@@ -39,4 +39,3 @@ func (t MergeType) String() string {
 		return "unknown"
 	}
 }
-

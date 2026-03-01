@@ -79,7 +79,7 @@ func TestRetryAction_SuccessOnFirstAttempt(t *testing.T) {
 	r := newRetryRegistry(map[string]Action{"mock": inner})
 	ra := NewRetryAction(r)
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 3,
 	}))
 	if !res.Success {
@@ -101,7 +101,7 @@ func TestRetryAction_RetriesOnFailureThenSucceeds(t *testing.T) {
 	r := newRetryRegistry(map[string]Action{"mock": inner})
 	ra := NewRetryAction(r)
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 3,
 	}))
 	if !res.Success {
@@ -120,7 +120,7 @@ func TestRetryAction_ExhaustsAttempts(t *testing.T) {
 	r := newRetryRegistry(map[string]Action{"mock": inner})
 	ra := NewRetryAction(r)
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 3,
 	}))
 	if res.Success {
@@ -141,7 +141,7 @@ func TestRetryAction_MaxAttemptsOne_NoRetry(t *testing.T) {
 	r := newRetryRegistry(map[string]Action{"mock": inner})
 	ra := NewRetryAction(r)
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 1,
 	}))
 	if res.Success {
@@ -172,7 +172,7 @@ func TestRetryAction_PassesThroughAsync(t *testing.T) {
 	r := newRetryRegistry(map[string]Action{"mock": inner})
 	ra := NewRetryAction(r)
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 5,
 	}))
 	if !res.Async {
@@ -190,9 +190,9 @@ func TestRetryAction_ContextCancellationDuringDelay(t *testing.T) {
 	r := newRetryRegistry(map[string]Action{"mock": inner})
 	ra := NewRetryAction(r)
 	ac := makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 5,
-		"interval":    "1h", // very long delay so cancellation fires
+		"interval":     "1h", // very long delay so cancellation fires
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -221,7 +221,7 @@ func TestRetryAction_ContextAlreadyCancelled(t *testing.T) {
 	cancel() // cancel immediately
 
 	res := ra.Execute(ctx, makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 3,
 	}))
 	if res.Success {
@@ -263,7 +263,7 @@ func TestRetryAction_NoDelayByDefault(t *testing.T) {
 
 	start := time.Now()
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 2,
 		// No interval → no sleep
 	}))
@@ -346,7 +346,7 @@ func TestRetryAction_InvalidMaxAttemptsClampedToOne(t *testing.T) {
 	ra := NewRetryAction(r)
 	// max_attempts=0 should be clamped to 1
 	res := ra.Execute(context.Background(), makeRetryAC(map[string]any{
-		"action":      "mock",
+		"action":       "mock",
 		"max_attempts": 0,
 	}))
 	if !res.Success {

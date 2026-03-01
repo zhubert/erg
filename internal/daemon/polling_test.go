@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zhubert/erg/internal/daemonstate"
-	"github.com/zhubert/erg/internal/workflow"
 	"github.com/zhubert/erg/internal/config"
+	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/issues"
 	"github.com/zhubert/erg/internal/session"
+	"github.com/zhubert/erg/internal/workflow"
 )
 
 // alwaysFiredChecker is an EventChecker that always fires for the given event.
@@ -589,7 +589,7 @@ func TestStartQueuedItems_PrioritizesAwaitReviewBeforeNewWork(t *testing.T) {
 	// Minimal workflow: await_review fires → item succeeds immediately.
 	// Using a succeed terminal avoids needing any sync-action mocks.
 	wfCfg := &workflow.Config{
-		Start: "await_review",
+		Start:  "await_review",
 		Source: workflow.SourceConfig{Provider: "github"},
 		States: map[string]*workflow.State{
 			"await_review": {

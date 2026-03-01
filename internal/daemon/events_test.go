@@ -18,13 +18,13 @@ import (
 
 // mockGateProvider is a test double that implements Provider and ProviderGateChecker.
 type mockGateProvider struct {
-	src         issues.Source
-	hasLabel    bool
-	labelErr    error
-	comments    []issues.IssueComment
-	commErr     error
-	inSection   bool
-	sectionErr  error
+	src        issues.Source
+	hasLabel   bool
+	labelErr   error
+	comments   []issues.IssueComment
+	commErr    error
+	inSection  bool
+	sectionErr error
 }
 
 func (m *mockGateProvider) Name() string                             { return string(m.src) }

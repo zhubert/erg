@@ -61,19 +61,19 @@ type ProcessManagerInterface interface {
 
 // ProcessConfig holds the configuration for starting a Claude CLI process.
 type ProcessConfig struct {
-	SessionID              string
-	WorkingDir             string
-	RepoPath               string // Main repository path (for containerized worktree support)
-	SessionStarted         bool
-	AllowedTools           []string
-	MCPConfigPath          string
-	ForkFromSessionID      string // When set, uses --resume <parentID> --fork-session to inherit parent conversation
-	Containerized          bool   // When true, wraps Claude CLI in a container
-	ContainerImage         string // Container image name (e.g., "ghcr.io/zhubert/erg")
-	ContainerMCPPort       int    // Port the MCP subprocess listens on inside the container (published via -p 0:port)
-	DisableStreamingChunks   bool          // When true, omits --include-partial-messages for less verbose output (useful for agent mode)
-	SystemPrompt             string        // When set, passed to Claude CLI via --append-system-prompt
-	ContainerStartupTimeout  time.Duration // Override container startup watchdog timeout (0 = use default)
+	SessionID               string
+	WorkingDir              string
+	RepoPath                string // Main repository path (for containerized worktree support)
+	SessionStarted          bool
+	AllowedTools            []string
+	MCPConfigPath           string
+	ForkFromSessionID       string        // When set, uses --resume <parentID> --fork-session to inherit parent conversation
+	Containerized           bool          // When true, wraps Claude CLI in a container
+	ContainerImage          string        // Container image name (e.g., "ghcr.io/zhubert/erg")
+	ContainerMCPPort        int           // Port the MCP subprocess listens on inside the container (published via -p 0:port)
+	DisableStreamingChunks  bool          // When true, omits --include-partial-messages for less verbose output (useful for agent mode)
+	SystemPrompt            string        // When set, passed to Claude CLI via --append-system-prompt
+	ContainerStartupTimeout time.Duration // Override container startup watchdog timeout (0 = use default)
 }
 
 // ProcessCallbacks defines callbacks that the ProcessManager invokes during operation.
@@ -184,9 +184,9 @@ type ProcessManager struct {
 	wg sync.WaitGroup
 
 	// Container startup watchdog
-	containerReady chan struct{} // closed when MarkSessionStarted is called
-	containerTimeout bool       // set by watchdog before killing
-	containerLogs    string     // captured docker logs on timeout
+	containerReady   chan struct{} // closed when MarkSessionStarted is called
+	containerTimeout bool          // set by watchdog before killing
+	containerLogs    string        // captured docker logs on timeout
 }
 
 // NewProcessManager creates a new ProcessManager with the given configuration and callbacks.

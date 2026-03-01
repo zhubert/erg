@@ -676,9 +676,9 @@ func TestServer_isOwnMCPTool(t *testing.T) {
 			expected:     false,
 		},
 		{
-			name:         "permission tool is not own MCP tool",
-			tool:         "mcp__erg__permission",
-			expected:     false,
+			name:     "permission tool is not own MCP tool",
+			tool:     "mcp__erg__permission",
+			expected: false,
 		},
 		{
 			name:         "unknown mcp tool is not own MCP tool",

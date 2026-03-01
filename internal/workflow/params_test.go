@@ -68,9 +68,9 @@ func TestParamHelper_Bool(t *testing.T) {
 
 func TestParamHelper_Duration(t *testing.T) {
 	p := NewParamHelper(map[string]any{
-		"timeout":  "30m",
-		"invalid":  "bogus",
-		"notastr":  42,
+		"timeout": "30m",
+		"invalid": "bogus",
+		"notastr": 42,
 	})
 
 	if got := p.Duration("timeout", 0); got != 30*time.Minute {

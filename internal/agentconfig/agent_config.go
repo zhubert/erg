@@ -242,13 +242,13 @@ func (c *AgentConfig) AddRepoAllowedTool(_, _ string) bool {
 
 // --- Automation settings ---
 
-func (c *AgentConfig) GetAutoMaxTurns() int       { return c.maxTurns }
-func (c *AgentConfig) GetAutoMaxDurationMin() int  { return c.maxDurationMin }
-func (c *AgentConfig) GetAutoCleanupMerged() bool  { return c.cleanupMerged }
+func (c *AgentConfig) GetAutoMaxTurns() int           { return c.maxTurns }
+func (c *AgentConfig) GetAutoMaxDurationMin() int     { return c.maxDurationMin }
+func (c *AgentConfig) GetAutoCleanupMerged() bool     { return c.cleanupMerged }
 func (c *AgentConfig) GetAutoAddressPRComments() bool { return false }
-func (c *AgentConfig) GetAutoBroadcastPR() bool    { return false }
-func (c *AgentConfig) GetAutoMergeMethod() string  { return c.mergeMethod }
-func (c *AgentConfig) GetIssueMaxConcurrent() int  { return c.maxConcurrent }
+func (c *AgentConfig) GetAutoBroadcastPR() bool       { return false }
+func (c *AgentConfig) GetAutoMergeMethod() string     { return c.mergeMethod }
+func (c *AgentConfig) GetIssueMaxConcurrent() int     { return c.maxConcurrent }
 
 // --- Persistence ---
 

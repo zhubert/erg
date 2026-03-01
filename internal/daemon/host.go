@@ -31,11 +31,11 @@ func (d *Daemon) GetPendingMessage(sessionID string) string {
 func (d *Daemon) SetPendingMessage(sessionID, msg string) {
 	d.sessionMgr.StateManager().GetOrCreate(sessionID).SetPendingMsg(msg)
 }
-func (d *Daemon) MaxTurns() int                          { return d.getMaxTurns() }
-func (d *Daemon) MaxDuration() int                       { return d.getMaxDuration() }
-func (d *Daemon) AutoMerge() bool                        { return d.autoMerge }
-func (d *Daemon) MergeMethod() string                    { return d.getMergeMethod() }
-func (d *Daemon) AutoAddressPRComments() bool            { return d.getAutoAddressPRComments() }
+func (d *Daemon) MaxTurns() int               { return d.getMaxTurns() }
+func (d *Daemon) MaxDuration() int            { return d.getMaxDuration() }
+func (d *Daemon) AutoMerge() bool             { return d.autoMerge }
+func (d *Daemon) MergeMethod() string         { return d.getMergeMethod() }
+func (d *Daemon) AutoAddressPRComments() bool { return d.getAutoAddressPRComments() }
 
 func (d *Daemon) CleanupSession(ctx context.Context, sessionID string) error {
 	d.cleanupSession(ctx, sessionID)

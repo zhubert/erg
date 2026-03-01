@@ -39,7 +39,7 @@ type mockHost struct {
 
 	workItemData        map[string]map[string]any // sessionID -> key -> value
 	commentOnIssueErr   error                     // error to return from CommentOnIssue
-	commentOnIssueCalls []commentOnIssueCall       // recorded calls
+	commentOnIssueCalls []commentOnIssueCall      // recorded calls
 }
 
 type commentOnIssueCall struct {

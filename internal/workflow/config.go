@@ -62,11 +62,11 @@ type State struct {
 // ChoiceRule defines a conditional branch in a choice state.
 // The rule evaluates a variable from step data against a condition.
 type ChoiceRule struct {
-	Variable    string `yaml:"variable"`              // Step data key to evaluate
-	Equals      any    `yaml:"equals,omitempty"`      // Exact equality comparison
-	NotEquals   any    `yaml:"not_equals,omitempty"`   // Inequality comparison
-	IsPresent   *bool  `yaml:"is_present,omitempty"`   // Check if variable exists in data
-	Next        string `yaml:"next"`                  // State to transition to if matched
+	Variable  string `yaml:"variable"`             // Step data key to evaluate
+	Equals    any    `yaml:"equals,omitempty"`     // Exact equality comparison
+	NotEquals any    `yaml:"not_equals,omitempty"` // Inequality comparison
+	IsPresent *bool  `yaml:"is_present,omitempty"` // Check if variable exists in data
+	Next      string `yaml:"next"`                 // State to transition to if matched
 }
 
 // RetryConfig defines retry behavior for a state on failure.
@@ -196,9 +196,9 @@ var ValidActions = map[string]bool{
 	"git.format":            true,
 	"git.rebase":            true,
 	"git.validate_diff":     true,
-	"asana.comment":          true,
+	"asana.comment":         true,
 	"asana.move_to_section": true,
-	"linear.comment":         true,
+	"linear.comment":        true,
 	"linear.move_to_state":  true,
 	"slack.notify":          true,
 	"webhook.post":          true,
@@ -221,9 +221,9 @@ var RetryableActions = map[string]bool{
 	"github.request_review": true,
 	"github.assign_pr":      true,
 	"git.rebase":            true,
-	"asana.comment":          true,
+	"asana.comment":         true,
 	"asana.move_to_section": true,
-	"linear.comment":         true,
+	"linear.comment":        true,
 	"linear.move_to_state":  true,
 }
 
@@ -256,7 +256,7 @@ var ValidEvents = map[string]bool{
 	"gate.approved":      true,
 	"plan.user_replied":  true,
 	"asana.in_section":   true,
-	"linear.in_state":   true,
+	"linear.in_state":    true,
 }
 
 // ValidStateTypes is the set of recognized state types.

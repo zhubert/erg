@@ -1,8 +1,9 @@
 package workflow
 
-import "maps"
-
-import "time"
+import (
+	"maps"
+	"time"
+)
 
 // DefaultWorkflowConfig returns a Config with the default state graph:
 //

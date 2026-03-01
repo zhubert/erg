@@ -10,15 +10,15 @@ import (
 
 // HookContext provides environment variables for hook execution.
 type HookContext struct {
-	RepoPath  string
-	Branch    string
-	SessionID string
-	IssueID   string
+	RepoPath   string
+	Branch     string
+	SessionID  string
+	IssueID    string
 	IssueTitle string
-	IssueURL  string
-	PRURL     string
-	WorkTree  string
-	Provider  string
+	IssueURL   string
+	PRURL      string
+	WorkTree   string
+	Provider   string
 }
 
 // envVars returns the hook context as environment variable pairs.

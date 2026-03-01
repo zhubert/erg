@@ -488,8 +488,8 @@ func TestMerge(t *testing.T) {
 	t.Run("nil partial settings keeps default settings", func(t *testing.T) {
 		defaults := &Config{
 			Workflow: "test",
-			Start:   "s",
-			States:  map[string]*State{"s": {Type: StateTypeSucceed}},
+			Start:    "s",
+			States:   map[string]*State{"s": {Type: StateTypeSucceed}},
 			Settings: &SettingsConfig{
 				BranchPrefix: "default/",
 			},
@@ -518,7 +518,7 @@ func TestMerge(t *testing.T) {
 	t.Run("default retry configs deep copied not shared", func(t *testing.T) {
 		defaults := &Config{
 			Workflow: "test",
-			Start:   "s",
+			Start:    "s",
 			States: map[string]*State{
 				"s": {
 					Type:   StateTypeTask,
@@ -548,7 +548,7 @@ func TestMerge(t *testing.T) {
 	t.Run("default catch configs deep copied not shared", func(t *testing.T) {
 		defaults := &Config{
 			Workflow: "test",
-			Start:   "s",
+			Start:    "s",
 			States: map[string]*State{
 				"s": {
 					Type:   StateTypeTask,
@@ -575,8 +575,8 @@ func TestMerge(t *testing.T) {
 	t.Run("default settings is deep copied not shared", func(t *testing.T) {
 		defaults := &Config{
 			Workflow: "test",
-			Start:   "s",
-			States:  map[string]*State{"s": {Type: StateTypeSucceed}},
+			Start:    "s",
+			States:   map[string]*State{"s": {Type: StateTypeSucceed}},
 			Settings: &SettingsConfig{
 				BranchPrefix: "original/",
 			},

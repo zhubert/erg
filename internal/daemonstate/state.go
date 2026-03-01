@@ -71,9 +71,9 @@ type DaemonState struct {
 	StartedAt  time.Time            `json:"started_at"`
 
 	// Spend tracking — accumulated since daemon last started (reset on restart)
-	TotalCostUSD       float64 `json:"total_cost_usd"`
-	TotalOutputTokens  int     `json:"total_output_tokens"`
-	TotalInputTokens   int     `json:"total_input_tokens"`
+	TotalCostUSD      float64 `json:"total_cost_usd"`
+	TotalOutputTokens int     `json:"total_output_tokens"`
+	TotalInputTokens  int     `json:"total_input_tokens"`
 
 	mu       sync.RWMutex
 	filePath string

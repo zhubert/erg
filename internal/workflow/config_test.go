@@ -362,9 +362,9 @@ source:
 
 func TestDefaultRetryForAction(t *testing.T) {
 	tests := []struct {
-		name       string
-		action     string
-		wantRetry  bool
+		name      string
+		action    string
+		wantRetry bool
 	}{
 		// Network-bound actions should get default retry
 		{"github.create_pr", "github.create_pr", true},

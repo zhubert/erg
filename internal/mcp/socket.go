@@ -70,8 +70,8 @@ type SocketMessage struct {
 	GetReviewCommentsResp *GetReviewCommentsResponse `json:"getReviewCommentsResp,omitempty"`
 	CommentIssueReq       *CommentIssueRequest       `json:"commentIssueReq,omitempty"`
 	CommentIssueResp      *CommentIssueResponse      `json:"commentIssueResp,omitempty"`
-	SubmitReviewReq       *SubmitReviewRequest        `json:"submitReviewReq,omitempty"`
-	SubmitReviewResp      *SubmitReviewResponse       `json:"submitReviewResp,omitempty"`
+	SubmitReviewReq       *SubmitReviewRequest       `json:"submitReviewReq,omitempty"`
+	SubmitReviewResp      *SubmitReviewResponse      `json:"submitReviewResp,omitempty"`
 }
 
 // SocketServer listens for permission requests from MCP server subprocesses

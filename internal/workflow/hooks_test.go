@@ -38,8 +38,8 @@ func TestRunHooks_FailureDoesNotBlock(t *testing.T) {
 	outFile := filepath.Join(dir, "second.txt")
 
 	hooks := []HookConfig{
-		{Run: "exit 1"},                      // This fails
-		{Run: "echo ok > " + outFile},         // This should still run
+		{Run: "exit 1"},               // This fails
+		{Run: "echo ok > " + outFile}, // This should still run
 	}
 
 	hookCtx := HookContext{RepoPath: dir}
@@ -181,8 +181,8 @@ func TestRunBeforeHooks_FailureBlocks(t *testing.T) {
 	outFile := filepath.Join(dir, "should_not_exist.txt")
 
 	hooks := []HookConfig{
-		{Run: "exit 1"},                             // This fails
-		{Run: "echo nope > " + outFile},              // This should NOT run
+		{Run: "exit 1"},                 // This fails
+		{Run: "echo nope > " + outFile}, // This should NOT run
 	}
 
 	hookCtx := HookContext{RepoPath: dir}

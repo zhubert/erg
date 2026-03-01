@@ -25,20 +25,20 @@ type Session struct {
 	CreatedAt  time.Time `json:"created_at"`
 	Started    bool      `json:"started,omitempty"` // Whether session has been started with Claude CLI
 
-	Merged           bool      `json:"merged,omitempty"`             // Whether session has been merged to main
-	PRCreated        bool      `json:"pr_created,omitempty"`         // Whether a PR has been created for this session
-	PRMerged         bool      `json:"pr_merged,omitempty"`          // Whether the PR was merged on GitHub
-	PRClosed         bool      `json:"pr_closed,omitempty"`          // Whether the PR was closed without merging on GitHub
-	ParentID         string    `json:"parent_id,omitempty"`          // ID of parent session if this is a fork
-	MergedToParent   bool      `json:"merged_to_parent,omitempty"`   // Whether session has been merged back to its parent (locks the session)
-	IssueNumber      int       `json:"issue_number,omitempty"`       // Deprecated: use IssueRef instead. Kept for backwards compatibility.
-	IssueRef         *IssueRef `json:"issue_ref,omitempty"`          // Generic issue/task reference (GitHub, Asana, etc.)
-	BroadcastGroupID string    `json:"broadcast_group_id,omitempty"` // Links sessions created from the same broadcast
-	Containerized    bool      `json:"containerized,omitempty"`      // Whether this session runs inside a container
-	PRCommentCount            int       `json:"pr_comment_count,omitempty"`             // Last-seen PR comment count (comments + reviews)
-	PRCommentsAddressedCount  int       `json:"pr_comments_addressed_count,omitempty"`  // Comment count last addressed by Claude for merge
-	Autonomous       bool      `json:"autonomous,omitempty"`         // Whether this session runs in autonomous mode (no user prompts)
-	DaemonManaged    bool      `json:"daemon_managed,omitempty"`     // Whether this session is managed by the daemon (suppresses host tools)
+	Merged                   bool      `json:"merged,omitempty"`                      // Whether session has been merged to main
+	PRCreated                bool      `json:"pr_created,omitempty"`                  // Whether a PR has been created for this session
+	PRMerged                 bool      `json:"pr_merged,omitempty"`                   // Whether the PR was merged on GitHub
+	PRClosed                 bool      `json:"pr_closed,omitempty"`                   // Whether the PR was closed without merging on GitHub
+	ParentID                 string    `json:"parent_id,omitempty"`                   // ID of parent session if this is a fork
+	MergedToParent           bool      `json:"merged_to_parent,omitempty"`            // Whether session has been merged back to its parent (locks the session)
+	IssueNumber              int       `json:"issue_number,omitempty"`                // Deprecated: use IssueRef instead. Kept for backwards compatibility.
+	IssueRef                 *IssueRef `json:"issue_ref,omitempty"`                   // Generic issue/task reference (GitHub, Asana, etc.)
+	BroadcastGroupID         string    `json:"broadcast_group_id,omitempty"`          // Links sessions created from the same broadcast
+	Containerized            bool      `json:"containerized,omitempty"`               // Whether this session runs inside a container
+	PRCommentCount           int       `json:"pr_comment_count,omitempty"`            // Last-seen PR comment count (comments + reviews)
+	PRCommentsAddressedCount int       `json:"pr_comments_addressed_count,omitempty"` // Comment count last addressed by Claude for merge
+	Autonomous               bool      `json:"autonomous,omitempty"`                  // Whether this session runs in autonomous mode (no user prompts)
+	DaemonManaged            bool      `json:"daemon_managed,omitempty"`              // Whether this session is managed by the daemon (suppresses host tools)
 }
 
 // GetIssueRef returns the IssueRef for this session, converting from legacy IssueNumber if needed.
