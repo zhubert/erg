@@ -251,8 +251,31 @@ func TestAgentConfig_IssueProviderCompat(t *testing.T) {
 	c := NewAgentConfig()
 
 	if c.HasAsanaProject("/repo") {
-		t.Error("HasAsanaProject should return false")
+		t.Error("HasAsanaProject should return false before SetAsanaProject")
 	}
+	if c.GetAsanaProject("/repo") != "" {
+		t.Error("GetAsanaProject should return empty string before SetAsanaProject")
+	}
+
+	c.SetAsanaProject("/repo", "proj-gid-123")
+	if !c.HasAsanaProject("/repo") {
+		t.Error("HasAsanaProject should return true after SetAsanaProject")
+	}
+	if got := c.GetAsanaProject("/repo"); got != "proj-gid-123" {
+		t.Errorf("GetAsanaProject = %q, want %q", got, "proj-gid-123")
+	}
+
+	// Different repo should still return empty
+	if c.GetAsanaProject("/other") != "" {
+		t.Error("GetAsanaProject should return empty for unconfigured repo")
+	}
+
+	// Clear with empty string
+	c.SetAsanaProject("/repo", "")
+	if c.HasAsanaProject("/repo") {
+		t.Error("HasAsanaProject should return false after clearing with empty string")
+	}
+
 	if c.HasLinearTeam("/repo") {
 		t.Error("HasLinearTeam should return false")
 	}

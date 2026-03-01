@@ -31,6 +31,8 @@ type AgentConfig struct {
 	maxDurationMin int
 	maxConcurrent  int
 	mergeMethod    string
+
+	asanaProjects map[string]string // repo path → Asana project GID
 }
 
 // Compile-time interface satisfaction check.
@@ -254,14 +256,31 @@ func (c *AgentConfig) Save() error { return nil }
 
 // --- Issue provider compatibility ---
 
-// HasAsanaProject returns false; Asana projects are not configured in agent mode.
-func (c *AgentConfig) HasAsanaProject(_ string) bool { return false }
+// HasAsanaProject returns true if an Asana project GID is configured for the given repo.
+func (c *AgentConfig) HasAsanaProject(repoPath string) bool {
+	return c.GetAsanaProject(repoPath) != ""
+}
 
-// GetAsanaProject returns empty string; Asana projects are not configured in agent mode.
-func (c *AgentConfig) GetAsanaProject(_ string) string { return "" }
+// GetAsanaProject returns the Asana project GID for the given repo path.
+func (c *AgentConfig) GetAsanaProject(repoPath string) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.asanaProjects[repoPath]
+}
 
-// SetAsanaProject is a no-op; Asana projects are not configured in agent mode.
-func (c *AgentConfig) SetAsanaProject(_, _ string) {}
+// SetAsanaProject stores the Asana project GID for the given repo path.
+func (c *AgentConfig) SetAsanaProject(repoPath, projectGID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.asanaProjects == nil {
+		c.asanaProjects = make(map[string]string)
+	}
+	if projectGID == "" {
+		delete(c.asanaProjects, repoPath)
+	} else {
+		c.asanaProjects[repoPath] = projectGID
+	}
+}
 
 // HasLinearTeam returns false; Linear teams are not configured in agent mode.
 func (c *AgentConfig) HasLinearTeam(_ string) bool { return false }

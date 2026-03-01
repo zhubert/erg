@@ -434,6 +434,9 @@ func runDaemonWithLogger(ctx context.Context, daemonLogger *slog.Logger, preacqu
 		}
 	}
 	cfg := agentconfig.NewAgentConfig(cfgOpts...)
+	if wfCfg.Source.Provider == "asana" && wfCfg.Source.Filter.Project != "" {
+		cfg.SetAsanaProject(agentRepo, wfCfg.Source.Filter.Project)
+	}
 
 	// Initialize issue providers
 	githubProvider := issues.NewGitHubProvider(gitSvc)
