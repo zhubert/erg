@@ -1393,6 +1393,7 @@ func TestBuildContainerRunArgs_DefaultImage(t *testing.T) {
 }
 
 func TestBuildContainerRunArgs_ReportsAuthSource(t *testing.T) {
+
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 
@@ -1427,6 +1428,7 @@ func TestBuildContainerRunArgs_ReportsAuthSource(t *testing.T) {
 }
 
 func TestBuildContainerRunArgs_ErrorsOnMissingHome(t *testing.T) {
+
 	t.Setenv("HOME", "")
 	// Some platforms also check USER; clear everything that os.UserHomeDir checks
 	t.Setenv("USERPROFILE", "")

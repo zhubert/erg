@@ -10,18 +10,38 @@
 //  1. If ~/.erg/ exists → use legacy flat layout (all paths under ~/.erg/)
 //  2. If XDG env vars are set → use XDG layout with proper separation
 //  3. Fresh install, no XDG vars → default to ~/.erg/
+//
+// Test safety: when running under `go test`, if no test has overridden HOME
+// or XDG env vars, resolve() automatically redirects to a temp directory.
+// This prevents tests from accidentally writing to the real ~/.erg/ directory.
+// Tests that explicitly set HOME (via t.Setenv) and call Reset() get normal
+// resolution against their overridden paths.
 package paths
 
 import (
 	"os"
 	"path/filepath"
 	"sync"
+	"testing"
 )
 
 var (
 	mu       sync.Mutex
 	resolved *resolvedPaths
+
+	// origHome is captured at init time to detect whether a test has
+	// overridden HOME. If HOME still equals origHome during a test,
+	// resolve() auto-redirects to a temp dir.
+	origHome string
+
+	// testFallback is lazily created once per test binary for auto-redirect.
+	testFallbackOnce sync.Once
+	testFallbackDir  string
 )
+
+func init() {
+	origHome, _ = os.UserHomeDir()
+}
 
 type resolvedPaths struct {
 	configDir string
@@ -44,6 +64,42 @@ func resolve() (*resolvedPaths, error) {
 		return nil, err
 	}
 
+	// Safety net: when running under `go test`, if HOME hasn't been
+	// overridden by the test, automatically redirect to a temp dir
+	// to prevent accidental writes to the real ~/.erg/ directory.
+	if testing.Testing() && home == origHome {
+		return resolveTestFallback()
+	}
+
+	return resolveNormal(home)
+}
+
+// resolveTestFallback returns paths under an auto-created temp directory.
+// Called when running under go test without explicit path isolation.
+// Must be called with mu held.
+func resolveTestFallback() (*resolvedPaths, error) {
+	testFallbackOnce.Do(func() {
+		testFallbackDir, _ = os.MkdirTemp("", "erg-test-paths-*")
+	})
+	if testFallbackDir == "" {
+		// Fall back to normal resolution if temp dir creation failed
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		return resolveNormal(home)
+	}
+	resolved = &resolvedPaths{
+		configDir: filepath.Join(testFallbackDir, "config", "erg"),
+		dataDir:   filepath.Join(testFallbackDir, "data", "erg"),
+		stateDir:  filepath.Join(testFallbackDir, "state", "erg"),
+	}
+	return resolved, nil
+}
+
+// resolveNormal applies the standard resolution logic.
+// Must be called with mu held.
+func resolveNormal(home string) (*resolvedPaths, error) {
 	legacyDir := filepath.Join(home, ".erg")
 
 	// 1. If ~/.erg/ exists, use legacy layout
