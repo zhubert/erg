@@ -202,6 +202,35 @@ func Reset() {
 	levelVar = new(slog.LevelVar)
 }
 
+// FindLogFiles returns the count of log files in the logs directory
+// (erg.log + mcp-*.log + stream-*.log) without deleting them.
+func FindLogFiles() (int, error) {
+	defaultPath, err := DefaultLogPath()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get default log path: %w", err)
+	}
+	dir := filepath.Dir(defaultPath)
+	count := 0
+
+	if _, err := os.Stat(defaultPath); err == nil {
+		count++
+	}
+
+	mcpLogs, err := filepath.Glob(filepath.Join(dir, "mcp-*.log"))
+	if err != nil {
+		return count, err
+	}
+	count += len(mcpLogs)
+
+	streamLogs, err := filepath.Glob(filepath.Join(dir, "stream-*.log"))
+	if err != nil {
+		return count, err
+	}
+	count += len(streamLogs)
+
+	return count, nil
+}
+
 // ClearLogs removes all erg log files from ~/.erg/logs
 func ClearLogs() (int, error) {
 	count := 0

@@ -6,20 +6,23 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/zhubert/erg/internal/paths"
-
+	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/daemonstate"
+	"github.com/zhubert/erg/internal/logger"
+	"github.com/zhubert/erg/internal/paths"
 )
 
 var agentCleanSkipConfirm bool
 
 var agentCleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Remove agent daemon state, lock files, and worktrees",
-	Long: `Clears daemon state (work item tracking), removes lock files, and removes worktrees.
+	Short: "Remove agent daemon state, lock files, worktrees, auth files, and logs",
+	Long: `Clears daemon state (work item tracking), removes lock files, worktrees,
+container auth files (erg-auth-*), and log files (erg.log, mcp-*.log, stream-*.log).
 
 This is useful when the daemon state becomes stale or corrupted,
-or when a lock file is left behind after an unclean shutdown.
+when a lock file is left behind after an unclean shutdown,
+or when orphaned auth/log files accumulate over time.
 
 It will prompt for confirmation before proceeding unless the --yes flag is used.`,
 	RunE: runAgentClean,
@@ -60,8 +63,16 @@ func runAgentCleanWithReader(input io.Reader) error {
 		fmt.Fprintf(os.Stderr, "Warning: error finding lock files: %v\n", err)
 	}
 	wtEntries := worktreeEntries()
+	authFiles, err := claude.FindAuthFiles()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error finding auth files: %v\n", err)
+	}
+	logFileCount, err := logger.FindLogFiles()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error finding log files: %v\n", err)
+	}
 
-	if !stateExists && len(lockFiles) == 0 && len(wtEntries) == 0 {
+	if !stateExists && len(lockFiles) == 0 && len(wtEntries) == 0 && len(authFiles) == 0 && logFileCount == 0 {
 		fmt.Println("Nothing to clean.")
 		return nil
 	}
@@ -82,6 +93,12 @@ func runAgentCleanWithReader(input io.Reader) error {
 	}
 	if len(wtEntries) > 0 {
 		fmt.Printf("  - %d worktree(s)\n", len(wtEntries))
+	}
+	if len(authFiles) > 0 {
+		fmt.Printf("  - %d container auth file(s)\n", len(authFiles))
+	}
+	if logFileCount > 0 {
+		fmt.Printf("  - %d log file(s)\n", logFileCount)
 	}
 
 	// Confirm
@@ -119,6 +136,18 @@ func runAgentCleanWithReader(input io.Reader) error {
 		}
 	}
 
+	// Clean auth files
+	authRemoved, err := claude.ClearAuthFiles()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error removing auth files: %v\n", err)
+	}
+
+	// Clean log files
+	logsRemoved, err := logger.ClearLogs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: error removing log files: %v\n", err)
+	}
+
 	// Print results
 	fmt.Println()
 	fmt.Println("Cleaned:")
@@ -130,6 +159,12 @@ func runAgentCleanWithReader(input io.Reader) error {
 	}
 	if worktreesRemoved > 0 {
 		fmt.Printf("  - %d worktree(s) removed\n", worktreesRemoved)
+	}
+	if authRemoved > 0 {
+		fmt.Printf("  - %d auth file(s) removed\n", authRemoved)
+	}
+	if logsRemoved > 0 {
+		fmt.Printf("  - %d log file(s) removed\n", logsRemoved)
 	}
 
 	return nil

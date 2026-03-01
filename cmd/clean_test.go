@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zhubert/erg/internal/logger"
 	"github.com/zhubert/erg/internal/paths"
 )
 
@@ -203,5 +204,54 @@ func TestRunAgentClean_OnlyLocks(t *testing.T) {
 	locks, _ := filepath.Glob(filepath.Join(stateDir, "daemon-*.lock"))
 	if len(locks) != 0 {
 		t.Errorf("expected 0 lock files, got %d", len(locks))
+	}
+}
+
+func TestRunAgentClean_RemovesAuthFilesAndLogs(t *testing.T) {
+	dataDir, stateDir := setupAgentCleanTest(t)
+
+	// Reset logger so it picks up the new paths
+	logger.Reset()
+	t.Cleanup(func() { logger.Reset() })
+
+	// dataDir is tmpDir/data/erg, so go up two levels to get tmpDir
+	tmpDir := filepath.Dir(filepath.Dir(dataDir))
+	configDir := filepath.Join(tmpDir, "config", "erg")
+	os.MkdirAll(configDir, 0o755)
+
+	// Create auth files in config dir
+	for _, name := range []string{"erg-auth-sess1", "erg-auth-sess2", "erg-auth-sess3"} {
+		if err := os.WriteFile(filepath.Join(configDir, name), []byte("KEY=val"), 0o600); err != nil {
+			t.Fatalf("failed to create auth file: %v", err)
+		}
+	}
+
+	// Create log files in state dir (logs subdir)
+	logsDir := filepath.Join(stateDir, "logs")
+	os.MkdirAll(logsDir, 0o755)
+	for _, name := range []string{"erg.log", "mcp-aaa.log", "mcp-bbb.log", "stream-ccc.log"} {
+		if err := os.WriteFile(filepath.Join(logsDir, name), []byte("log data"), 0o644); err != nil {
+			t.Fatalf("failed to create log file: %v", err)
+		}
+	}
+
+	agentCleanSkipConfirm = true
+	defer func() { agentCleanSkipConfirm = false }()
+
+	err := runAgentCleanWithReader(strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify auth files removed
+	authFiles, _ := filepath.Glob(filepath.Join(configDir, "erg-auth-*"))
+	if len(authFiles) != 0 {
+		t.Errorf("expected 0 auth files, got %d", len(authFiles))
+	}
+
+	// Verify log files removed
+	logFiles, _ := filepath.Glob(filepath.Join(logsDir, "*.log"))
+	if len(logFiles) != 0 {
+		t.Errorf("expected 0 log files, got %d", len(logFiles))
 	}
 }

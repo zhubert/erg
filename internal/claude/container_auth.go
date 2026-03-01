@@ -375,6 +375,33 @@ func gitConfigEnvVars(name, email string) []string {
 	return envs
 }
 
+// FindAuthFiles returns the paths of all erg-auth-* files in the config directory.
+func FindAuthFiles() ([]string, error) {
+	dir := containerAuthDir()
+	if dir == "" {
+		return nil, nil
+	}
+	return filepath.Glob(filepath.Join(dir, "erg-auth-*"))
+}
+
+// ClearAuthFiles removes all erg-auth-* files from the config directory.
+// Returns the number of files removed.
+func ClearAuthFiles() (int, error) {
+	files, err := FindAuthFiles()
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, f := range files {
+		if err := os.Remove(f); err == nil {
+			count++
+		} else if !os.IsNotExist(err) {
+			return count, err
+		}
+	}
+	return count, nil
+}
+
 // readKeychainPassword reads a password from the macOS keychain.
 // Returns empty string if not found, on error, or on non-macOS platforms.
 func readKeychainPassword(service string) string {
