@@ -1233,6 +1233,8 @@
             <a href="#events-ci" class="sidebar-sublink">ci</a>
             <a href="#events-plan" class="sidebar-sublink">plan</a>
             <a href="#events-asana" class="sidebar-sublink">asana</a>
+            <a href="#events-linear" class="sidebar-sublink">linear</a>
+            <a href="#events-gate" class="sidebar-sublink">gate</a>
           </li>
           <li class="sidebar-section">
             <span class="sidebar-section-title">Examples</span>
@@ -1806,9 +1808,12 @@
           completion and are fire-and-forget.
         </p>
         <p>
-          Hooks receive environment variables including
+          Hooks receive the following environment variables:
           <code>$ERG_BRANCH</code>, <code>$ERG_PR_URL</code>,
-          <code>$ERG_ISSUE_URL</code>, and more.
+          <code>$ERG_ISSUE_URL</code>, <code>$ERG_REPO_PATH</code>,
+          <code>$ERG_SESSION_ID</code>, <code>$ERG_ISSUE_ID</code>,
+          <code>$ERG_ISSUE_TITLE</code>, <code>$ERG_WORKTREE</code>, and
+          <code>$ERG_PROVIDER</code>.
         </p>
 
         <!-- CLI reference -->
@@ -3970,6 +3975,56 @@ https://github.com/your-org/your-repo/pull/99</pre
           </div>
         </div>
 
+        <div class="action-ref">
+          <div class="action-header">
+            <span class="action-title">ci.wait_for_checks</span>
+          </div>
+          <p class="action-desc">
+            Fires when all CI checks on the PR have finished running
+            (regardless of pass/fail). Unlike <code>ci.complete</code>, this
+            event always fires once checks finish and does not support
+            <code>on_failure</code> routing &mdash; use a downstream
+            <code>choice</code> state to branch on the result.
+          </p>
+          <div class="param-section">
+            <div class="param-section-title">Params</div>
+            <p class="param-none">None.</p>
+          </div>
+          <div class="param-section">
+            <div class="param-section-title">Output data</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>ci_status</td>
+                  <td>string</td>
+                  <td>
+                    Overall status: <code>passing</code>,
+                    <code>failing</code>, or <code>none</code> (no checks
+                    configured).
+                  </td>
+                </tr>
+                <tr>
+                  <td>passed_checks</td>
+                  <td>[]string</td>
+                  <td>Names of checks that passed.</td>
+                </tr>
+                <tr>
+                  <td>failed_checks</td>
+                  <td>[]string</td>
+                  <td>Names of checks that failed.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <h3 id="events-plan">Plan events</h3>
 
         <div class="action-ref">
@@ -4168,6 +4223,100 @@ https://github.com/your-org/your-repo/pull/99</pre
                   <td>state</td>
                   <td>string</td>
                   <td>The state name as specified in the workflow params.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <h3 id="events-gate">Gate events</h3>
+
+        <div class="action-ref">
+          <div class="action-header">
+            <span class="action-title">gate.approved</span>
+          </div>
+          <p class="action-desc">
+            A general-purpose human approval gate. Pauses the workflow until a
+            human provides an explicit approval signal on the issue. Supports
+            two trigger modes: check for a label on the issue, or match a
+            comment against a regex pattern. Works with GitHub, Asana, and
+            Linear providers.
+          </p>
+          <div class="param-section">
+            <div class="param-section-title">Params</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>trigger</td>
+                  <td>string</td>
+                  <td>label_added</td>
+                  <td>
+                    Trigger mode: <code>label_added</code> &mdash; fires when
+                    the configured label is present on the issue;
+                    <code>comment_match</code> &mdash; fires when a comment
+                    matches the configured regex pattern.
+                  </td>
+                </tr>
+                <tr>
+                  <td>label</td>
+                  <td>string</td>
+                  <td>approved</td>
+                  <td>
+                    Label name to check for. Only used when
+                    <code>trigger</code> is <code>label_added</code>.
+                  </td>
+                </tr>
+                <tr>
+                  <td>comment_pattern</td>
+                  <td>string</td>
+                  <td><em>none</em></td>
+                  <td>
+                    Regex pattern to match against comment bodies. Required
+                    when <code>trigger</code> is <code>comment_match</code>.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <div class="param-section-title">Output data</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>gate_approved</td>
+                  <td>bool</td>
+                  <td>Set to <code>true</code> when the gate fires.</td>
+                </tr>
+                <tr>
+                  <td>gate_trigger</td>
+                  <td>string</td>
+                  <td>
+                    The trigger mode that fired: <code>label_added</code> or
+                    <code>comment_match</code>.
+                  </td>
+                </tr>
+                <tr>
+                  <td>gate_label</td>
+                  <td>string</td>
+                  <td>
+                    The label name (only when <code>trigger</code> is
+                    <code>label_added</code>).
+                  </td>
                 </tr>
               </tbody>
             </table>
