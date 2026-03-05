@@ -13,9 +13,9 @@ func TestLoadFile(t *testing.T) {
 		content := `
 max_concurrent: 5
 repos:
-  - repo: owner/repo-a
+  - path: owner/repo-a
     workflow: /path/to/a.yaml
-  - repo: owner/repo-b
+  - path: owner/repo-b
 `
 		os.WriteFile(fp, []byte(content), 0o644)
 
@@ -30,8 +30,8 @@ repos:
 		if len(m.Repos) != 2 {
 			t.Fatalf("expected 2 repos, got %d", len(m.Repos))
 		}
-		if m.Repos[0].Repo != "owner/repo-a" {
-			t.Errorf("expected owner/repo-a, got %s", m.Repos[0].Repo)
+		if m.Repos[0].Path != "owner/repo-a" {
+			t.Errorf("expected owner/repo-a, got %s", m.Repos[0].Path)
 		}
 		if m.Repos[0].Workflow != "/path/to/a.yaml" {
 			t.Errorf("expected /path/to/a.yaml, got %s", m.Repos[0].Workflow)
@@ -52,14 +52,14 @@ repos:
 		}
 	})
 
-	t.Run("missing repo field", func(t *testing.T) {
+	t.Run("missing path field", func(t *testing.T) {
 		dir := t.TempDir()
 		fp := filepath.Join(dir, "manifest.yaml")
 		os.WriteFile(fp, []byte("repos:\n  - workflow: foo.yaml\n"), 0o644)
 
 		_, err := LoadFile(fp)
 		if err == nil {
-			t.Fatal("expected error for missing repo")
+			t.Fatal("expected error for missing path")
 		}
 	})
 
@@ -85,12 +85,12 @@ repos:
 func TestDaemonID(t *testing.T) {
 	t.Run("stable across order", func(t *testing.T) {
 		m1 := &Manifest{Repos: []RepoEntry{
-			{Repo: "owner/a"},
-			{Repo: "owner/b"},
+			{Path: "owner/a"},
+			{Path: "owner/b"},
 		}}
 		m2 := &Manifest{Repos: []RepoEntry{
-			{Repo: "owner/b"},
-			{Repo: "owner/a"},
+			{Path: "owner/b"},
+			{Path: "owner/a"},
 		}}
 		if m1.DaemonID() != m2.DaemonID() {
 			t.Errorf("DaemonID should be order-independent: %s vs %s", m1.DaemonID(), m2.DaemonID())
@@ -98,15 +98,15 @@ func TestDaemonID(t *testing.T) {
 	})
 
 	t.Run("different repos different ID", func(t *testing.T) {
-		m1 := &Manifest{Repos: []RepoEntry{{Repo: "owner/a"}}}
-		m2 := &Manifest{Repos: []RepoEntry{{Repo: "owner/b"}}}
+		m1 := &Manifest{Repos: []RepoEntry{{Path: "owner/a"}}}
+		m2 := &Manifest{Repos: []RepoEntry{{Path: "owner/b"}}}
 		if m1.DaemonID() == m2.DaemonID() {
 			t.Error("different repos should produce different DaemonIDs")
 		}
 	})
 
 	t.Run("has multi prefix", func(t *testing.T) {
-		m := &Manifest{Repos: []RepoEntry{{Repo: "owner/a"}}}
+		m := &Manifest{Repos: []RepoEntry{{Path: "owner/a"}}}
 		id := m.DaemonID()
 		if len(id) < 6 || id[:6] != "multi-" {
 			t.Errorf("expected multi- prefix, got %s", id)
@@ -116,8 +116,8 @@ func TestDaemonID(t *testing.T) {
 
 func TestRepoPaths(t *testing.T) {
 	m := &Manifest{Repos: []RepoEntry{
-		{Repo: "owner/a"},
-		{Repo: "owner/b"},
+		{Path: "owner/a"},
+		{Path: "owner/b"},
 	}}
 	paths := m.RepoPaths()
 	if len(paths) != 2 || paths[0] != "owner/a" || paths[1] != "owner/b" {
@@ -127,8 +127,8 @@ func TestRepoPaths(t *testing.T) {
 
 func TestWorkflowFileFor(t *testing.T) {
 	m := &Manifest{Repos: []RepoEntry{
-		{Repo: "owner/a", Workflow: "/path/a.yaml"},
-		{Repo: "owner/b"},
+		{Path: "owner/a", Workflow: "/path/a.yaml"},
+		{Path: "owner/b"},
 	}}
 	if got := m.WorkflowFileFor("owner/a"); got != "/path/a.yaml" {
 		t.Errorf("expected /path/a.yaml, got %s", got)

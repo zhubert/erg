@@ -121,19 +121,19 @@ func daemonize(cmd *cobra.Command, args []string) error {
 
 		// Build container images for each repo
 		for _, entry := range m.Repos {
-			wfCfg, err := workflow.LoadAndMergeWithFile(entry.Repo, entry.Workflow)
+			wfCfg, err := workflow.LoadAndMergeWithFile(entry.Path, entry.Workflow)
 			if err != nil {
-				return fmt.Errorf("error loading workflow config for %s: %w", entry.Repo, err)
+				return fmt.Errorf("error loading workflow config for %s: %w", entry.Path, err)
 			}
 			if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-				detected := container.Detect(ctx, entry.Repo)
-				buildLogger.Info("auto-detected languages", "languages", detected, "repo", entry.Repo)
+				detected := container.Detect(ctx, entry.Path)
+				buildLogger.Info("auto-detected languages", "languages", detected, "repo", entry.Path)
 				image, built, err := container.EnsureImage(ctx, detected, version, buildLogger)
 				if err != nil {
-					return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Repo, err)
+					return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Path, err)
 				}
 				if built {
-					fmt.Printf("Container image built for %s.\n", entry.Repo)
+					fmt.Printf("Container image built for %s.\n", entry.Path)
 				}
 				if wfCfg.Settings == nil {
 					wfCfg.Settings = &workflow.SettingsConfig{}
@@ -141,7 +141,7 @@ func daemonize(cmd *cobra.Command, args []string) error {
 				wfCfg.Settings.ContainerImage = image
 			}
 			if err := validateWorkflowConfig(wfCfg); err != nil {
-				return fmt.Errorf("repo %s: %w", entry.Repo, err)
+				return fmt.Errorf("repo %s: %w", entry.Path, err)
 			}
 		}
 	} else {
@@ -396,16 +396,16 @@ func runForeground(_ *cobra.Command, _ []string) error {
 		statusKey = m.DaemonID()
 
 		for _, entry := range m.Repos {
-			wfCfg, err := workflow.LoadAndMergeWithFile(entry.Repo, entry.Workflow)
+			wfCfg, err := workflow.LoadAndMergeWithFile(entry.Path, entry.Workflow)
 			if err != nil {
-				return fmt.Errorf("error loading workflow config for %s: %w", entry.Repo, err)
+				return fmt.Errorf("error loading workflow config for %s: %w", entry.Path, err)
 			}
 			if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-				detected := container.Detect(ctx, entry.Repo)
-				buildLogger.Info("auto-detected languages", "languages", detected, "repo", entry.Repo)
+				detected := container.Detect(ctx, entry.Path)
+				buildLogger.Info("auto-detected languages", "languages", detected, "repo", entry.Path)
 				image, _, err := container.EnsureImage(ctx, detected, version, buildLogger)
 				if err != nil {
-					return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Repo, err)
+					return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Path, err)
 				}
 				if wfCfg.Settings == nil {
 					wfCfg.Settings = &workflow.SettingsConfig{}
@@ -413,7 +413,7 @@ func runForeground(_ *cobra.Command, _ []string) error {
 				wfCfg.Settings.ContainerImage = image
 			}
 			if err := validateWorkflowConfig(wfCfg); err != nil {
-				return fmt.Errorf("repo %s: %w", entry.Repo, err)
+				return fmt.Errorf("repo %s: %w", entry.Path, err)
 			}
 		}
 	} else {
@@ -515,19 +515,19 @@ func runMultiRepoDaemon(ctx context.Context, daemonLogger *slog.Logger, preacqui
 	repoWorkflowFiles := make(map[string]string)
 	for _, entry := range m.Repos {
 		wfFile := entry.Workflow
-		repoWorkflowFiles[entry.Repo] = wfFile
+		repoWorkflowFiles[entry.Path] = wfFile
 
 		// Load workflow config to check for container image
-		wfCfg, err := workflow.LoadAndMergeWithFile(entry.Repo, wfFile)
+		wfCfg, err := workflow.LoadAndMergeWithFile(entry.Path, wfFile)
 		if err != nil {
-			return fmt.Errorf("error loading workflow config for %s: %w", entry.Repo, err)
+			return fmt.Errorf("error loading workflow config for %s: %w", entry.Path, err)
 		}
 
 		if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-			detected := container.Detect(ctx, entry.Repo)
+			detected := container.Detect(ctx, entry.Path)
 			image, _, err := container.EnsureImage(ctx, detected, version, daemonLogger)
 			if err != nil {
-				return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Repo, err)
+				return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Path, err)
 			}
 			if wfCfg.Settings == nil {
 				wfCfg.Settings = &workflow.SettingsConfig{}
@@ -536,7 +536,7 @@ func runMultiRepoDaemon(ctx context.Context, daemonLogger *slog.Logger, preacqui
 		}
 
 		if err := validateWorkflowConfig(wfCfg); err != nil {
-			return fmt.Errorf("repo %s: %w", entry.Repo, err)
+			return fmt.Errorf("repo %s: %w", entry.Path, err)
 		}
 	}
 
@@ -550,15 +550,15 @@ func runMultiRepoDaemon(ctx context.Context, daemonLogger *slog.Logger, preacqui
 
 	// Sync issue provider settings from each repo's workflow config
 	for _, entry := range m.Repos {
-		wfCfg, _ := workflow.LoadAndMergeWithFile(entry.Repo, entry.Workflow)
+		wfCfg, _ := workflow.LoadAndMergeWithFile(entry.Path, entry.Workflow)
 		if wfCfg == nil {
 			continue
 		}
 		if wfCfg.Source.Provider == "asana" && wfCfg.Source.Filter.Project != "" {
-			cfg.SetAsanaProject(entry.Repo, wfCfg.Source.Filter.Project)
+			cfg.SetAsanaProject(entry.Path, wfCfg.Source.Filter.Project)
 		}
 		if wfCfg.Source.Provider == "linear" && wfCfg.Source.Filter.Team != "" {
-			cfg.SetLinearTeam(entry.Repo, wfCfg.Source.Filter.Team)
+			cfg.SetLinearTeam(entry.Path, wfCfg.Source.Filter.Team)
 		}
 	}
 

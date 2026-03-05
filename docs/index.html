@@ -1904,10 +1904,10 @@
           <pre><span class="ck">max_concurrent:</span> <span class="cv">5</span>          <span class="cc"># global slot pool shared across all repos</span>
 
 <span class="ck">repos:</span>
-  - <span class="ck">repo:</span> <span class="cv">acme/backend</span>       <span class="cc"># uses &lt;repo&gt;/.erg/workflow.yaml</span>
-  - <span class="ck">repo:</span> <span class="cv">acme/frontend</span>
+  - <span class="ck">path:</span> <span class="cv">/home/user/backend</span>       <span class="cc"># uses &lt;path&gt;/.erg/workflow.yaml</span>
+  - <span class="ck">path:</span> <span class="cv">/home/user/frontend</span>
     <span class="ck">workflow:</span> <span class="cv">/path/to/frontend-workflow.yaml</span>
-  - <span class="ck">repo:</span> <span class="cv">/home/user/local-project</span></pre>
+  - <span class="ck">path:</span> <span class="cv">/home/user/local-project</span></pre>
         </div>
 
         <h3>Starting the daemon</h3>

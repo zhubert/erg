@@ -17,7 +17,7 @@ type Manifest struct {
 
 // RepoEntry associates a repo with its workflow config file.
 type RepoEntry struct {
-	Repo     string `yaml:"repo"`
+	Path     string `yaml:"path"`
 	Workflow string `yaml:"workflow,omitempty"`
 }
 
@@ -38,8 +38,8 @@ func LoadFile(path string) (*Manifest, error) {
 	}
 
 	for i, entry := range m.Repos {
-		if entry.Repo == "" {
-			return nil, fmt.Errorf("manifest repos[%d]: repo is required", i)
+		if entry.Path == "" {
+			return nil, fmt.Errorf("manifest repos[%d]: path is required", i)
 		}
 	}
 
@@ -52,7 +52,7 @@ func LoadFile(path string) (*Manifest, error) {
 func (m *Manifest) DaemonID() string {
 	repos := make([]string, len(m.Repos))
 	for i, e := range m.Repos {
-		repos[i] = e.Repo
+		repos[i] = e.Path
 	}
 	sort.Strings(repos)
 	h := sha256.New()
@@ -67,7 +67,7 @@ func (m *Manifest) DaemonID() string {
 func (m *Manifest) RepoPaths() []string {
 	paths := make([]string, len(m.Repos))
 	for i, e := range m.Repos {
-		paths[i] = e.Repo
+		paths[i] = e.Path
 	}
 	return paths
 }
@@ -76,7 +76,7 @@ func (m *Manifest) RepoPaths() []string {
 // string if none was specified (meaning use the default <repo>/.erg/workflow.yaml).
 func (m *Manifest) WorkflowFileFor(repo string) string {
 	for _, e := range m.Repos {
-		if e.Repo == repo {
+		if e.Path == repo {
 			return e.Workflow
 		}
 	}
