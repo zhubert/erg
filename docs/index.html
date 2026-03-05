@@ -2397,6 +2397,16 @@
               </thead>
               <tbody>
                 <tr>
+                  <td>draft</td>
+                  <td>bool</td>
+                  <td>false</td>
+                  <td>
+                    Create the pull request as a draft. Use when you want
+                    the PR visible for early feedback but not yet ready for
+                    formal review.
+                  </td>
+                </tr>
+                <tr>
                   <td>link_issue</td>
                   <td>bool</td>
                   <td>true</td>
@@ -2442,62 +2452,6 @@
                 automatically and the workflow skips to <code>done</code>.
               </li>
             </ul>
-          </div>
-        </div>
-
-        <div class="action-ref">
-          <div class="action-header">
-            <span class="action-title">github.create_draft_pr</span>
-            <span class="badge badge-sync">sync</span>
-          </div>
-          <p class="action-desc">
-            Opens a draft pull request from the working branch. Equivalent to
-            <code>github.create_pr</code> with <code>draft: true</code>. Use
-            when you want the PR visible for early feedback but not yet ready
-            for formal review.
-          </p>
-          <div class="param-section">
-            <div class="param-section-title">Params</div>
-            <table class="param-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Default</th>
-                  <th>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>link_issue</td>
-                  <td>bool</td>
-                  <td>true</td>
-                  <td>
-                    Add a closing reference to the source issue in the PR body
-                    (e.g. <code>Closes #42</code>).
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="param-section">
-            <div class="param-section-title">Output data</div>
-            <table class="param-table">
-              <thead>
-                <tr>
-                  <th>Key</th>
-                  <th>Type</th>
-                  <th>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>pr_url</td>
-                  <td>string</td>
-                  <td>URL of the created draft pull request.</td>
-                </tr>
-              </tbody>
-            </table>
           </div>
         </div>
 
