@@ -236,10 +236,17 @@ func ergGitHubMarker(step string) string {
 }
 
 // ergProviderMarker returns the idempotency marker for Asana/Linear comments.
-// Uses a plain-text bracket format since Asana renders stories as plain text
-// and the marker must be visible to be searchable.
+// Uses HTML comment format (<!-- erg:step=… -->) which is hidden in rendered
+// output. For Asana, the marker is preserved in the html_text field. For
+// Linear, it is invisible in rendered markdown.
 func ergProviderMarker(step string) string {
-	return fmt.Sprintf("[erg:step=%s]", step)
+	return fmt.Sprintf("<!-- erg:step=%s -->", step)
+}
+
+// containsMarker checks if a comment contains the given marker string in either
+// its plain text body or its HTML body.
+func containsMarker(c issues.IssueComment, marker string) bool {
+	return strings.Contains(c.Body, marker) || (c.HTMLBody != "" && strings.Contains(c.HTMLBody, marker))
 }
 
 // commentOnIssue posts a comment on the GitHub issue for a work item.
@@ -401,6 +408,7 @@ func (d *Daemon) commentViaProvider(ctx context.Context, item daemonstate.WorkIt
 
 	if step != "" {
 		marker := ergProviderMarker(step)
+		legacyMarker := fmt.Sprintf("[erg:step=%s]", step) // backward compat with old plain-text markers
 		markedBody := body + "\n" + marker
 
 		// Attempt idempotent upsert if the provider supports it.
@@ -409,7 +417,7 @@ func (d *Daemon) commentViaProvider(ctx context.Context, item daemonstate.WorkIt
 				existing, listErr := gc.GetIssueComments(commentCtx, repoPath, item.IssueRef.ID)
 				if listErr == nil {
 					for _, c := range existing {
-						if strings.Contains(c.Body, marker) {
+						if containsMarker(c, marker) || containsMarker(c, legacyMarker) {
 							return cu.UpdateComment(commentCtx, repoPath, item.IssueRef.ID, c.ID, markedBody)
 						}
 					}

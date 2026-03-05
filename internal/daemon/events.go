@@ -13,13 +13,20 @@ import (
 	"github.com/zhubert/erg/internal/workflow"
 )
 
-// isErgSystemComment reports whether a comment body was posted by the erg daemon
+// isErgSystemComment reports whether a comment was posted by the erg daemon
 // itself (e.g. guidance, idempotency-marked actions). Such comments must be
 // excluded from human-reply checks so they never accidentally trigger approvals.
-func isErgSystemComment(body string) bool {
-	// Provider-marker format used for Asana/Linear comments: [erg:step=…]
-	// HTML-comment format used for GitHub: <!-- erg:step=… -->
-	return strings.Contains(body, "[erg:step=") || strings.Contains(body, "<!-- erg:step=")
+func isErgSystemComment(c issues.IssueComment) bool {
+	// Check plain text body for legacy [erg:step=…] markers (Linear)
+	// and GitHub HTML comments (<!-- erg:step=… -->).
+	if strings.Contains(c.Body, "[erg:step=") || strings.Contains(c.Body, "<!-- erg:step=") {
+		return true
+	}
+	// Check HTMLBody for Asana HTML comment markers that are stripped from plain text.
+	if c.HTMLBody != "" && strings.Contains(c.HTMLBody, "<!-- erg:step=") {
+		return true
+	}
+	return false
 }
 
 // eventChecker implements workflow.EventChecker for the daemon.
@@ -447,7 +454,7 @@ func (c *eventChecker) checkGateApproved(ctx context.Context, params *workflow.P
 
 		for _, comment := range comments {
 			// Skip comments posted by the erg daemon itself (e.g. guidance, markers).
-			if isErgSystemComment(comment.Body) {
+			if isErgSystemComment(comment) {
 				continue
 			}
 			// Only consider comments posted after the gate step was entered.
@@ -581,7 +588,7 @@ func (c *eventChecker) checkPlanUserReplied(ctx context.Context, params *workflo
 
 	for _, comment := range comments {
 		// Skip comments posted by the erg daemon itself (e.g. guidance, markers).
-		if isErgSystemComment(comment.Body) {
+		if isErgSystemComment(comment) {
 			continue
 		}
 		// Only consider comments posted after the step was entered.

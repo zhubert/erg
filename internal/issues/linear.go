@@ -339,7 +339,7 @@ func (p *LinearProvider) GetIssueComments(ctx context.Context, repoPath string, 
 		if n.Body == "" {
 			continue
 		}
-		createdAt, _ := time.Parse(time.RFC3339, n.CreatedAt)
+		createdAt, _ := time.Parse(time.RFC3339Nano, n.CreatedAt)
 		comments = append(comments, IssueComment{
 			ID:        n.ID,
 			Author:    n.User.Name,
