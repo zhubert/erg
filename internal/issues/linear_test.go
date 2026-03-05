@@ -830,6 +830,49 @@ func TestLinearProvider_GetIssueComments_ReturnsComments(t *testing.T) {
 	}
 }
 
+func TestLinearProvider_GetIssueComments_MillisecondTimestamps(t *testing.T) {
+	// Linear returns timestamps with milliseconds (e.g. "2024-01-15T10:00:00.147Z").
+	// These must parse correctly; a zero CreatedAt would cause the event checker
+	// to silently skip all comments.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := linearIssueCommentsResponse{}
+		resp.Data.Issue.Comments.Nodes = []struct {
+			ID        string `json:"id"`
+			Body      string `json:"body"`
+			CreatedAt string `json:"createdAt"`
+			User      struct {
+				Name string `json:"name"`
+			} `json:"user"`
+		}{
+			{ID: "cmt-1", Body: "Looks good!", CreatedAt: "2024-01-15T10:30:00.147Z", User: struct {
+				Name string `json:"name"`
+			}{Name: "alice"}},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	origKey := os.Getenv(linearAPIKeyEnvVar)
+	defer os.Setenv(linearAPIKeyEnvVar, origKey)
+	os.Setenv(linearAPIKeyEnvVar, "lin_api_test")
+
+	p := NewLinearProviderWithClient(nil, server.Client(), server.URL)
+	comments, err := p.GetIssueComments(context.Background(), "/repo", "ENG-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(comments))
+	}
+	if comments[0].CreatedAt.IsZero() {
+		t.Fatal("expected non-zero CreatedAt for millisecond timestamp")
+	}
+	if comments[0].CreatedAt.Year() != 2024 {
+		t.Errorf("expected year 2024, got %d", comments[0].CreatedAt.Year())
+	}
+}
+
 func TestLinearProvider_GetIssueComments_EmptyBodyExcluded(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

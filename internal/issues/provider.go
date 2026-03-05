@@ -118,7 +118,8 @@ func (r *ProviderRegistry) AllProviders() []Provider {
 type IssueComment struct {
 	ID        string    // Provider-specific comment identifier (for updates; empty if not supported)
 	Author    string    // Username or display name
-	Body      string    // Comment text
+	Body      string    // Comment text (plain text)
+	HTMLBody  string    // HTML version of the comment (may contain hidden markers; empty if not available)
 	CreatedAt time.Time // When the comment was posted
 }
 

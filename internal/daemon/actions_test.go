@@ -3857,7 +3857,7 @@ func TestErgGitHubMarker(t *testing.T) {
 
 func TestErgProviderMarker(t *testing.T) {
 	marker := ergProviderMarker("notify")
-	if marker != "[erg:step=notify]" {
+	if marker != "<!-- erg:step=notify -->" {
 		t.Errorf("unexpected marker: %q", marker)
 	}
 }
@@ -4085,7 +4085,7 @@ func TestCommentViaProvider_IdempotentCreatesNew(t *testing.T) {
 		t.Errorf("expected 0 updates, got %d", len(provider.updates))
 	}
 	// Body should include the provider marker
-	if !strings.Contains(provider.comments[0].body, "[erg:step=open_pr]") {
+	if !strings.Contains(provider.comments[0].body, "<!-- erg:step=open_pr -->") {
 		t.Errorf("expected marker in comment body, got: %q", provider.comments[0].body)
 	}
 }
@@ -4099,7 +4099,7 @@ func TestCommentViaProvider_IdempotentUpdatesExisting(t *testing.T) {
 	provider := &mockIdempotentCommentProvider{
 		src: issues.SourceAsana,
 		existingComments: []issues.IssueComment{
-			{ID: "story-1", Body: "Old message [erg:step=open_pr]"},
+			{ID: "story-1", Body: "Old message <!-- erg:step=open_pr -->"},
 		},
 	}
 	registry := issues.NewProviderRegistry(provider)
@@ -4137,11 +4137,61 @@ func TestCommentViaProvider_IdempotentUpdatesExisting(t *testing.T) {
 	if provider.updates[0].commentID != "story-1" {
 		t.Errorf("expected commentID 'story-1', got %q", provider.updates[0].commentID)
 	}
-	if !strings.Contains(provider.updates[0].body, "[erg:step=open_pr]") {
+	if !strings.Contains(provider.updates[0].body, "<!-- erg:step=open_pr -->") {
 		t.Errorf("expected marker in updated body, got: %q", provider.updates[0].body)
 	}
 	if !strings.Contains(provider.updates[0].body, "Updated message!") {
 		t.Errorf("expected updated content in body, got: %q", provider.updates[0].body)
+	}
+}
+
+func TestCommentViaProvider_IdempotentUpdatesLegacyMarker(t *testing.T) {
+	// When an existing comment uses the old [erg:step=…] marker format,
+	// the idempotent update should still find and update it.
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+
+	provider := &mockIdempotentCommentProvider{
+		src: issues.SourceAsana,
+		existingComments: []issues.IssueComment{
+			{ID: "story-legacy", Body: "Old plan\n[erg:step=open_pr]"},
+		},
+	}
+	registry := issues.NewProviderRegistry(provider)
+	d.issueRegistry = registry
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "asana", ID: "task-abc"},
+		SessionID: "sess-1",
+	})
+
+	action := &asanaCommentAction{daemon: d}
+	params := workflow.NewParamHelper(map[string]any{"body": "New plan"})
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     params,
+		Step:       "open_pr",
+	}
+
+	result := action.Execute(context.Background(), ac)
+	if !result.Success {
+		t.Errorf("expected success, got error: %v", result.Error)
+	}
+
+	// Should have updated the legacy comment, not created a new one.
+	if len(provider.updates) != 1 {
+		t.Fatalf("expected 1 update, got %d", len(provider.updates))
+	}
+	if provider.updates[0].commentID != "story-legacy" {
+		t.Errorf("expected commentID 'story-legacy', got %q", provider.updates[0].commentID)
+	}
+	if len(provider.comments) != 0 {
+		t.Errorf("expected 0 new comments, got %d", len(provider.comments))
 	}
 }
 

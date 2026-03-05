@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"regexp"
@@ -444,6 +445,7 @@ type asanaStory struct {
 	GID       string `json:"gid"`
 	Type      string `json:"type"`
 	Text      string `json:"text"`
+	HTMLText  string `json:"html_text"`
 	CreatedAt string `json:"created_at"`
 	CreatedBy struct {
 		Name string `json:"name"`
@@ -463,7 +465,7 @@ func (p *AsanaProvider) GetIssueComments(ctx context.Context, repoPath string, i
 		return nil, fmt.Errorf("ASANA_PAT environment variable not set")
 	}
 
-	url := fmt.Sprintf("%s/tasks/%s/stories?opt_fields=gid,type,text,created_at,created_by.name", p.apiBase, issueID)
+	url := fmt.Sprintf("%s/tasks/%s/stories?opt_fields=gid,type,text,html_text,created_at,created_by.name", p.apiBase, issueID)
 
 	var storiesResp asanaStoriesResponse
 	if err := apiRequest(ctx, p.httpClient, http.MethodGet, url, nil,
@@ -479,11 +481,12 @@ func (p *AsanaProvider) GetIssueComments(ctx context.Context, repoPath string, i
 		if story.Text == "" {
 			continue
 		}
-		createdAt, _ := time.Parse(time.RFC3339, story.CreatedAt)
+		createdAt, _ := time.Parse(time.RFC3339Nano, story.CreatedAt)
 		comments = append(comments, IssueComment{
 			ID:        story.GID,
 			Author:    story.CreatedBy.Name,
 			Body:      story.Text,
+			HTMLBody:  story.HTMLText,
 			CreatedAt: createdAt,
 		})
 	}
@@ -602,7 +605,35 @@ func (p *AsanaProvider) MoveToSection(ctx context.Context, repoPath string, issu
 		"Bearer "+pat, http.StatusOK, "", "Asana", nil)
 }
 
+// plainTextToAsanaHTML converts plain text to Asana-compatible HTML.
+// Asana's rich text API expects content wrapped in <body> tags.
+// HTML comments (<!-- ... -->) in the input are preserved as-is so they
+// can serve as hidden markers in the rendered comment.
+func plainTextToAsanaHTML(text string) string {
+	// Extract HTML comments before escaping, then re-insert them.
+	var htmlComments []string
+	stripped := htmlCommentRe.ReplaceAllStringFunc(text, func(match string) string {
+		htmlComments = append(htmlComments, match)
+		return "" // remove from plain text
+	})
+
+	stripped = strings.TrimRight(stripped, "\n ")
+	escaped := html.EscapeString(stripped)
+	escaped = strings.ReplaceAll(escaped, "\n", "<br>")
+
+	result := "<body>" + escaped + "</body>"
+	// Append HTML comments after the body — they are invisible to users
+	// but preserved in Asana's html_text field for marker detection.
+	for _, c := range htmlComments {
+		result += c
+	}
+	return result
+}
+
+var htmlCommentRe = regexp.MustCompile(`<!--[\s\S]*?-->`)
+
 // Comment adds a comment (story) to an Asana task.
+// Uses html_text to support hidden HTML comment markers.
 // Implements ProviderActions.
 func (p *AsanaProvider) Comment(ctx context.Context, repoPath string, issueID string, body string) error {
 	pat := os.Getenv(asanaPATEnvVar)
@@ -611,17 +642,19 @@ func (p *AsanaProvider) Comment(ctx context.Context, repoPath string, issueID st
 	}
 
 	storiesURL := fmt.Sprintf("%s/tasks/%s/stories", p.apiBase, issueID)
-	textJSON, err := json.Marshal(body)
+	htmlBody := plainTextToAsanaHTML(body)
+	htmlJSON, err := json.Marshal(htmlBody)
 	if err != nil {
 		return fmt.Errorf("failed to marshal comment body: %w", err)
 	}
-	reqBody := fmt.Sprintf(`{"data":{"text":%s}}`, textJSON)
+	reqBody := fmt.Sprintf(`{"data":{"html_text":%s}}`, htmlJSON)
 
 	return apiRequest(ctx, p.httpClient, http.MethodPost, storiesURL, strings.NewReader(reqBody),
 		"Bearer "+pat, http.StatusCreated, "", "Asana", nil)
 }
 
 // UpdateComment updates an existing Asana story (comment) by its GID.
+// Uses html_text to support hidden HTML comment markers.
 // Implements ProviderCommentUpdater.
 func (p *AsanaProvider) UpdateComment(ctx context.Context, repoPath string, issueID string, commentID string, body string) error {
 	pat := os.Getenv(asanaPATEnvVar)
@@ -630,11 +663,12 @@ func (p *AsanaProvider) UpdateComment(ctx context.Context, repoPath string, issu
 	}
 
 	storyURL := fmt.Sprintf("%s/stories/%s", p.apiBase, commentID)
-	textJSON, err := json.Marshal(body)
+	htmlBody := plainTextToAsanaHTML(body)
+	htmlJSON, err := json.Marshal(htmlBody)
 	if err != nil {
 		return fmt.Errorf("failed to marshal comment body: %w", err)
 	}
-	reqBody := fmt.Sprintf(`{"data":{"text":%s}}`, textJSON)
+	reqBody := fmt.Sprintf(`{"data":{"html_text":%s}}`, htmlJSON)
 
 	return apiRequest(ctx, p.httpClient, http.MethodPut, storyURL, strings.NewReader(reqBody),
 		"Bearer "+pat, http.StatusOK, "", "Asana", nil)
