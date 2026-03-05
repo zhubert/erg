@@ -1200,9 +1200,7 @@
             <a href="#overview" class="sidebar-link active">Overview</a>
             <a href="#how-it-works" class="sidebar-link">How it works</a>
             <a href="#install" class="sidebar-link">Installation</a>
-            <a href="#quickstart-github" class="sidebar-sublink">GitHub</a>
-            <a href="#quickstart-asana" class="sidebar-sublink">Asana</a>
-            <a href="#quickstart-linear" class="sidebar-sublink">Linear</a>
+            <a href="#quickstart" class="sidebar-sublink">Quick start</a>
           </li>
           <li class="sidebar-section">
             <span class="sidebar-section-title">Workflow</span>
@@ -1442,7 +1440,7 @@
           A workflow is a directed flowchart that routes each issue from the
           first commit to a merged PR. You define <em>states</em> (nodes), the
           actions or events that drive each state, and the transitions between
-          them. Run <code>erg workflow init</code> inside your repo to scaffold
+          them. Run <code>erg configure</code> inside your repo to scaffold
           a starting point, or omit the file entirely to use the built-in
           defaults.
         </p>
@@ -1861,18 +1859,11 @@
               </td>
             </tr>
             <tr>
-              <td><code>erg workflow init</code></td>
+              <td><code>erg configure</code></td>
               <td>
-                Scaffold a <code>.erg/workflow.yaml</code> in the current repo
+                Interactive wizard: checks prerequisites, sets up issue tracker,
+                and scaffolds <code>.erg/workflow.yaml</code>
               </td>
-            </tr>
-            <tr>
-              <td><code>erg workflow validate</code></td>
-              <td>Validate the workflow config for errors</td>
-            </tr>
-            <tr>
-              <td><code>erg workflow visualize</code></td>
-              <td>Emit a Mermaid diagram of the current workflow</td>
             </tr>
             <tr>
               <td><code>erg clean</code></td>
@@ -4408,8 +4399,8 @@ https://github.com/your-org/your-repo/pull/99</pre
         <p>
           Ready-made configs for common use cases. Copy any of these into
           <code>.erg/workflow.yaml</code> in your repo, or run
-          <code>erg workflow init</code> to generate the CI-gate config as a
-          starting point.
+          <code>erg configure</code> to generate a starting point
+          interactively.
         </p>
 
         <h3 id="example-minimal">Minimal</h3>
@@ -4756,8 +4747,8 @@ stateDiagram-v2
           <code>choice</code> state routes on the CI result: green goes to
           review, red triggers a Claude fix loop, merge conflicts are rebased
           automatically or resolved by Claude. Failures comment on the issue
-          before terminating. This is what <code>erg workflow init</code>
-          generates.
+          before terminating. This is the config that
+          <code>erg configure</code> generates.
         </p>
         <div class="example-tabs">
           <div class="tab-bar">
