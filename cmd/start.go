@@ -29,7 +29,8 @@ Use --config to watch multiple repos with a config file.
 If no --repo or --config is provided, looks for a default config at
 ~/.erg/daemon.yaml and uses it automatically.
 
-For persistent service management, see 'erg services install'.
+If installed via Homebrew, use 'brew services start erg' for persistent
+service management.
 
 Examples:
   erg start                           # Start using default config or current repo

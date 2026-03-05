@@ -325,18 +325,6 @@ func TestManifestPath_XDG(t *testing.T) {
 	}
 }
 
-func TestLaunchAgentsDir(t *testing.T) {
-	home := setupTestHome(t)
-
-	dir, err := LaunchAgentsDir()
-	if err != nil {
-		t.Fatalf("LaunchAgentsDir: %v", err)
-	}
-	if want := filepath.Join(home, "Library", "LaunchAgents"); dir != want {
-		t.Errorf("LaunchAgentsDir = %q, want %q", dir, want)
-	}
-}
-
 func TestLegacyFileNotDir(t *testing.T) {
 	home := setupTestHome(t)
 	// Create ~/.erg as a file, not a directory — should NOT be treated as legacy

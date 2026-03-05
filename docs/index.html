@@ -1218,7 +1218,7 @@
             <span class="sidebar-section-title">Reference</span>
             <a href="#cli" class="sidebar-link">CLI commands</a>
             <a href="#multi-repo" class="sidebar-link">Multi-repo</a>
-            <a href="#services" class="sidebar-link">Services</a>
+            <a href="#services" class="sidebar-link">Brew services</a>
             <a href="#actions" class="sidebar-link">Actions</a>
             <a href="#actions-ai" class="sidebar-sublink">ai</a>
             <a href="#actions-github" class="sidebar-sublink">github</a>
@@ -1871,25 +1871,6 @@
               </td>
             </tr>
             <tr>
-              <td><code>erg services install</code></td>
-              <td>
-                Install macOS LaunchAgent — starts on login, restarts on crash.
-                See <a href="#services">Services</a>
-              </td>
-            </tr>
-            <tr>
-              <td><code>erg services uninstall</code></td>
-              <td>Stop and remove the LaunchAgent</td>
-            </tr>
-            <tr>
-              <td><code>erg services status</code></td>
-              <td>Show LaunchAgent service status</td>
-            </tr>
-            <tr>
-              <td><code>erg services log</code></td>
-              <td>Tail the service log</td>
-            </tr>
-            <tr>
               <td><code>erg clean</code></td>
               <td>Clear daemon state and lock files</td>
             </tr>
@@ -2015,11 +1996,11 @@
         </table>
 
         <!-- Services -->
-        <h2 id="services">Services (macOS)</h2>
+        <h2 id="services">Brew services (macOS)</h2>
         <p>
-          On macOS, erg can run as a LaunchAgent — a system service that starts
-          automatically when you log in and restarts if it crashes. This is the
-          recommended way to run erg in production.
+          If you installed erg via Homebrew, you can use <code>brew services</code>
+          to run it as a persistent background service that starts on login and
+          restarts on crash.
         </p>
 
         <h3>Setup</h3>
@@ -2043,38 +2024,17 @@
           run <code>erg configure</code> inside each repo first.
         </p>
 
-        <h3>Installing the service</h3>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>erg services install</code>
-          <button
-            class="copy-btn"
-            onclick="copyCmd(this, 'erg services install')"
-          >
-            copy
-          </button>
-        </div>
-        <p>
-          This writes a LaunchAgent plist to
-          <code>~/Library/LaunchAgents/com.erg.daemon.plist</code> and loads it
-          immediately. The service runs <code>erg start -f --config ~/.erg/daemon.yaml</code>
-          under the hood.
-        </p>
-        <p>
-          To use a custom config path:
-        </p>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>erg services install --config /path/to/config.yaml</code>
-          <button
-            class="copy-btn"
-            onclick="copyCmd(this, 'erg services install --config /path/to/config.yaml')"
-          >
-            copy
-          </button>
-        </div>
-
         <h3>Managing the service</h3>
+        <div class="install-block">
+          <span class="prompt-char">$</span>
+          <code>brew services start erg</code>
+          <button
+            class="copy-btn"
+            onclick="copyCmd(this, 'brew services start erg')"
+          >
+            copy
+          </button>
+        </div>
         <table class="cli-table">
           <thead>
             <tr>
@@ -2084,20 +2044,16 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>erg services install</code></td>
-              <td>Write plist and start the service (starts on login, restarts on crash)</td>
+              <td><code>brew services start erg</code></td>
+              <td>Start erg and register it to launch on login</td>
             </tr>
             <tr>
-              <td><code>erg services uninstall</code></td>
-              <td>Stop the service and remove the plist</td>
+              <td><code>brew services stop erg</code></td>
+              <td>Stop erg and remove the login item</td>
             </tr>
             <tr>
-              <td><code>erg services status</code></td>
-              <td>Show whether the service is installed, running, and its PID</td>
-            </tr>
-            <tr>
-              <td><code>erg services log</code></td>
-              <td>Tail the service log (<code>~/.erg/logs/service.log</code>)</td>
+              <td><code>brew services info erg</code></td>
+              <td>Show service status</td>
             </tr>
           </tbody>
         </table>
