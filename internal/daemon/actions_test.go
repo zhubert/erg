@@ -2917,7 +2917,7 @@ func TestAddressFeedback_CommentsAddressedMatchesBatchCount(t *testing.T) {
 	mockExec := exec.NewMockExecutor(nil)
 	mockExec.AddExactMatch("gh", []string{"pr", "view", "feature-sess-1", "--json", "reviews,comments,number"},
 		exec.MockResponse{Stdout: []byte(reviewJSON)})
-	mockExec.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/42/comments"},
+	mockExec.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/42/comments?per_page=100"},
 		exec.MockResponse{Stdout: []byte(inlineJSON)})
 
 	d := testDaemonWithExec(cfg, mockExec)
@@ -3568,7 +3568,7 @@ func TestAddressFeedback_FormatCommandStoredInStepData(t *testing.T) {
 	mockExec := exec.NewMockExecutor(nil)
 	mockExec.AddExactMatch("gh", []string{"pr", "view", "feature-sess-1", "--json", "reviews,comments,number"},
 		exec.MockResponse{Stdout: []byte(testPRReviewJSON)})
-	mockExec.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/42/comments"},
+	mockExec.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/42/comments?per_page=100"},
 		exec.MockResponse{Stdout: []byte(`[]`)})
 
 	d := testDaemonWithExec(cfg, mockExec)
@@ -3617,7 +3617,7 @@ func TestAddressFeedback_InheritsFormatCommandFromStepData(t *testing.T) {
 	mockExec := exec.NewMockExecutor(nil)
 	mockExec.AddExactMatch("gh", []string{"pr", "view", "feature-sess-1", "--json", "reviews,comments,number"},
 		exec.MockResponse{Stdout: []byte(testPRReviewJSON)})
-	mockExec.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/42/comments"},
+	mockExec.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/42/comments?per_page=100"},
 		exec.MockResponse{Stdout: []byte(`[]`)})
 
 	d := testDaemonWithExec(cfg, mockExec)

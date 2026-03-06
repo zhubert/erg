@@ -325,7 +325,7 @@ func TestFetchPRReviewComments_Success(t *testing.T) {
 			}]
 		}`),
 	})
-	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments"}, pexec.MockResponse{
+	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments?per_page=100"}, pexec.MockResponse{
 		Stdout: []byte(`[{
 			"body": "Use a mutex here",
 			"path": "internal/app.go",
@@ -487,7 +487,7 @@ func TestFetchPRReviewComments_ApprovedReviewInlineCommentsKept(t *testing.T) {
 			"comments": []
 		}`),
 	})
-	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments"}, pexec.MockResponse{
+	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments?per_page=100"}, pexec.MockResponse{
 		Stdout: []byte(`[{
 			"body": "Consider renaming this variable",
 			"path": "main.go",
@@ -559,7 +559,7 @@ func TestFetchPRReviewComments_MixedReviewStates(t *testing.T) {
 			"comments": []
 		}`),
 	})
-	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments"}, pexec.MockResponse{
+	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments?per_page=100"}, pexec.MockResponse{
 		Stdout: []byte(`[{
 			"body": "Missing error check here",
 			"path": "handler.go",
@@ -599,7 +599,7 @@ func TestFetchPRReviewComments_ReviewBodyOnly(t *testing.T) {
 			"comments": []
 		}`),
 	})
-	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments"}, pexec.MockResponse{
+	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments?per_page=100"}, pexec.MockResponse{
 		Stdout: []byte(`[]`),
 	})
 
@@ -632,7 +632,7 @@ func TestFetchPRReviewComments_InlineAPIFailureNonFatal(t *testing.T) {
 			"comments": []
 		}`),
 	})
-	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments"}, pexec.MockResponse{
+	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments?per_page=100"}, pexec.MockResponse{
 		Err: fmt.Errorf("API rate limit exceeded"),
 	})
 
@@ -659,7 +659,7 @@ func TestFetchPRReviewComments_InlineCommentNullLine(t *testing.T) {
 			"comments": []
 		}`),
 	})
-	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments"}, pexec.MockResponse{
+	mock.AddExactMatch("gh", []string{"api", "repos/:owner/:repo/pulls/1/comments?per_page=100"}, pexec.MockResponse{
 		Stdout: []byte(`[{
 			"body": "This line was deleted",
 			"path": "old_file.go",
