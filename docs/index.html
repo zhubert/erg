@@ -344,123 +344,6 @@
         border-color: var(--text-dim);
       }
 
-      /* ---- Feature grid ---- */
-
-      .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0.85rem;
-        margin: 1rem 0 1.5rem;
-      }
-
-      .feature-item {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-left: 3px solid var(--accent);
-        border-radius: 8px;
-        padding: 1.25rem 1.4rem;
-        transition:
-          transform 0.15s,
-          border-color 0.15s,
-          box-shadow 0.15s;
-      }
-
-      .feature-item:nth-child(2) {
-        border-left-color: var(--cyan);
-      }
-      .feature-item:nth-child(3) {
-        border-left-color: var(--violet);
-      }
-      .feature-item:nth-child(4) {
-        border-left-color: var(--green);
-      }
-      .feature-item:nth-child(5) {
-        border-left-color: var(--cyan);
-      }
-      .feature-item:nth-child(6) {
-        border-left-color: var(--violet);
-      }
-
-      .feature-item:hover {
-        border-color: var(--border-light);
-        transform: scale(1.01);
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
-      }
-      .feature-item:hover {
-        border-left-color: var(--accent);
-      }
-      .feature-item:nth-child(2):hover {
-        border-left-color: var(--cyan);
-      }
-      .feature-item:nth-child(3):hover {
-        border-left-color: var(--violet);
-      }
-      .feature-item:nth-child(4):hover {
-        border-left-color: var(--green);
-      }
-      .feature-item:nth-child(5):hover {
-        border-left-color: var(--cyan);
-      }
-      .feature-item:nth-child(6):hover {
-        border-left-color: var(--violet);
-      }
-
-      .feature-item h4 {
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: var(--text);
-        margin: 0 0 0.35rem;
-      }
-
-      .feature-item .fi-icon {
-        font-family: "IBM Plex Mono", monospace;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--accent);
-        margin-bottom: 0.65rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 2rem;
-        height: 2rem;
-        border-radius: 50%;
-        background: var(--accent-bg);
-        border: 1px solid var(--accent-border);
-      }
-
-      .feature-item:nth-child(2) .fi-icon {
-        color: var(--cyan);
-        background: rgba(34, 211, 238, 0.08);
-        border-color: rgba(34, 211, 238, 0.2);
-      }
-      .feature-item:nth-child(3) .fi-icon {
-        color: var(--violet);
-        background: rgba(167, 139, 250, 0.08);
-        border-color: rgba(167, 139, 250, 0.2);
-      }
-      .feature-item:nth-child(4) .fi-icon {
-        color: var(--green);
-        background: rgba(52, 211, 153, 0.08);
-        border-color: rgba(52, 211, 153, 0.2);
-      }
-      .feature-item:nth-child(5) .fi-icon {
-        color: var(--cyan);
-        background: rgba(34, 211, 238, 0.08);
-        border-color: rgba(34, 211, 238, 0.2);
-      }
-      .feature-item:nth-child(6) .fi-icon {
-        color: var(--violet);
-        background: rgba(167, 139, 250, 0.08);
-        border-color: rgba(167, 139, 250, 0.2);
-      }
-
-      .feature-item p {
-        font-size: 0.82rem;
-        color: var(--text-muted);
-        line-height: 1.6;
-        margin: 0;
-      }
-
       /* ---- Steps (how it works) ---- */
 
       .steps-list {
@@ -895,12 +778,10 @@
           padding: 1.5rem 1.25rem 3rem;
         }
 
-        .feature-grid,
         .info-grid {
           grid-template-columns: 1fr;
         }
 
-        .feature-item,
         .info-card,
         .action-ref {
           overflow: hidden;
@@ -1262,7 +1143,7 @@
             <span class="hero-tagline-accent">workflow-driven.</span>
           </p>
           <p>
-            Autonomous headless daemon for Claude Code. Polls GitHub, Asana, or
+            Autonomous daemon for Claude Code. Polls GitHub, Asana, or
             Linear for issues, starts containerized Claude sessions, and drives
             the full PR lifecycle &mdash; as automated as your workflow allows.
           </p>
@@ -1273,58 +1154,6 @@
             >
           </div>
         </section>
-
-        <div class="feature-grid">
-          <div class="feature-item">
-            <span class="fi-icon">#</span>
-            <h4>issue polling</h4>
-            <p>
-              Polls GitHub, Asana, or Linear for new issues. Label an issue
-              <code>queued</code> and the agent picks it up.
-            </p>
-          </div>
-          <div class="feature-item">
-            <span class="fi-icon">[ ]</span>
-            <h4>containerized sessions</h4>
-            <p>
-              Every session runs inside a Docker container. The container is the
-              sandbox &mdash; Claude has full permissions.
-            </p>
-          </div>
-          <div class="feature-item">
-            <span class="fi-icon">//</span>
-            <h4>concurrent workers</h4>
-            <p>
-              Process multiple issues in parallel. Each gets its own branch,
-              container, and Claude session.
-            </p>
-          </div>
-          <div class="feature-item">
-            <span class="fi-icon">&lt;&gt;</span>
-            <h4>PR lifecycle</h4>
-            <p>
-              Creates PRs, addresses review comments, waits for CI, and
-              auto-merges. Full lifecycle management.
-            </p>
-          </div>
-          <div class="feature-item">
-            <span class="fi-icon">~</span>
-            <h4>workflow engine</h4>
-            <p>
-              Configurable state machine via <code>.erg/workflow.yaml</code>.
-              Task, wait, choice, and pass states with retry, catch, and
-              timeout.
-            </p>
-          </div>
-          <div class="feature-item">
-            <span class="fi-icon">*</span>
-            <h4>automated workflow</h4>
-            <p>
-              From issue to merged PR: coding, CI fixes, review feedback, and
-              merge — all managed by the workflow engine.
-            </p>
-          </div>
-        </div>
 
         <!-- How it works -->
         <h2 id="how-it-works">How it works</h2>
@@ -1398,7 +1227,6 @@
 
         <!-- Installation -->
         <h2 id="install">Installation</h2>
-        <h3>Homebrew</h3>
         <div class="install-block">
           <span class="prompt-char">$</span>
           <code>brew install zhubert/tap/erg</code>
@@ -1409,15 +1237,9 @@
             copy
           </button>
         </div>
-
-        <h3>Build from source</h3>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>go build -o erg .</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'go build -o erg .')">
-            copy
-          </button>
-        </div>
+        <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.75rem;">
+          Or build from source: <code>go build -o erg .</code>
+        </p>
 
         <h3 id="quickstart">Quick start</h3>
         <p>
@@ -1437,7 +1259,7 @@
         <h3 id="file-layout">File layout</h3>
         <p>
           Erg stores configuration, session data, and logs under
-          <code>~/.erg/</code> by default. On Linux, if <code>~/.erg/</code>
+          <code>~/.erg/</code> by default. If <code>~/.erg/</code>
           does not exist, Erg respects the
           <a href="https://specifications.freedesktop.org/basedir-spec/latest/">XDG Base Directory Specification</a>:
         </p>
@@ -1467,11 +1289,6 @@
             </tr>
           </tbody>
         </table>
-        <p>
-          Resolution order: (1) if <code>~/.erg/</code> exists, use the legacy
-          flat layout; (2) if any XDG env var is set, use XDG layout with
-          defaults for unset vars; (3) otherwise default to <code>~/.erg/</code>.
-        </p>
 
         <div
           style="
