@@ -1174,7 +1174,6 @@
         }
       }
     </style>
-    <script src="./mermaid.min.js"></script>
   </head>
   <body>
     <div class="mobile-header">
@@ -1347,37 +1346,6 @@
     </div>
 
     <script>
-      mermaid.initialize({ startOnLoad: false, theme: "dark" });
-
-      function switchTab(btn, tab) {
-        var tabs = btn.closest(".example-tabs");
-        tabs.querySelectorAll(".tab-btn").forEach(function (b) {
-          b.classList.remove("active");
-        });
-        btn.classList.add("active");
-        tabs.querySelectorAll("[data-panel]").forEach(function (p) {
-          p.style.display = "none";
-        });
-        var panel = tabs.querySelector('[data-panel="' + tab + '"]');
-        if (panel) panel.style.display = "";
-        if (tab === "diagram" && !tabs.dataset.rendered) {
-          tabs.dataset.rendered = "1";
-          var el = tabs.querySelector(".mermaid");
-          if (el) mermaid.run({ nodes: [el] });
-        }
-      }
-
-      function copyCmd(btn, cmd) {
-        navigator.clipboard.writeText(cmd).then(function () {
-          btn.textContent = "copied";
-          btn.classList.add("copied");
-          setTimeout(function () {
-            btn.textContent = "copy";
-            btn.classList.remove("copied");
-          }, 2000);
-        });
-      }
-
       function toggleSidebar() {
         document.getElementById("sidebar").classList.toggle("open");
         document.getElementById("sidebarOverlay").classList.toggle("open");
