@@ -63,6 +63,7 @@ brews:
     service: |
       run [opt_bin/"erg", "start", "-f"]
       keep_alive true
+      environment_variables PATH: "#{Dir.home}/.local/bin:#{std_service_path_env}"
       working_dir var/"erg"
       log_path var/"log/erg/daemon.log"
       error_log_path var/"log/erg/daemon.err.log"
