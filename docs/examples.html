@@ -2309,7 +2309,7 @@ states:
     action: slack.notify
     params:
       channel: "#engineering"
-      message: "Starting work on {{issue_url}}"
+      message: "Starting work on {{.IssueURL}}"
     next: plan
     error: plan
 
@@ -2353,7 +2353,7 @@ states:
     action: slack.notify
     params:
       channel: "#engineering"
-      message: "PR ready: {{issue_url}}"
+      message: "PR ready for review: {{.PRURL}}"
     next: done
     error: done
 
@@ -2362,7 +2362,7 @@ states:
     action: slack.notify
     params:
       channel: "#engineering"
-      message: "Failed: {{issue_url}} — manual intervention required"
+      message: "Failed: {{.IssueURL}} — manual intervention required"
     next: failed
     error: failed
 

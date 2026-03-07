@@ -427,6 +427,7 @@ func (d *Daemon) getWorkflowConfig(repoPath string) *workflow.Config {
 	}
 	d.logger.Error("no workflow config loaded for repo — add .erg/workflow.yaml", "repo", repoPath)
 	return &workflow.Config{
+		Start: "failed",
 		States: map[string]*workflow.State{
 			"failed": {Type: workflow.StateTypeFail},
 		},
@@ -442,6 +443,7 @@ func (d *Daemon) getEngine(repoPath string) *workflow.Engine {
 	}
 	d.logger.Error("no workflow engine loaded for repo — add .erg/workflow.yaml", "repo", repoPath)
 	cfg := &workflow.Config{
+		Start: "failed",
 		States: map[string]*workflow.State{
 			"failed": {Type: workflow.StateTypeFail},
 		},
