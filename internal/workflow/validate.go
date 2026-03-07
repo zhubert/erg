@@ -471,6 +471,34 @@ func validateSettings(s *SettingsConfig) []ValidationError {
 			Message: "max_concurrent must not be negative",
 		})
 	}
+	seenNames := make(map[string]int) // name → first index seen
+	for i, srv := range s.MCPServers {
+		prefix := fmt.Sprintf("settings.mcp_servers[%d]", i)
+		if srv.Name == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".name",
+				Message: "name is required for mcp_servers entries",
+			})
+		} else if srv.Name == "erg" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".name",
+				Message: `name "erg" is reserved and cannot be used for external MCP servers`,
+			})
+		} else if first, exists := seenNames[srv.Name]; exists {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".name",
+				Message: fmt.Sprintf("duplicate mcp_servers name %q (first seen at index %d)", srv.Name, first),
+			})
+		} else {
+			seenNames[srv.Name] = i
+		}
+		if srv.Command == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".command",
+				Message: "command is required for mcp_servers entries",
+			})
+		}
+	}
 	return errs
 }
 

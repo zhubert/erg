@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+// deepCopyMCPServerConfigs returns a deep copy of a slice of MCPServerConfig,
+// including a fresh copy of each entry's Args slice.
+func deepCopyMCPServerConfigs(src []MCPServerConfig) []MCPServerConfig {
+	dst := make([]MCPServerConfig, len(src))
+	for i, s := range src {
+		dst[i] = s
+		if s.Args != nil {
+			argsCopy := make([]string, len(s.Args))
+			copy(argsCopy, s.Args)
+			dst[i].Args = argsCopy
+		}
+	}
+	return dst
+}
+
 // DefaultWorkflowConfig returns a Config with the default state graph:
 //
 //	coding → open_pr → await_ci → check_ci_result
@@ -300,9 +315,16 @@ func Merge(partial, defaults *Config) *Config {
 
 	// Settings: partial wins if present, otherwise keep defaults
 	if partial.Settings != nil {
-		result.Settings = partial.Settings
+		s := *partial.Settings
+		if partial.Settings.MCPServers != nil {
+			s.MCPServers = deepCopyMCPServerConfigs(partial.Settings.MCPServers)
+		}
+		result.Settings = &s
 	} else if defaults.Settings != nil {
 		s := *defaults.Settings
+		if defaults.Settings.MCPServers != nil {
+			s.MCPServers = deepCopyMCPServerConfigs(defaults.Settings.MCPServers)
+		}
 		result.Settings = &s
 	}
 

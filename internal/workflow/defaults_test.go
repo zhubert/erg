@@ -590,4 +590,70 @@ func TestMerge(t *testing.T) {
 			t.Error("merge should deep-copy settings from defaults")
 		}
 	})
+
+	t.Run("partial settings MCPServers is deep copied not shared", func(t *testing.T) {
+		partial := &Config{
+			Workflow: "test",
+			Start:    "s",
+			States:   map[string]*State{"s": {Type: StateTypeSucceed}},
+			Settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "tool", Command: "cmd", Args: []string{"--flag", "val"}},
+				},
+			},
+		}
+		defaults := DefaultWorkflowConfig()
+		result := Merge(partial, defaults)
+
+		if result.Settings == nil {
+			t.Fatal("expected settings in result")
+		}
+		if len(result.Settings.MCPServers) != 1 {
+			t.Fatalf("expected 1 MCP server, got %d", len(result.Settings.MCPServers))
+		}
+
+		// Mutate Name; should not affect partial.
+		result.Settings.MCPServers[0].Name = "mutated"
+		if partial.Settings.MCPServers[0].Name != "tool" {
+			t.Error("merge should deep-copy MCPServers Name from partial settings")
+		}
+		// Mutate Args; should not affect partial.
+		result.Settings.MCPServers[0].Args[0] = "mutated-arg"
+		if partial.Settings.MCPServers[0].Args[0] != "--flag" {
+			t.Error("merge should deep-copy MCPServers Args from partial settings")
+		}
+	})
+
+	t.Run("default settings MCPServers is deep copied not shared", func(t *testing.T) {
+		defaults := &Config{
+			Workflow: "test",
+			Start:    "s",
+			States:   map[string]*State{"s": {Type: StateTypeSucceed}},
+			Settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "tool", Command: "cmd", Args: []string{"--flag", "val"}},
+				},
+			},
+		}
+		partial := &Config{}
+		result := Merge(partial, defaults)
+
+		if result.Settings == nil {
+			t.Fatal("expected settings in result")
+		}
+		if len(result.Settings.MCPServers) != 1 {
+			t.Fatalf("expected 1 MCP server, got %d", len(result.Settings.MCPServers))
+		}
+
+		// Mutate Name; should not affect defaults.
+		result.Settings.MCPServers[0].Name = "mutated"
+		if defaults.Settings.MCPServers[0].Name != "tool" {
+			t.Error("merge should deep-copy MCPServers Name from default settings")
+		}
+		// Mutate Args; should not affect defaults.
+		result.Settings.MCPServers[0].Args[0] = "mutated-arg"
+		if defaults.Settings.MCPServers[0].Args[0] != "--flag" {
+			t.Error("merge should deep-copy MCPServers Args from default settings")
+		}
+	})
 }

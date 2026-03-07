@@ -1242,3 +1242,117 @@ func TestOptionalPositiveNum(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSettings_MCPServers(t *testing.T) {
+	tests := []struct {
+		name       string
+		settings   *SettingsConfig
+		wantFields []string
+	}{
+		{
+			name:       "nil settings",
+			settings:   nil,
+			wantFields: nil,
+		},
+		{
+			name:       "empty mcp_servers",
+			settings:   &SettingsConfig{},
+			wantFields: nil,
+		},
+		{
+			name: "valid mcp_servers",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "my-db", Command: "npx", Args: []string{"-y", "@myorg/db-mcp"}},
+				},
+			},
+			wantFields: nil,
+		},
+		{
+			name: "missing name",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Command: "npx"},
+				},
+			},
+			wantFields: []string{"settings.mcp_servers[0].name"},
+		},
+		{
+			name: "missing command",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "my-tool"},
+				},
+			},
+			wantFields: []string{"settings.mcp_servers[0].command"},
+		},
+		{
+			name: "missing both name and command",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{},
+				},
+			},
+			wantFields: []string{"settings.mcp_servers[0].name", "settings.mcp_servers[0].command"},
+		},
+		{
+			name: "second entry missing name",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "valid", Command: "cmd"},
+					{Command: "cmd2"},
+				},
+			},
+			wantFields: []string{"settings.mcp_servers[1].name"},
+		},
+		{
+			name: "reserved name erg",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "erg", Command: "cmd"},
+				},
+			},
+			wantFields: []string{"settings.mcp_servers[0].name"},
+		},
+		{
+			name: "duplicate names",
+			settings: &SettingsConfig{
+				MCPServers: []MCPServerConfig{
+					{Name: "my-tool", Command: "cmd1"},
+					{Name: "my-tool", Command: "cmd2"},
+				},
+			},
+			wantFields: []string{"settings.mcp_servers[1].name"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := validateSettings(tt.settings)
+			gotFields := make(map[string]bool)
+			for _, e := range errs {
+				gotFields[e.Field] = true
+			}
+			for _, want := range tt.wantFields {
+				if !gotFields[want] {
+					t.Errorf("expected error for field %q, got errors: %v", want, errs)
+				}
+			}
+			if len(tt.wantFields) == 0 && len(errs) > 0 {
+				t.Errorf("unexpected errors: %v", errs)
+			}
+			// For cases where errors are expected, ensure there are no unexpected fields.
+			if len(tt.wantFields) > 0 {
+				wantFieldSet := make(map[string]bool, len(tt.wantFields))
+				for _, want := range tt.wantFields {
+					wantFieldSet[want] = true
+				}
+				for field := range gotFields {
+					if !wantFieldSet[field] {
+						t.Errorf("unexpected error for field %q, got errors: %v", field, errs)
+					}
+				}
+			}
+		})
+	}
+}
