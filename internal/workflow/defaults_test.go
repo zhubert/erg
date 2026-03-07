@@ -598,7 +598,7 @@ func TestMerge(t *testing.T) {
 			States:   map[string]*State{"s": {Type: StateTypeSucceed}},
 			Settings: &SettingsConfig{
 				MCPServers: []MCPServerConfig{
-					{Name: "tool", Command: "cmd"},
+					{Name: "tool", Command: "cmd", Args: []string{"--flag", "val"}},
 				},
 			},
 		}
@@ -612,10 +612,15 @@ func TestMerge(t *testing.T) {
 			t.Fatalf("expected 1 MCP server, got %d", len(result.Settings.MCPServers))
 		}
 
-		// Mutate the result; should not affect partial
+		// Mutate Name; should not affect partial.
 		result.Settings.MCPServers[0].Name = "mutated"
 		if partial.Settings.MCPServers[0].Name != "tool" {
-			t.Error("merge should deep-copy MCPServers from partial settings")
+			t.Error("merge should deep-copy MCPServers Name from partial settings")
+		}
+		// Mutate Args; should not affect partial.
+		result.Settings.MCPServers[0].Args[0] = "mutated-arg"
+		if partial.Settings.MCPServers[0].Args[0] != "--flag" {
+			t.Error("merge should deep-copy MCPServers Args from partial settings")
 		}
 	})
 
@@ -626,7 +631,7 @@ func TestMerge(t *testing.T) {
 			States:   map[string]*State{"s": {Type: StateTypeSucceed}},
 			Settings: &SettingsConfig{
 				MCPServers: []MCPServerConfig{
-					{Name: "tool", Command: "cmd"},
+					{Name: "tool", Command: "cmd", Args: []string{"--flag", "val"}},
 				},
 			},
 		}
@@ -640,10 +645,15 @@ func TestMerge(t *testing.T) {
 			t.Fatalf("expected 1 MCP server, got %d", len(result.Settings.MCPServers))
 		}
 
-		// Mutate the result; should not affect defaults
+		// Mutate Name; should not affect defaults.
 		result.Settings.MCPServers[0].Name = "mutated"
 		if defaults.Settings.MCPServers[0].Name != "tool" {
-			t.Error("merge should deep-copy MCPServers from default settings")
+			t.Error("merge should deep-copy MCPServers Name from default settings")
+		}
+		// Mutate Args; should not affect defaults.
+		result.Settings.MCPServers[0].Args[0] = "mutated-arg"
+		if defaults.Settings.MCPServers[0].Args[0] != "--flag" {
+			t.Error("merge should deep-copy MCPServers Args from default settings")
 		}
 	})
 }

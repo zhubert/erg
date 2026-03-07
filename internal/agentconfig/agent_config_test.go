@@ -100,16 +100,46 @@ func TestWithMCPServers(t *testing.T) {
 
 	t.Run("returned slice is a copy (no aliasing)", func(t *testing.T) {
 		servers := []model.MCPServer{
-			{Name: "tool", Command: "cmd"},
+			{
+				Name:    "tool",
+				Command: "cmd",
+				Args:    []string{"arg1", "arg2"},
+			},
 		}
 		c := NewAgentConfig(WithMCPServers(servers))
 
 		got := c.GetMCPServersForRepo("/repo")
+		// Mutate top-level field on the returned value.
 		got[0].Name = "mutated"
+		// Mutate nested Args slice on the returned value.
+		got[0].Args[0] = "mutated-arg"
+		got[0].Args = append(got[0].Args, "new-arg")
 
 		got2 := c.GetMCPServersForRepo("/repo")
 		if got2[0].Name != "tool" {
-			t.Errorf("internal state was mutated: got %q, want %q", got2[0].Name, "tool")
+			t.Errorf("internal state was mutated (Name): got %q, want %q", got2[0].Name, "tool")
+		}
+		if len(got2[0].Args) != 2 {
+			t.Fatalf("internal Args length was mutated: got %d, want %d", len(got2[0].Args), 2)
+		}
+		if got2[0].Args[0] != "arg1" || got2[0].Args[1] != "arg2" {
+			t.Errorf("internal Args was mutated: got %v, want %v", got2[0].Args, []string{"arg1", "arg2"})
+		}
+	})
+
+	t.Run("input slice Args are not aliased into internal state", func(t *testing.T) {
+		args := []string{"arg1", "arg2"}
+		servers := []model.MCPServer{
+			{Name: "tool", Command: "cmd", Args: args},
+		}
+		c := NewAgentConfig(WithMCPServers(servers))
+
+		// Mutate the original input args after creation.
+		args[0] = "mutated"
+
+		got := c.GetMCPServersForRepo("/repo")
+		if got[0].Args[0] != "arg1" {
+			t.Errorf("internal Args was aliased to input: got %q, want %q", got[0].Args[0], "arg1")
 		}
 	})
 }

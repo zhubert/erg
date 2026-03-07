@@ -87,7 +87,15 @@ func WithMergeMethod(method string) AgentConfigOption {
 func WithMCPServers(servers []model.MCPServer) AgentConfigOption {
 	return func(c *AgentConfig) {
 		c.mcpServers = make([]model.MCPServer, len(servers))
-		copy(c.mcpServers, servers)
+		for i, srv := range servers {
+			srvCopy := srv
+			if srv.Args != nil {
+				argsCopy := make([]string, len(srv.Args))
+				copy(argsCopy, srv.Args)
+				srvCopy.Args = argsCopy
+			}
+			c.mcpServers[i] = srvCopy
+		}
 	}
 }
 
@@ -234,7 +242,14 @@ func (c *AgentConfig) GetMCPServersForRepo(_ string) []model.MCPServer {
 		return nil
 	}
 	out := make([]model.MCPServer, len(c.mcpServers))
-	copy(out, c.mcpServers)
+	for i, srv := range c.mcpServers {
+		out[i] = srv
+		if srv.Args != nil {
+			argsCopy := make([]string, len(srv.Args))
+			copy(argsCopy, srv.Args)
+			out[i].Args = argsCopy
+		}
+	}
 	return out
 }
 
