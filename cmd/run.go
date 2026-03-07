@@ -135,6 +135,9 @@ func runIssue(cmd *cobra.Command, args []string) error {
 		if wfCfg.Settings.MergeMethod != "" {
 			cfgOpts = append(cfgOpts, agentconfig.WithMergeMethod(wfCfg.Settings.MergeMethod))
 		}
+		if wfCfg.Settings.CleanupMerged != nil {
+			cfgOpts = append(cfgOpts, agentconfig.WithCleanupMerged(*wfCfg.Settings.CleanupMerged))
+		}
 	}
 	cfg := agentconfig.NewAgentConfig(cfgOpts...)
 	if wfCfg.Source.Provider == "asana" && wfCfg.Source.Filter.Project != "" {

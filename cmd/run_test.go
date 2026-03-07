@@ -44,24 +44,42 @@ func TestRunCmd_GroupID(t *testing.T) {
 }
 
 func TestRunCmd_RequiredIssueFlag(t *testing.T) {
-	// Invoke runCmd without --issue and expect an error about required flag
-	cmd := &cobra.Command{
-		Use:  "run",
-		RunE: runIssue,
+	newCmd := func() *cobra.Command {
+		var issueID, repo, workflowFile string
+		cmd := &cobra.Command{
+			Use:  "run",
+			RunE: runIssue,
+		}
+		cmd.Flags().StringVar(&issueID, "issue", "", "Issue ID")
+		cmd.Flags().StringVar(&repo, "repo", "", "Repo path")
+		cmd.Flags().StringVar(&workflowFile, "workflow", "", "Workflow file")
+		_ = cmd.MarkFlagRequired("issue")
+		return cmd
 	}
-	cmd.Flags().StringVar(&runIssueID, "issue", "", "Issue ID")
-	cmd.Flags().StringVar(&runRepo, "repo", "", "Repo path")
-	cmd.Flags().StringVar(&runWorkflowFile, "workflow", "", "Workflow file")
-	_ = cmd.MarkFlagRequired("issue")
 
-	// With --issue set, the flag parsing should succeed (the function itself may fail for other reasons)
-	cmd.SetArgs([]string{"--issue", "42"})
-	// We only test that the flag machinery works; actual execution needs real env.
-	err := cmd.ParseFlags([]string{"--issue", "42"})
-	if err != nil {
-		t.Fatalf("unexpected flag parse error: %v", err)
-	}
-	if runIssueID != "42" {
-		t.Errorf("expected runIssueID '42', got %q", runIssueID)
-	}
+	// Without --issue, Execute should return an error about the required flag.
+	t.Run("missing --issue returns error", func(t *testing.T) {
+		cmd := newCmd()
+		cmd.SetArgs([]string{})
+		err := cmd.Execute()
+		if err == nil {
+			t.Fatal("expected error when --issue is omitted, got nil")
+		}
+	})
+
+	// With --issue set, flag parsing succeeds and the value is stored correctly.
+	t.Run("with --issue flag parsing succeeds", func(t *testing.T) {
+		cmd := newCmd()
+		err := cmd.ParseFlags([]string{"--issue", "42"})
+		if err != nil {
+			t.Fatalf("unexpected flag parse error: %v", err)
+		}
+		got, err := cmd.Flags().GetString("issue")
+		if err != nil {
+			t.Fatalf("unexpected error getting flag: %v", err)
+		}
+		if got != "42" {
+			t.Errorf("expected issue flag value '42', got %q", got)
+		}
+	})
 }
