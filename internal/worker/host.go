@@ -44,6 +44,10 @@ type Host interface {
 	// to the daemon's running totals.
 	RecordSpend(costUSD float64, outputTokens, inputTokens int)
 
+	// RecordItemSpend accumulates spend data on the work item associated with
+	// the given session ID.
+	RecordItemSpend(sessionID string, costUSD float64, outputTokens, inputTokens int)
+
 	// SetWorkItemData stores a key-value pair in the work item's StepData
 	// for the session identified by sessionID.
 	SetWorkItemData(sessionID, key string, value any) error

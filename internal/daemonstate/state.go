@@ -43,6 +43,11 @@ type WorkItem struct {
 	UpdatedAt         time.Time       `json:"updated_at"`
 	CompletedAt       *time.Time      `json:"completed_at,omitempty"`
 	StepEnteredAt     time.Time       `json:"step_entered_at"`
+
+	// Per-session spend (accumulated across all turns in this session)
+	CostUSD      float64 `json:"cost_usd,omitempty"`
+	InputTokens  int     `json:"input_tokens,omitempty"`
+	OutputTokens int     `json:"output_tokens,omitempty"`
 }
 
 // ConsumesSlot returns true if the work item currently consumes a concurrency slot.
@@ -384,6 +389,18 @@ func (s *DaemonState) AddSpend(costUSD float64, outputTokens, inputTokens int) {
 	s.TotalCostUSD += costUSD
 	s.TotalOutputTokens += outputTokens
 	s.TotalInputTokens += inputTokens
+}
+
+// RecordItemSpend accumulates spend data on the named work item.
+// Thread-safe; may be called concurrently from multiple worker goroutines.
+func (s *DaemonState) RecordItemSpend(id string, costUSD float64, outputTokens, inputTokens int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if item, ok := s.WorkItems[id]; ok {
+		item.CostUSD += costUSD
+		item.OutputTokens += outputTokens
+		item.InputTokens += inputTokens
+	}
 }
 
 // ResetSpend zeroes the accumulated spend counters.

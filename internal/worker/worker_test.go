@@ -109,6 +109,9 @@ func (h *mockHost) RecordSpend(costUSD float64, outputTokens, inputTokens int) {
 	h.recordedInputTokens += inputTokens
 }
 
+func (h *mockHost) RecordItemSpend(sessionID string, costUSD float64, outputTokens, inputTokens int) {
+}
+
 func (h *mockHost) CommentOnIssue(ctx context.Context, sessionID, body string) error {
 	h.commentOnIssueCalls = append(h.commentOnIssueCalls, commentOnIssueCall{SessionID: sessionID, Body: body})
 	return h.commentOnIssueErr
