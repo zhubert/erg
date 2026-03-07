@@ -62,6 +62,18 @@ func (d *Daemon) RecordSpend(costUSD float64, outputTokens, inputTokens int) {
 	}
 }
 
+// RecordItemSpend accumulates spend data on the work item associated with the
+// given session ID. Linear scan over active items — count is always small.
+func (d *Daemon) RecordItemSpend(sessionID string, costUSD float64, outputTokens, inputTokens int) {
+	for _, item := range d.state.GetAllWorkItems() {
+		if item.SessionID == sessionID {
+			d.state.RecordItemSpend(item.ID, costUSD, outputTokens, inputTokens)
+			return
+		}
+	}
+	d.logger.Warn("RecordItemSpend: no work item found for session", "sessionID", sessionID)
+}
+
 // SetWorkItemData stores a key-value pair in the work item's StepData
 // for the work item associated with the given session ID.
 func (d *Daemon) SetWorkItemData(sessionID, key string, value any) error {

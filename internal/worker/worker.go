@@ -388,6 +388,7 @@ func (w *SessionWorker) handleStreaming(chunk claude.ResponseChunk) {
 		// must be included for an accurate count.
 		totalInputTokens := s.InputTokens + s.CacheCreationTokens + s.CacheReadTokens
 		w.host.RecordSpend(s.TotalCostUSD, s.OutputTokens, totalInputTokens)
+		w.host.RecordItemSpend(w.sessionID, s.TotalCostUSD, s.OutputTokens, totalInputTokens)
 		w.host.Logger().Info("session spend recorded",
 			"sessionID", w.sessionID,
 			"costUSD", s.TotalCostUSD,
