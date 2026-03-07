@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -145,21 +146,7 @@ func computeSessionStats(items []daemonstate.WorkItem) SessionStats {
 
 // formatWorkItemLabel returns a short display label for a work item.
 func formatWorkItemLabel(item daemonstate.WorkItem) string {
-	ref := item.IssueRef
-	var s string
-	switch ref.Source {
-	case "github", "GitHub":
-		s = fmt.Sprintf("#%s %s", ref.ID, ref.Title)
-	case "":
-		s = item.ID
-	default:
-		s = fmt.Sprintf("%s %s", ref.ID, ref.Title)
-	}
-	runes := []rune(s)
-	if len(runes) > 40 {
-		s = string(runes[:37]) + "..."
-	}
-	return s
+	return issueLabel(item.IssueRef, item.ID, 40)
 }
 
 // formatStats writes a human-readable stats report to w.
@@ -193,8 +180,8 @@ func printOverview(w io.Writer, stats SessionStats) {
 		totalCost += ci.CostUSD
 	}
 	if len(stats.CostItems) > 0 {
-		fmt.Fprintf(w, "  Avg cost:  $%.4f per session  ($%.4f total)\n",
-			totalCost/float64(len(stats.CostItems)), totalCost)
+		fmt.Fprintf(w, "  Avg cost:  $%.4f per tracked session (%d tracked)  ($%.4f total)\n",
+			totalCost/float64(len(stats.CostItems)), len(stats.CostItems), totalCost)
 	}
 
 	fmt.Fprintln(w)
@@ -256,8 +243,9 @@ func printFailureAnalysis(w io.Writer, stats SessionStats) {
 		return
 	}
 
-	fmt.Fprintf(w, "Failure Analysis (%d failed sessions)\n", len(stats.FailedItems))
-	fmt.Fprintln(w, "────────────────────────────────────")
+	title := fmt.Sprintf("Failure Analysis (%d failed sessions)", len(stats.FailedItems))
+	fmt.Fprintln(w, title)
+	fmt.Fprintln(w, strings.Repeat("─", len([]rune(title))))
 
 	// Count by step at failure
 	stepCounts := make(map[string]int)

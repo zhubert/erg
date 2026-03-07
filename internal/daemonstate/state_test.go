@@ -670,6 +670,103 @@ func TestDaemonState_Spend(t *testing.T) {
 	})
 }
 
+func TestDaemonState_RecordItemSpend(t *testing.T) {
+	t.Run("accumulates correctly across multiple calls", func(t *testing.T) {
+		s := NewDaemonState("/test/repo")
+		s.AddWorkItem(&WorkItem{ID: "item-1"})
+
+		s.RecordItemSpend("item-1", 0.10, 100, 50)
+		s.RecordItemSpend("item-1", 0.05, 200, 150)
+
+		item, ok := s.GetWorkItem("item-1")
+		if !ok {
+			t.Fatal("work item not found")
+		}
+		if item.CostUSD < 0.1499 || item.CostUSD > 0.1501 {
+			t.Errorf("expected CostUSD ~0.15, got %v", item.CostUSD)
+		}
+		if item.OutputTokens != 300 {
+			t.Errorf("expected OutputTokens 300, got %d", item.OutputTokens)
+		}
+		if item.InputTokens != 200 {
+			t.Errorf("expected InputTokens 200, got %d", item.InputTokens)
+		}
+	})
+
+	t.Run("no-op for non-existent item ID", func(t *testing.T) {
+		s := NewDaemonState("/test/repo")
+		// Should not panic
+		s.RecordItemSpend("does-not-exist", 0.50, 1000, 500)
+	})
+
+	t.Run("thread-safe under concurrent calls", func(t *testing.T) {
+		s := NewDaemonState("/test/repo")
+		s.AddWorkItem(&WorkItem{ID: "item-concurrent"})
+
+		var wg sync.WaitGroup
+		for i := 0; i < 50; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s.RecordItemSpend("item-concurrent", 0.01, 10, 5)
+			}()
+		}
+		wg.Wait()
+
+		item, ok := s.GetWorkItem("item-concurrent")
+		if !ok {
+			t.Fatal("work item not found")
+		}
+		if item.OutputTokens != 500 {
+			t.Errorf("expected OutputTokens 500, got %d", item.OutputTokens)
+		}
+		if item.InputTokens != 250 {
+			t.Errorf("expected InputTokens 250, got %d", item.InputTokens)
+		}
+	})
+
+	t.Run("persists through Save/Load", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		fp := filepath.Join(tmpDir, "daemon-state.json")
+		s := &DaemonState{
+			Version:   stateVersion,
+			RepoPath:  "/test/repo",
+			WorkItems: make(map[string]*WorkItem),
+			StartedAt: time.Now(),
+			filePath:  fp,
+		}
+		s.AddWorkItem(&WorkItem{ID: "item-persist"})
+		s.RecordItemSpend("item-persist", 0.25, 400, 200)
+
+		if err := s.Save(); err != nil {
+			t.Fatalf("Save failed: %v", err)
+		}
+
+		data, err := os.ReadFile(fp)
+		if err != nil {
+			t.Fatalf("failed to read state file: %v", err)
+		}
+		var loaded DaemonState
+		if err := json.Unmarshal(data, &loaded); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+
+		loadedItem, ok := loaded.WorkItems["item-persist"]
+		if !ok {
+			t.Fatal("work item not found in loaded state")
+		}
+		if loadedItem.CostUSD != 0.25 {
+			t.Errorf("expected CostUSD 0.25, got %v", loadedItem.CostUSD)
+		}
+		if loadedItem.OutputTokens != 400 {
+			t.Errorf("expected OutputTokens 400, got %d", loadedItem.OutputTokens)
+		}
+		if loadedItem.InputTokens != 200 {
+			t.Errorf("expected InputTokens 200, got %d", loadedItem.InputTokens)
+		}
+	})
+}
+
 func TestDaemonState_SetLastPollAt(t *testing.T) {
 	s := NewDaemonState("/test/repo")
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/paths"
 )
@@ -133,6 +134,25 @@ func loadStateRepoPath(path string) (string, error) {
 		return "", fmt.Errorf("no repo_path in state file")
 	}
 	return partial.RepoPath, nil
+}
+
+// issueLabel formats an issue reference into a display label, truncated to maxWidth runes.
+// GitHub issues render as "#42 Title"; others as "ID Title"; no-source as the item ID.
+func issueLabel(ref config.IssueRef, itemID string, maxWidth int) string {
+	var s string
+	switch ref.Source {
+	case "github", "GitHub":
+		s = fmt.Sprintf("#%s %s", ref.ID, ref.Title)
+	case "":
+		s = itemID
+	default:
+		s = fmt.Sprintf("%s %s", ref.ID, ref.Title)
+	}
+	runes := []rune(s)
+	if len(runes) > maxWidth {
+		s = string(runes[:maxWidth-3]) + "..."
+	}
+	return s
 }
 
 // confirm prompts the user for y/n confirmation

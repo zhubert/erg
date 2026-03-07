@@ -63,7 +63,7 @@ func (d *Daemon) RecordSpend(costUSD float64, outputTokens, inputTokens int) {
 }
 
 // RecordItemSpend accumulates spend data on the work item associated with the
-// given session ID. Linear scan over active items — count is always small.
+// given session ID. Linear scan over all items — count is always small.
 func (d *Daemon) RecordItemSpend(sessionID string, costUSD float64, outputTokens, inputTokens int) {
 	for _, item := range d.state.GetAllWorkItems() {
 		if item.SessionID == sessionID {

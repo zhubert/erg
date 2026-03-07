@@ -376,21 +376,7 @@ func printFooter(w io.Writer, slotCount, maxConcurrent, queuedCount, pid int, ru
 // GitHub issues render as "#42 Title"; others as "ID Title".
 // The result is truncated to 30 characters.
 func formatIssue(item *daemonstate.WorkItem) string {
-	ref := item.IssueRef
-	var s string
-	switch ref.Source {
-	case "github", "GitHub":
-		s = fmt.Sprintf("#%s %s", ref.ID, ref.Title)
-	case "":
-		s = item.ID
-	default:
-		s = fmt.Sprintf("%s %s", ref.ID, ref.Title)
-	}
-	runes := []rune(s)
-	if len(runes) > 30 {
-		s = string(runes[:27]) + "..."
-	}
-	return s
+	return issueLabel(item.IssueRef, item.ID, 30)
 }
 
 // formatStep returns the display string for the item's current step.
