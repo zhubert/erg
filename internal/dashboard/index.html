@@ -528,6 +528,7 @@
   let messagePanelOpen = new Set(); // item IDs with message panel open
   let logCache = {};
   let hoveredItemId = null;
+  let logLineCount = {}; // sessionID -> number of lines currently rendered in the log viewer
   let es = null;
   let controlEnabled = false; // set after capabilities fetch
 
@@ -680,11 +681,44 @@
       return;
     }
 
+    // Detach existing log viewers before DOM replacement so they survive re-render.
+    // Map: work-item data-id -> {element, wasAtBottom}
+    const savedLogViewers = new Map();
+    content.querySelectorAll('.log-container[data-id]').forEach(container => {
+      const lv = container.querySelector('.log-viewer');
+      if (!lv) return;
+      const threshold = 50;
+      const wasAtBottom = lv.scrollHeight - lv.scrollTop - lv.clientHeight <= threshold;
+      container.removeChild(lv);
+      savedLogViewers.set(container.dataset.id, { element: lv, wasAtBottom });
+    });
+
     let html = '';
     for (const daemon of state.daemons) {
       html += renderDaemon(daemon);
     }
     content.innerHTML = html;
+
+    // Re-attach saved log viewers or populate new containers from cache
+    content.querySelectorAll('.log-container[data-id]').forEach(container => {
+      const saved = savedLogViewers.get(container.dataset.id);
+      if (saved) {
+        container.appendChild(saved.element);
+        if (saved.wasAtBottom) {
+          saved.element.scrollTop = saved.element.scrollHeight;
+        }
+      } else {
+        // Newly expanded — populate from cache if available
+        const sid = container.dataset.session;
+        if (sid && logCache[sid]) {
+          updateLogViewer(container, logCache[sid]);
+        } else if (sid) {
+          container.innerHTML = '<div class="log-viewer"><div class="log-loading">Loading logs...</div></div>';
+        } else {
+          container.innerHTML = '<div class="log-viewer"><div class="log-loading">No session yet</div></div>';
+        }
+      }
+    });
 
     // Attach control button handlers (avoids inline onclick and JS-string injection).
     content.querySelectorAll('[data-ctrl-stop]').forEach(btn => {
@@ -713,6 +747,7 @@
         const sid = el.dataset.session;
         if (expandedItems.has(id)) {
           expandedItems.delete(id);
+          if (sid) delete logLineCount[sid];
         } else {
           expandedItems.add(id);
           if (sid) loadLogs(sid, id);
@@ -736,14 +771,6 @@
     if (hoveredItemId && !content.querySelector(`.work-item[data-id="${CSS.escape(hoveredItemId)}"]`)) {
       hoveredItemId = null;
     }
-
-    // Pin log viewers to bottom only when already scrolled to (or near) the bottom
-    content.querySelectorAll('.log-viewer').forEach(lv => {
-      const threshold = 50; // px
-      if (lv.scrollHeight - lv.scrollTop - lv.clientHeight <= threshold) {
-        lv.scrollTop = lv.scrollHeight;
-      }
-    });
   }
 
   function renderDaemon(daemon) {
@@ -852,16 +879,11 @@
       }
     }
 
+    // Use a log-container placeholder; the actual log-viewer element is preserved
+    // across re-renders by detach/re-attach in renderDaemons().
     let logHtml = '';
     if (isExpanded) {
-      const cached = logCache[item.session_id];
-      if (cached) {
-        logHtml = renderLogViewer(cached);
-      } else if (item.session_id) {
-        logHtml = '<div class="log-viewer"><div class="log-loading">Loading logs...</div></div>';
-      } else {
-        logHtml = '<div class="log-viewer"><div class="log-loading">No session yet</div></div>';
-      }
+      logHtml = `<div class="log-container" data-id="${escapeHtml(item.id)}" data-session="${escapeHtml(item.session_id || '')}"></div>`;
     }
 
     return `
@@ -900,30 +922,77 @@
     `;
   }
 
-  function renderLogViewer(lines) {
+  function renderLogLine(line) {
+    if (line.type === 'tool') {
+      const nameHtml = line.name ? `<span class="tool-name">${escapeHtml(line.name)}</span>` : '';
+      const argHtml = line.text ? `<span class="tool-arg">${escapeHtml(line.text)}</span>` : '';
+      return `<div class="log-line tool"><span class="tool-arrow">&#9658;</span>${nameHtml}${argHtml}</div>`;
+    }
+    return `<div class="log-line text">${escapeHtml(line.text)}</div>`;
+  }
+
+  // Update a log viewer in-place, appending only new lines.
+  // Creates the log-viewer element inside the container if it doesn't exist yet.
+  function updateLogViewer(container, lines) {
+    const sessionID = container.dataset.session;
+    let lv = container.querySelector('.log-viewer');
+
     if (!lines || lines.length === 0) {
-      return '<div class="log-viewer"><div class="log-loading">No output yet</div></div>';
-    }
-    let html = '<div class="log-viewer">';
-    for (const line of lines) {
-      if (line.type === 'tool') {
-        const nameHtml = line.name ? `<span class="tool-name">${escapeHtml(line.name)}</span>` : '';
-        const argHtml = line.text ? `<span class="tool-arg">${escapeHtml(line.text)}</span>` : '';
-        html += `<div class="log-line tool"><span class="tool-arrow">&#9658;</span>${nameHtml}${argHtml}</div>`;
-      } else {
-        html += `<div class="log-line text">${escapeHtml(line.text)}</div>`;
+      if (!lv) {
+        container.innerHTML = '<div class="log-viewer"><div class="log-loading">No output yet</div></div>';
       }
+      return;
     }
-    html += '</div>';
-    return html;
+
+    const prevCount = logLineCount[sessionID] || 0;
+
+    if (!lv) {
+      // First render — create log-viewer with all lines
+      let html = '<div class="log-viewer">';
+      for (const line of lines) {
+        html += renderLogLine(line);
+      }
+      html += '</div>';
+      container.innerHTML = html;
+      lv = container.querySelector('.log-viewer');
+      logLineCount[sessionID] = lines.length;
+      // Pin to bottom on first render
+      lv.scrollTop = lv.scrollHeight;
+      return;
+    }
+
+    if (lines.length <= prevCount) return; // no new lines
+
+    // Check if user has scrolled up before appending
+    const threshold = 50;
+    const wasAtBottom = lv.scrollHeight - lv.scrollTop - lv.clientHeight <= threshold;
+
+    // Append only new lines
+    const newLines = lines.slice(prevCount);
+    let fragment = '';
+    for (const line of newLines) {
+      fragment += renderLogLine(line);
+    }
+    lv.insertAdjacentHTML('beforeend', fragment);
+    logLineCount[sessionID] = lines.length;
+
+    // Only auto-scroll if user was already at the bottom
+    if (wasAtBottom) {
+      lv.scrollTop = lv.scrollHeight;
+    }
   }
 
   async function loadLogs(sessionID, itemID) {
     try {
       const resp = await fetch(`/api/logs/${encodeURIComponent(sessionID)}?tail=200`);
       if (resp.ok) {
-        logCache[sessionID] = await resp.json();
-        if (expandedItems.has(itemID)) render();
+        const lines = await resp.json();
+        logCache[sessionID] = lines;
+        // Update the log viewer in-place instead of re-rendering everything
+        const container = document.querySelector(`.log-container[data-id="${CSS.escape(itemID)}"]`);
+        if (container) {
+          updateLogViewer(container, lines);
+        }
       }
     } catch(e) {
       console.error('Failed to load logs:', e);
