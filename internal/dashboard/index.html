@@ -164,7 +164,7 @@
     transition: border-color 0.15s, background 0.15s;
     cursor: pointer;
   }
-  .work-item:hover {
+  .work-item:hover, .work-item.js-hovered {
     border-color: var(--accent-border);
     background: var(--bg-card-hover);
   }
@@ -527,8 +527,19 @@
   let expandedItems = new Set();
   let messagePanelOpen = new Set(); // item IDs with message panel open
   let logCache = {};
+  let hoveredItemId = null;
   let es = null;
   let controlEnabled = false; // set after capabilities fetch
+
+  const SCROLL_THRESHOLD = 50; // px from bottom to consider "at bottom"
+
+  function isAtBottom(el) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD;
+  }
+
+  function logPlaceholder(message) {
+    return `<div class="log-viewer"><div class="log-loading">${escapeHtml(message)}</div></div>`;
+  }
 
   function connect() {
     if (es) es.close();
@@ -669,6 +680,7 @@
     const content = document.getElementById('content');
 
     if (state.daemons.length === 0) {
+      hoveredItemId = null;
       content.innerHTML = `
         <div class="empty-state">
           <h2>No running daemons</h2>
@@ -678,11 +690,52 @@
       return;
     }
 
+    // Detach existing log viewers before DOM replacement so they survive re-render.
+    // Map: work-item data-id -> {element, wasAtBottom, session}
+    const savedLogViewers = new Map();
+    content.querySelectorAll('.log-container[data-id]').forEach(container => {
+      const lv = container.querySelector('.log-viewer');
+      if (!lv) return;
+      const wasAtBottom = isAtBottom(lv);
+      const session = container.dataset.session;
+      container.removeChild(lv);
+      savedLogViewers.set(container.dataset.id, {
+        element: lv,
+        wasAtBottom,
+        session,
+      });
+    });
+
     let html = '';
     for (const daemon of state.daemons) {
       html += renderDaemon(daemon);
     }
     content.innerHTML = html;
+
+    // Re-attach saved log viewers or populate new containers from cache
+    content.querySelectorAll('.log-container[data-id]').forEach(container => {
+      const saved = savedLogViewers.get(container.dataset.id);
+      const sid = container.dataset.session;
+      // Only re-attach if the session hasn't changed (e.g. after retry)
+      if (saved && saved.session && saved.session === sid) {
+        container.appendChild(saved.element);
+        if (saved.wasAtBottom) {
+          saved.element.scrollTop = saved.element.scrollHeight;
+        }
+      } else {
+        // New viewer needed — session changed or newly expanded
+        if (saved && saved.session !== sid) {
+          delete logCache[saved.session];
+        }
+        if (sid && logCache[sid]) {
+          updateLogViewer(container, 0, logCache[sid]);
+        } else if (sid) {
+          container.innerHTML = logPlaceholder('Loading logs...');
+        } else {
+          container.innerHTML = logPlaceholder('No session yet');
+        }
+      }
+    });
 
     // Attach control button handlers (avoids inline onclick and JS-string injection).
     content.querySelectorAll('[data-ctrl-stop]').forEach(btn => {
@@ -701,7 +754,7 @@
       btn.addEventListener('click', () => closeMessagePanel(btn.dataset.ctrlCancel));
     });
 
-    // Attach click handlers
+    // Attach click handlers and hover tracking
     content.querySelectorAll('.work-item[data-id]').forEach(el => {
       el.addEventListener('click', (e) => {
         if (e.target.tagName === 'A') return;
@@ -711,13 +764,30 @@
         const sid = el.dataset.session;
         if (expandedItems.has(id)) {
           expandedItems.delete(id);
+          if (sid) delete logCache[sid];
         } else {
           expandedItems.add(id);
           if (sid) loadLogs(sid, id);
         }
         render();
       });
+
+      // Restore hover class across re-renders to prevent flicker
+      if (el.dataset.id === hoveredItemId) el.classList.add('js-hovered');
+      el.addEventListener('mouseenter', () => {
+        hoveredItemId = el.dataset.id;
+        el.classList.add('js-hovered');
+      });
+      el.addEventListener('mouseleave', () => {
+        hoveredItemId = null;
+        el.classList.remove('js-hovered');
+      });
     });
+
+    // Clear hoveredItemId if its element was removed during re-render
+    if (hoveredItemId && !content.querySelector(`.work-item[data-id="${CSS.escape(hoveredItemId)}"]`)) {
+      hoveredItemId = null;
+    }
   }
 
   function renderDaemon(daemon) {
@@ -826,16 +896,11 @@
       }
     }
 
+    // Use a log-container placeholder; the actual log-viewer element is preserved
+    // across re-renders by detach/re-attach in renderDaemons().
     let logHtml = '';
     if (isExpanded) {
-      const cached = logCache[item.session_id];
-      if (cached) {
-        logHtml = renderLogViewer(cached);
-      } else if (item.session_id) {
-        logHtml = '<div class="log-viewer"><div class="log-loading">Loading logs...</div></div>';
-      } else {
-        logHtml = '<div class="log-viewer"><div class="log-loading">No session yet</div></div>';
-      }
+      logHtml = `<div class="log-container" data-id="${escapeHtml(item.id)}" data-session="${escapeHtml(item.session_id || '')}"></div>`;
     }
 
     return `
@@ -874,30 +939,69 @@
     `;
   }
 
-  function renderLogViewer(lines) {
+  function renderLogLine(line) {
+    if (line.type === 'tool') {
+      const nameHtml = line.name ? `<span class="tool-name">${escapeHtml(line.name)}</span>` : '';
+      const argHtml = line.text ? `<span class="tool-arg">${escapeHtml(line.text)}</span>` : '';
+      return `<div class="log-line tool"><span class="tool-arrow">&#9658;</span>${nameHtml}${argHtml}</div>`;
+    }
+    return `<div class="log-line text">${escapeHtml(line.text)}</div>`;
+  }
+
+  // Update a log viewer in-place, appending only new lines.
+  // Creates the log-viewer element inside the container if it doesn't exist yet.
+  // Derives "previously rendered count" from logCache to avoid redundant state.
+  function updateLogViewer(container, prevCacheLen, lines) {
+    let lv = container.querySelector('.log-viewer');
+
     if (!lines || lines.length === 0) {
-      return '<div class="log-viewer"><div class="log-loading">No output yet</div></div>';
-    }
-    let html = '<div class="log-viewer">';
-    for (const line of lines) {
-      if (line.type === 'tool') {
-        const nameHtml = line.name ? `<span class="tool-name">${escapeHtml(line.name)}</span>` : '';
-        const argHtml = line.text ? `<span class="tool-arg">${escapeHtml(line.text)}</span>` : '';
-        html += `<div class="log-line tool"><span class="tool-arrow">&#9658;</span>${nameHtml}${argHtml}</div>`;
-      } else {
-        html += `<div class="log-line text">${escapeHtml(line.text)}</div>`;
+      if (!lv) {
+        container.innerHTML = logPlaceholder('No output yet');
       }
+      return;
     }
-    html += '</div>';
-    return html;
+
+    // If no existing viewer, or line count decreased (log rotation), do a full render
+    if (!lv || lines.length < prevCacheLen) {
+      let html = '<div class="log-viewer">';
+      for (const line of lines) {
+        html += renderLogLine(line);
+      }
+      html += '</div>';
+      container.innerHTML = html;
+      lv = container.querySelector('.log-viewer');
+      lv.scrollTop = lv.scrollHeight;
+      return;
+    }
+
+    if (lines.length <= prevCacheLen) return; // no new lines
+
+    const wasAtBottom = isAtBottom(lv);
+
+    // Append only new lines
+    let fragment = '';
+    for (const line of lines.slice(prevCacheLen)) {
+      fragment += renderLogLine(line);
+    }
+    lv.insertAdjacentHTML('beforeend', fragment);
+
+    if (wasAtBottom) {
+      lv.scrollTop = lv.scrollHeight;
+    }
   }
 
   async function loadLogs(sessionID, itemID) {
     try {
       const resp = await fetch(`/api/logs/${encodeURIComponent(sessionID)}?tail=200`);
       if (resp.ok) {
-        logCache[sessionID] = await resp.json();
-        if (expandedItems.has(itemID)) render();
+        const lines = await resp.json();
+        const prevLen = logCache[sessionID]?.length || 0;
+        logCache[sessionID] = lines;
+        // Update the log viewer in-place instead of re-rendering everything
+        const container = document.querySelector(`.log-container[data-id="${CSS.escape(itemID)}"]`);
+        if (container) {
+          updateLogViewer(container, prevLen, lines);
+        }
       }
     } catch(e) {
       console.error('Failed to load logs:', e);
