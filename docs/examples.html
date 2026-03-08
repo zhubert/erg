@@ -1381,10 +1381,10 @@ stateDiagram-v2
     pr --> ci : success
     state ci {
         [*] --> await_ci
-        await_ci --> check_result : ci.complete
-        check_result --> fix_ci : ci_failed
-        fix_ci --> await_ci : push
-        check_result --> [*] : ci_passed
+        await_ci --> check_ci_result : ci.complete
+        check_ci_result --> fix_ci : ci_failed
+        fix_ci --> await_ci : push_ci_fix
+        check_ci_result --> [*] : ci_done
     }
     ci --> merge : success
     state merge {
@@ -1514,9 +1514,10 @@ stateDiagram-v2
     [*] --> plan
     state plan {
         [*] --> planning
-        planning --> await_feedback : ai.plan
-        await_feedback --> planning : rejected
-        await_feedback --> [*] : approved
+        planning --> await_plan_feedback : ai.plan
+        await_plan_feedback --> check_plan_feedback : plan.user_replied
+        check_plan_feedback --> planning : plan_approved=false
+        check_plan_feedback --> [*] : plan_approved=true
     }
     plan --> code : success
     state code {
@@ -1531,18 +1532,18 @@ stateDiagram-v2
     pr --> ci : success
     state ci {
         [*] --> await_ci
-        await_ci --> check_result : ci.complete
-        check_result --> fix_ci : ci_failed
-        fix_ci --> await_ci : push
-        check_result --> [*] : ci_passed
+        await_ci --> check_ci_result : ci.complete
+        check_ci_result --> fix_ci : ci_failed
+        fix_ci --> await_ci : push_ci_fix
+        check_ci_result --> [*] : ci_done
     }
     ci --> review : success
     state review {
         [*] --> await_review
-        await_review --> check_review : pr.reviewed
-        check_review --> address : changes_requested
-        address --> await_review : push
-        check_review --> [*] : approved
+        await_review --> check_review_result : pr.reviewed
+        check_review_result --> address_review : changes_requested
+        address_review --> await_review : push_review_fix
+        check_review_result --> [*] : approved
     }
     review --> merge : success
     state merge {
@@ -1654,7 +1655,7 @@ states:
     type: task
     action: github.comment_pr
     params:
-      body: "This PR has been waiting 72h with no activity. Closing — re-label the issue to retry."
+      body: "This PR has been waiting 72h with no activity and the automation has timed out. Please review and take any necessary manual action (for example, close the PR or adjust labels to retry)."
     next: failed
     error: failed
 
