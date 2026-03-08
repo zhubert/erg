@@ -3421,7 +3421,9 @@ func TestStartFixCI_FormatCommandStoredInStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startFixCI(context.Background(), *item, sess, 1, "CI failed: test failure")
+	if err := d.startFixCI(context.Background(), *item, sess, 1, "CI failed: test failure"); err != nil {
+		t.Fatalf("startFixCI returned error: %v", err)
+	}
 
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
 	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt -l -w ." {
@@ -3462,7 +3464,9 @@ func TestStartFixCI_FormatCommandDefaultMessage(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startFixCI(context.Background(), *item, sess, 1, "CI failed")
+	if err := d.startFixCI(context.Background(), *item, sess, 1, "CI failed"); err != nil {
+		t.Fatalf("startFixCI returned error: %v", err)
+	}
 
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
 	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt -l -w ." {
@@ -3497,7 +3501,9 @@ func TestStartFixCI_InheritsFormatCommandFromStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startFixCI(context.Background(), *item, sess, 1, "CI failed")
+	if err := d.startFixCI(context.Background(), *item, sess, 1, "CI failed"); err != nil {
+		t.Fatalf("startFixCI returned error: %v", err)
+	}
 
 	// Existing _format_command must not be cleared.
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
@@ -3540,7 +3546,9 @@ func TestStartFixCI_FormatCommandOverridesStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startFixCI(context.Background(), *item, sess, 1, "CI failed")
+	if err := d.startFixCI(context.Background(), *item, sess, 1, "CI failed"); err != nil {
+		t.Fatalf("startFixCI returned error: %v", err)
+	}
 
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
 	if got, _ := updatedItem.StepData["_format_command"].(string); got != "prettier --write ." {
@@ -5770,7 +5778,9 @@ func TestStartAddressReview_FormatCommandStoredInStepData(t *testing.T) {
 	comments := worker.FilterTranscriptComments([]git.PRReviewComment{
 		{Author: "reviewer1", Body: "Please fix the issue"},
 	})
-	_ = d.startAddressReview(context.Background(), *item, sess, 1, comments)
+	if err := d.startAddressReview(context.Background(), *item, sess, 1, comments); err != nil {
+		t.Fatalf("startAddressReview returned error: %v", err)
+	}
 
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
 	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt -l -w ." {
@@ -5811,7 +5821,9 @@ func TestStartAddressReview_FormatCommandDefaultMessage(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+	if err := d.startAddressReview(context.Background(), *item, sess, 1, nil); err != nil {
+		t.Fatalf("startAddressReview returned error: %v", err)
+	}
 
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
 	if got, _ := updatedItem.StepData["_format_command"].(string); got != "gofmt -l -w ." {
@@ -5846,7 +5858,9 @@ func TestStartAddressReview_InheritsFormatCommandFromStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+	if err := d.startAddressReview(context.Background(), *item, sess, 1, nil); err != nil {
+		t.Fatalf("startAddressReview returned error: %v", err)
+	}
 
 	// Existing _format_command must not be cleared.
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
@@ -5888,7 +5902,9 @@ func TestStartAddressReview_FormatCommandOverridesStepData(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+	if err := d.startAddressReview(context.Background(), *item, sess, 1, nil); err != nil {
+		t.Fatalf("startAddressReview returned error: %v", err)
+	}
 
 	updatedItem, _ := d.state.GetWorkItem(item.ID)
 	if got, _ := updatedItem.StepData["_format_command"].(string); got != "prettier --write ." {

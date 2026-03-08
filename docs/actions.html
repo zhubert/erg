@@ -1342,6 +1342,16 @@
                     <code>format_command</code> is set.
                   </td>
                 </tr>
+                <tr>
+                  <td>simplify</td>
+                  <td>bool</td>
+                  <td>false</td>
+                  <td>
+                    When <code>true</code>, Claude runs the built-in
+                    <code>/simplify</code> skill after completing the primary
+                    coding task to review and clean up the implementation.
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1432,6 +1442,16 @@
                     <code>format_command</code> is set (directly or inherited).
                   </td>
                 </tr>
+                <tr>
+                  <td>simplify</td>
+                  <td>bool</td>
+                  <td>false</td>
+                  <td>
+                    When <code>true</code>, Claude runs the built-in
+                    <code>/simplify</code> skill after fixing CI to review and
+                    clean up the implementation.
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1496,6 +1516,16 @@
                   <td>string</td>
                   <td><em>built-in</em></td>
                   <td>Custom system prompt for the review-address session.</td>
+                </tr>
+                <tr>
+                  <td>simplify</td>
+                  <td>bool</td>
+                  <td>false</td>
+                  <td>
+                    When <code>true</code>, Claude runs the built-in
+                    <code>/simplify</code> skill after addressing review
+                    feedback to review and clean up the implementation.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1581,6 +1611,16 @@
                   <td>string</td>
                   <td><em>built-in</em></td>
                   <td>Custom system prompt for the resolution session.</td>
+                </tr>
+                <tr>
+                  <td>simplify</td>
+                  <td>bool</td>
+                  <td>false</td>
+                  <td>
+                    When <code>true</code>, Claude runs the built-in
+                    <code>/simplify</code> skill after resolving conflicts to
+                    review and clean up the implementation.
+                  </td>
                 </tr>
               </tbody>
             </table>
