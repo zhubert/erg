@@ -9211,6 +9211,211 @@ func TestStartPlanning_UsesWorkItemRepoPath(t *testing.T) {
 	}
 }
 
+// TestMaybeAppendSimplify_False verifies that when simplify is false, the message is unchanged.
+func TestMaybeAppendSimplify_False(t *testing.T) {
+	msg := "Do the work."
+	result := maybeAppendSimplify(msg, false)
+	if result != msg {
+		t.Errorf("expected message unchanged, got %q", result)
+	}
+}
+
+// TestMaybeAppendSimplify_True verifies that when simplify is true, the simplify directive is appended.
+func TestMaybeAppendSimplify_True(t *testing.T) {
+	msg := "Do the work."
+	result := maybeAppendSimplify(msg, true)
+	if result == msg {
+		t.Error("expected message to be extended with simplify directive")
+	}
+	if !strings.Contains(result, "simplify") {
+		t.Errorf("expected 'simplify' in result, got %q", result)
+	}
+	if !strings.Contains(result, "Skill tool") {
+		t.Errorf("expected 'Skill tool' in result, got %q", result)
+	}
+}
+
+// TestStartCoding_SimplifyDirectiveAppended verifies that when the coding workflow state
+// has simplify: true, the initial message includes the simplify directive.
+func TestStartCoding_SimplifyDirectiveAppended(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	// BranchExists returns false — no pre-existing branch
+	mockExec.AddRule(func(dir, name string, args []string) bool {
+		return name == "git" && len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--verify"
+	}, exec.MockResponse{Err: fmt.Errorf("fatal: Needed a single revision")})
+	// Suppress gh issue view (fetching comments for plan)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: []byte(`{"comments":[]}`),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"coding": {Params: map[string]any{"simplify": true}},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-simplify",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Add feature"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	err := d.startCoding(t.Context(), *item)
+	if err != nil {
+		t.Fatalf("startCoding failed: %v", err)
+	}
+
+	d.mu.Lock()
+	w := d.workers["work-simplify"]
+	d.mu.Unlock()
+	if w == nil {
+		t.Fatal("expected worker to be registered")
+	}
+
+	msg := w.InitialMsg()
+	if !strings.Contains(msg, "simplify") {
+		t.Errorf("initial message should contain simplify directive, got:\n%s", msg)
+	}
+}
+
+// TestStartCoding_SimplifyDirectiveNotAppendedByDefault verifies that without the simplify param,
+// the initial message does not include the simplify directive.
+func TestStartCoding_SimplifyDirectiveNotAppendedByDefault(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddRule(func(dir, name string, args []string) bool {
+		return name == "git" && len(args) >= 3 && args[0] == "rev-parse" && args[1] == "--verify"
+	}, exec.MockResponse{Err: fmt.Errorf("fatal: Needed a single revision")})
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: []byte(`{"comments":[]}`),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-no-simplify",
+		IssueRef: config.IssueRef{Source: "github", ID: "43", Title: "Add feature"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	err := d.startCoding(t.Context(), *item)
+	if err != nil {
+		t.Fatalf("startCoding failed: %v", err)
+	}
+
+	d.mu.Lock()
+	w := d.workers["work-no-simplify"]
+	d.mu.Unlock()
+	if w == nil {
+		t.Fatal("expected worker to be registered")
+	}
+
+	msg := w.InitialMsg()
+	if strings.Contains(msg, simplifyDirective) {
+		t.Errorf("initial message should not contain simplify directive by default, got:\n%s", msg)
+	}
+}
+
+// TestStartFixCI_SimplifyDirectiveAppended verifies that startFixCI appends the simplify
+// directive when simplify: true is set in the fix_ci workflow state.
+func TestStartFixCI_SimplifyDirectiveAppended(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"fix_ci": {Params: map[string]any{"simplify": true}},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-fix-simplify",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	_ = d.startFixCI(context.Background(), *item, sess, 1, "CI failed: test failure")
+
+	d.mu.Lock()
+	w := d.workers["item-fix-simplify"]
+	d.mu.Unlock()
+	if w == nil {
+		t.Fatal("expected worker to be registered")
+	}
+
+	msg := w.InitialMsg()
+	if !strings.Contains(msg, "simplify") {
+		t.Errorf("fix_ci initial message should contain simplify directive, got:\n%s", msg)
+	}
+}
+
+// TestStartAddressReview_SimplifyDirectiveAppended verifies that startAddressReview appends the
+// simplify directive when simplify: true is set in the address_review workflow state.
+func TestStartAddressReview_SimplifyDirectiveAppended(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"address_review": {Params: map[string]any{"simplify": true}},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-review-simplify",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+
+	d.mu.Lock()
+	w := d.workers["item-review-simplify"]
+	d.mu.Unlock()
+	if w == nil {
+		t.Fatal("expected worker to be registered")
+	}
+
+	msg := w.InitialMsg()
+	if !strings.Contains(msg, "simplify") {
+		t.Errorf("address_review initial message should contain simplify directive, got:\n%s", msg)
+	}
+}
+
 func TestStartCoding_UsesWorkItemRepoPath(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{"/repo/erg", "/repo/plural"}

@@ -24,6 +24,18 @@ import (
 	"github.com/zhubert/erg/internal/workflow"
 )
 
+// simplifyDirective is appended to the initial message when simplify: true is set on a coding action.
+// It instructs Claude to invoke the /simplify skill after completing the main task.
+const simplifyDirective = "\n\nAfter completing the implementation, use the Skill tool to invoke the \"simplify\" skill to review and improve the changed code for quality and efficiency."
+
+// maybeAppendSimplify appends the simplify directive to msg when simplify is true.
+func maybeAppendSimplify(msg string, simplify bool) string {
+	if !simplify {
+		return msg
+	}
+	return msg + simplifyDirective
+}
+
 // fetchIssueComments retrieves comments for a work item's issue from the appropriate provider.
 func (d *Daemon) fetchIssueComments(ctx context.Context, repoPath string, item daemonstate.WorkItem) ([]issues.IssueComment, error) {
 	source := item.IssueRef.Source
@@ -327,6 +339,9 @@ func (d *Daemon) startCoding(ctx context.Context, item daemonstate.WorkItem) err
 
 		codingPrompt = codingPrompt + "\n\nFORMATTING: Before committing any changes, run the following formatter command:\n  " + formatCommand + "\nStage and include all formatting changes in your commit."
 	}
+
+	// Append simplify directive if requested
+	initialMsg = maybeAppendSimplify(initialMsg, params.Bool("simplify", false))
 
 	// Start worker, applying any per-session limits from workflow params
 	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, codingPrompt)
@@ -824,6 +839,7 @@ func (d *Daemon) startFixCI(ctx context.Context, item daemonstate.WorkItem, sess
 		p := workflow.NewParamHelper(fixState.Params)
 		systemPrompt = p.String("system_prompt", "")
 		formatCommand = p.String("format_command", "")
+		prompt = maybeAppendSimplify(prompt, p.Bool("simplify", false))
 		if formatCommand != "" {
 			// fix_ci has its own format_command — update step data so
 			// handleAsyncComplete uses it as the formatter safety net after
@@ -957,6 +973,7 @@ func (d *Daemon) startResolveConflicts(ctx context.Context, item *daemonstate.Wo
 	if resolveState != nil {
 		p := workflow.NewParamHelper(resolveState.Params)
 		systemPrompt = p.String("system_prompt", "")
+		prompt = maybeAppendSimplify(prompt, p.Bool("simplify", false))
 	}
 
 	resolvedPrompt, err := workflow.ResolveSystemPrompt(systemPrompt, sess.RepoPath)
@@ -1041,6 +1058,7 @@ func (d *Daemon) startAddressReview(ctx context.Context, item daemonstate.WorkIt
 			})
 			d.saveState()
 		}
+		prompt = maybeAppendSimplify(prompt, p.Bool("simplify", false))
 	}
 
 	resolvedPrompt, err := workflow.ResolveSystemPrompt(systemPrompt, sess.RepoPath)

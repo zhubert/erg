@@ -328,6 +328,90 @@ func TestValidate(t *testing.T) {
 			wantFields: nil,
 		},
 		{
+			name: "ai.code simplify true accepted",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.code", Params: map[string]any{"simplify": true}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: nil,
+		},
+		{
+			name: "ai.code simplify non-bool rejected",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.code", Params: map[string]any{"simplify": "yes"}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.c.params.simplify"},
+		},
+		{
+			name: "ai.fix_ci simplify true accepted",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.fix_ci", Params: map[string]any{"simplify": true}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: nil,
+		},
+		{
+			name: "ai.fix_ci simplify non-bool rejected",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.fix_ci", Params: map[string]any{"simplify": 1}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.c.params.simplify"},
+		},
+		{
+			name: "ai.address_review simplify true accepted",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.address_review", Params: map[string]any{"simplify": true}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: nil,
+		},
+		{
+			name: "ai.resolve_conflicts simplify true accepted",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.resolve_conflicts", Params: map[string]any{"simplify": true}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: nil,
+		},
+		{
+			name: "ai.resolve_conflicts simplify non-bool rejected",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.resolve_conflicts", Params: map[string]any{"simplify": "yes"}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.c.params.simplify"},
+		},
+		{
 			name: "unknown state type",
 			cfg: &Config{
 				Start:  "x",
