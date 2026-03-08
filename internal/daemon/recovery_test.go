@@ -308,8 +308,8 @@ func TestDaemon_RecoverAsyncPending_SkipsItemsWithActiveWorker(t *testing.T) {
 	})
 	d.state.AdvanceWorkItem("item-active", "coding", "async_pending")
 
-	// Simulate a live worker for this item
-	d.workers["item-active"] = newMockDoneWorker()
+	// Simulate an active worker entry for this item (only map presence matters)
+	d.workers["item-active"] = nil
 
 	d.recoverFromState(context.Background())
 
