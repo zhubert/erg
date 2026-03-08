@@ -291,8 +291,8 @@ func (d *Daemon) checkLinkedPRsAndUnqueue(ctx context.Context, repoPath string, 
 			Title:  issue.Title,
 			URL:    issue.URL,
 		},
-		Branch:   pr.HeadRefName,
-		PRURL:    pr.URL,
+		Branch: pr.HeadRefName,
+		PRURL:  pr.URL,
 		StepData: map[string]any{
 			"_repo_path": repoPath,
 		},
@@ -361,6 +361,123 @@ func (d *Daemon) checkLinkedPRsAndUnqueue(ctx context.Context, repoPath string, 
 	log.Info("adopted open PR into workflow",
 		"pr", pr.Number, "branch", pr.HeadRefName, "step", recoveryStep, "sessionID", sessionID)
 	return true
+}
+
+// reconcileClosedIssues checks non-terminal work items to see if their underlying
+// issue has been closed externally. If so, the work item is cancelled: any running
+// worker is stopped, the queued label is removed, and the item is marked terminal.
+// This prevents closed issues from lingering as "active" in the dashboard.
+func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
+	if time.Since(d.lastReconcileAt) < defaultReconcileInterval {
+		return
+	}
+	d.lastReconcileAt = time.Now()
+
+	log := d.logger.With("component", "issue-reconciler")
+
+	for _, item := range d.state.GetActiveWorkItems() {
+		if item.IsTerminal() {
+			continue
+		}
+
+		repoPath := d.resolveRepoPath(ctx, item)
+		if repoPath == "" {
+			continue
+		}
+
+		closed, err := d.isIssueClosed(ctx, repoPath, item)
+		if err != nil {
+			log.Debug("failed to check issue state", "workItem", item.ID, "error", err)
+			continue
+		}
+
+		if !closed {
+			continue
+		}
+
+		log.Info("issue closed externally, cancelling work item",
+			"workItem", item.ID, "issue", item.IssueRef.ID, "source", item.IssueRef.Source)
+
+		// Cancel any running worker for this item
+		d.mu.Lock()
+		if w, ok := d.workers[item.ID]; ok {
+			w.Cancel()
+			delete(d.workers, item.ID)
+		}
+		d.mu.Unlock()
+
+		// Remove the queued label so it doesn't get re-queued
+		d.unqueueIssue(ctx, item, "Issue was closed externally. Cancelling work.")
+
+		// Mark terminal
+		if err := d.state.MarkWorkItemTerminal(item.ID, false); err != nil {
+			log.Debug("failed to mark work item terminal", "workItem", item.ID, "error", err)
+		}
+		d.state.SetErrorMessage(item.ID, "issue closed externally")
+	}
+
+	// Also check queued items that haven't started yet
+	for _, item := range d.state.GetWorkItemsByState(daemonstate.WorkItemQueued) {
+		repoPath := ""
+		if rp, ok := item.StepData["_repo_path"].(string); ok && rp != "" {
+			repoPath = rp
+		} else {
+			repoPath = d.resolveRepoPath(ctx, item)
+		}
+		if repoPath == "" {
+			continue
+		}
+
+		closed, err := d.isIssueClosed(ctx, repoPath, item)
+		if err != nil {
+			log.Debug("failed to check queued issue state", "workItem", item.ID, "error", err)
+			continue
+		}
+
+		if !closed {
+			continue
+		}
+
+		log.Info("queued issue closed externally, removing",
+			"workItem", item.ID, "issue", item.IssueRef.ID)
+
+		d.unqueueIssue(ctx, item, "Issue was closed externally. Removing from queue.")
+
+		if err := d.state.MarkWorkItemTerminal(item.ID, false); err != nil {
+			log.Debug("failed to mark queued item terminal", "workItem", item.ID, "error", err)
+		}
+		d.state.SetErrorMessage(item.ID, "issue closed externally")
+	}
+}
+
+// isIssueClosed checks whether the issue backing a work item is closed.
+// Uses the IssueStateChecker interface when a provider is registered,
+// falling back to GitService.GetIssueState for GitHub if no provider is available.
+func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemonstate.WorkItem) (bool, error) {
+	checkCtx, cancel := context.WithTimeout(ctx, timeoutQuickAPI)
+	defer cancel()
+
+	source := issues.Source(item.IssueRef.Source)
+
+	// Try the provider registry first (works for all sources including GitHub)
+	if d.issueRegistry != nil {
+		if p := d.issueRegistry.GetProvider(source); p != nil {
+			if sc, ok := p.(issues.IssueStateChecker); ok {
+				return sc.IsIssueClosed(checkCtx, repoPath, item.IssueRef.ID)
+			}
+		}
+	}
+
+	// Fallback: direct GitService call for GitHub when no provider is registered
+	if source == issues.SourceGitHub {
+		state, err := d.gitService.GetIssueState(checkCtx, repoPath, item.IssueRef.ID)
+		if err != nil {
+			return false, err
+		}
+		return state == "CLOSED", nil
+	}
+
+	return false, nil
 }
 
 // hasExistingSession checks if a session already exists for the given issue.
