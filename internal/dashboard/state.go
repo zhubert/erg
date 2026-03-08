@@ -134,12 +134,14 @@ type streamLogMsg struct {
 
 // LogLine represents a single parsed log line for display.
 type LogLine struct {
-	Type string `json:"type"`          // "text" or "tool"
-	Text string `json:"text"`          // tool arg/description, or text body
+	Type string `json:"type"`           // "text" or "tool"
+	Text string `json:"text"`           // tool arg/description, or text body
 	Name string `json:"name,omitempty"` // tool name (tool lines only)
 }
 
 // ReadSessionLog reads and parses the stream log for a session.
+// The stream log contains pretty-printed (multi-line) JSON objects separated
+// by top-level "{" and "}" lines, so we accumulate lines between braces.
 func ReadSessionLog(sessionID string, tailN int) ([]LogLine, error) {
 	if sessionID == "" {
 		return nil, fmt.Errorf("no session ID")
@@ -157,15 +159,48 @@ func ReadSessionLog(sessionID string, tailN int) ([]LogLine, error) {
 	var lines []LogLine
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+
+	var acc []byte
+	depth := 0
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		if len(line) == 0 || line[0] != '{' {
+		trimmed := strings.TrimSpace(string(line))
+		if len(trimmed) == 0 {
 			continue
 		}
+
+		// Track brace depth to accumulate multi-line JSON objects.
+		if depth == 0 && trimmed[0] != '{' {
+			continue
+		}
+
+		for _, ch := range trimmed {
+			switch ch {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+		}
+
+		if len(acc) > 0 {
+			acc = append(acc, '\n')
+		}
+		acc = append(acc, line...)
+
+		if depth > 0 {
+			continue
+		}
+
+		// We have a complete JSON object — parse it.
 		var msg streamLogMsg
-		if err := json.Unmarshal(line, &msg); err != nil {
+		if err := json.Unmarshal(acc, &msg); err != nil {
+			acc = acc[:0]
 			continue
 		}
+		acc = acc[:0]
+
 		if msg.Type != "assistant" {
 			continue
 		}

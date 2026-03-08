@@ -219,6 +219,68 @@ ERROR: something went wrong
 	}
 }
 
+func TestReadSessionLog_PrettyPrintedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	paths.Reset()
+
+	logDir := filepath.Join(tmpDir, ".erg", "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "pretty-json-test"
+	// Simulate the pretty-printed JSON that streaming.go actually writes
+	logContent := `{
+  "type": "assistant",
+  "message": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Hello from pretty JSON"
+      }
+    ]
+  }
+}
+{
+  "type": "assistant",
+  "message": {
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "Bash",
+        "input": {
+          "command": "go test ./..."
+        }
+      }
+    ]
+  }
+}
+{
+  "type": "system",
+  "message": {}
+}
+`
+	logPath := filepath.Join(logDir, "stream-"+sessionID+".log")
+	if err := os.WriteFile(logPath, []byte(logContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lines, err := ReadSessionLog(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %+v", len(lines), lines)
+	}
+	if lines[0].Type != "text" || lines[0].Text != "Hello from pretty JSON" {
+		t.Errorf("line 0: %+v", lines[0])
+	}
+	if lines[1].Type != "tool" || lines[1].Name != "Bash" || lines[1].Text != "go test ./..." {
+		t.Errorf("line 1: %+v", lines[1])
+	}
+}
+
 func TestReadSessionLog_Tail(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
