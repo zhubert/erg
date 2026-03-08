@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/daemonstate"
@@ -237,10 +236,6 @@ func TestDaemon_RecoverAsyncPending_SetsStateToCoding(t *testing.T) {
 	})
 	// Override phase since AddWorkItem resets it
 	d.state.AdvanceWorkItem("item-1", "await_ci", "async_pending")
-	// Backdate so recovery doesn't skip this item due to the grace period
-	d.state.UpdateWorkItem("item-1", func(it *daemonstate.WorkItem) {
-		it.UpdatedAt = time.Now().Add(-3 * time.Minute)
-	})
 
 	d.recoverFromState(context.Background())
 
@@ -285,12 +280,12 @@ func TestDaemon_ReconstructSessions_CalledByRecoverFromState(t *testing.T) {
 	}
 }
 
-func TestDaemon_RecoverAsyncPending_SkipsRecentlyUpdatedItems(t *testing.T) {
+func TestDaemon_RecoverAsyncPending_SkipsItemsWithActiveWorker(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{"/test/repo"}
 	mockExec := exec.NewMockExecutor(nil)
 
-	// Mock GetPRState — should NOT be called because the item is too fresh
+	// Mock GetPRState — should NOT be called because an active worker exists
 	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
 		Err: fmt.Errorf("should not be called"),
 	})
@@ -298,25 +293,27 @@ func TestDaemon_RecoverAsyncPending_SkipsRecentlyUpdatedItems(t *testing.T) {
 	d := testDaemonWithExec(cfg, mockExec)
 	d.repoFilter = "/test/repo"
 
-	sess := testSession("sess-fresh")
+	sess := testSession("sess-active")
 	sess.Branch = "issue-42"
 	cfg.AddSession(*sess)
 
 	d.state.AddWorkItem(&daemonstate.WorkItem{
-		ID:          "item-fresh",
+		ID:          "item-active",
 		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
-		SessionID:   "sess-fresh",
+		SessionID:   "sess-active",
 		Branch:      "issue-42",
 		CurrentStep: "coding",
 		Phase:       "async_pending",
 		StepData:    map[string]any{},
 	})
-	d.state.AdvanceWorkItem("item-fresh", "coding", "async_pending")
+	d.state.AdvanceWorkItem("item-active", "coding", "async_pending")
 
-	// UpdatedAt was just set by AdvanceWorkItem — well within the grace period
+	// Simulate an active worker entry for this item (only map presence matters)
+	d.workers["item-active"] = nil
+
 	d.recoverFromState(context.Background())
 
-	item, _ := d.state.GetWorkItem("item-fresh")
+	item, _ := d.state.GetWorkItem("item-active")
 	// The item should remain in async_pending — recovery should skip it
 	if item.Phase != "async_pending" {
 		t.Errorf("expected phase to remain async_pending, got %s", item.Phase)
@@ -326,7 +323,7 @@ func TestDaemon_RecoverAsyncPending_SkipsRecentlyUpdatedItems(t *testing.T) {
 	}
 }
 
-func TestDaemon_RecoverAsyncPending_RecoversStaleItems(t *testing.T) {
+func TestDaemon_RecoverAsyncPending_RecoversOrphanedItems(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{"/test/repo"}
 	mockExec := exec.NewMockExecutor(nil)
@@ -339,30 +336,26 @@ func TestDaemon_RecoverAsyncPending_RecoversStaleItems(t *testing.T) {
 	d := testDaemonWithExec(cfg, mockExec)
 	d.repoFilter = "/test/repo"
 
-	sess := testSession("sess-stale")
+	sess := testSession("sess-orphan")
 	sess.Branch = "issue-99"
 	cfg.AddSession(*sess)
 
 	d.state.AddWorkItem(&daemonstate.WorkItem{
-		ID:          "item-stale",
+		ID:          "item-orphan",
 		IssueRef:    config.IssueRef{Source: "github", ID: "99"},
-		SessionID:   "sess-stale",
+		SessionID:   "sess-orphan",
 		Branch:      "issue-99",
 		CurrentStep: "coding",
 		Phase:       "async_pending",
 		StepData:    map[string]any{},
 	})
-	d.state.AdvanceWorkItem("item-stale", "coding", "async_pending")
+	d.state.AdvanceWorkItem("item-orphan", "coding", "async_pending")
 
-	// Backdate the UpdatedAt to be older than the grace period
-	d.state.UpdateWorkItem("item-stale", func(it *daemonstate.WorkItem) {
-		it.UpdatedAt = time.Now().Add(-3 * time.Minute)
-	})
-
+	// No worker in d.workers — simulates daemon restart where all workers died
 	d.recoverFromState(context.Background())
 
-	item, _ := d.state.GetWorkItem("item-stale")
-	// Stale item with no PR should be re-queued
+	item, _ := d.state.GetWorkItem("item-orphan")
+	// Orphaned item with no PR and no worker should be re-queued
 	if item.State != daemonstate.WorkItemQueued {
 		t.Errorf("expected state to be queued, got %s", item.State)
 	}
@@ -423,9 +416,6 @@ func TestDaemon_RecoverAsyncPending_CustomWorkflow(t *testing.T) {
 		StepData:    map[string]any{},
 	})
 	d.state.AdvanceWorkItem("item-custom", "implement", "async_pending")
-	d.state.UpdateWorkItem("item-custom", func(it *daemonstate.WorkItem) {
-		it.UpdatedAt = time.Now().Add(-3 * time.Minute)
-	})
 
 	d.recoverFromState(context.Background())
 
@@ -489,9 +479,6 @@ func TestDaemon_RecoverAsyncPending_CustomWorkflow_PastCI(t *testing.T) {
 		StepData:    map[string]any{},
 	})
 	d.state.AdvanceWorkItem("item-past-ci", "auto_merge", "async_pending")
-	d.state.UpdateWorkItem("item-past-ci", func(it *daemonstate.WorkItem) {
-		it.UpdatedAt = time.Now().Add(-3 * time.Minute)
-	})
 
 	d.recoverFromState(context.Background())
 

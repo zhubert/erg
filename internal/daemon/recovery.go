@@ -183,12 +183,6 @@ func (d *Daemon) resetPhaseToIdle(item *daemonstate.WorkItem) {
 	})
 }
 
-// recoveryGracePeriod is how long after a work item was last updated before
-// recovery will treat it as stale. This prevents a race where a freshly started
-// session gets cleaned up because recovery runs before the worker has time to
-// make progress (e.g., create a PR).
-const recoveryGracePeriod = 2 * time.Minute
-
 // recoverAsyncPending handles recovery when a worker was active but daemon restarted.
 func (d *Daemon) recoverAsyncPending(ctx context.Context, item *daemonstate.WorkItem, log interface{ Info(string, ...any) }) {
 	if item.Branch == "" {
@@ -202,12 +196,16 @@ func (d *Daemon) recoverAsyncPending(ctx context.Context, item *daemonstate.Work
 		return
 	}
 
-	// Skip items that were updated very recently — they likely have a live
-	// worker that hasn't finished yet. Without this guard, recovery can race
-	// with a freshly started session and clean it up before it produces a PR.
-	if time.Since(item.UpdatedAt) < recoveryGracePeriod {
-		log.Info("item updated recently, skipping recovery to avoid racing with active worker",
-			"updatedAt", item.UpdatedAt, "age", time.Since(item.UpdatedAt))
+	// Skip items that have a live worker — recovery should not interfere with
+	// an actively running session. After a daemon restart d.workers is always
+	// empty (all workers were killed), so this check correctly allows recovery
+	// to proceed for every orphaned item.
+	d.mu.Lock()
+	_, hasWorker := d.workers[item.ID]
+	d.mu.Unlock()
+	if hasWorker {
+		log.Info("worker still running, skipping recovery",
+			"updatedAt", item.UpdatedAt)
 		return
 	}
 
