@@ -9436,6 +9436,48 @@ func TestStartAddressReview_SimplifyDirectiveAppended(t *testing.T) {
 	}
 }
 
+// TestStartResolveConflicts_SimplifyDirectiveAppended verifies that startResolveConflicts appends
+// the simplify directive when simplify: true is set in the resolve_conflicts workflow state.
+func TestStartResolveConflicts_SimplifyDirectiveAppended(t *testing.T) {
+	cfg := testConfig()
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	d := testDaemon(cfg)
+	d.workflowConfigs = map[string]*workflow.Config{
+		"/test/repo": {
+			States: map[string]*workflow.State{
+				"resolve_conflicts": {Params: map[string]any{"simplify": true}},
+			},
+		},
+	}
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-conflicts-simplify",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "sess-1",
+		Branch:    "feature-sess-1",
+		StepData:  map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	if err := d.startResolveConflicts(context.Background(), item, sess, 1, []string{"file.go"}); err != nil {
+		t.Fatalf("startResolveConflicts returned error: %v", err)
+	}
+
+	d.mu.Lock()
+	w := d.workers["item-conflicts-simplify"]
+	d.mu.Unlock()
+	if w == nil {
+		t.Fatal("expected worker to be registered")
+	}
+
+	msg := w.InitialMsg()
+	if !strings.Contains(msg, "simplify") {
+		t.Errorf("resolve_conflicts initial message should contain simplify directive, got:\n%s", msg)
+	}
+}
+
 func TestStartCoding_UsesWorkItemRepoPath(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{"/repo/erg", "/repo/plural"}

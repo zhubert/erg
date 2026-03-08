@@ -26,7 +26,7 @@ import (
 
 // simplifyDirective is appended to the initial message when simplify: true is set on a coding action.
 // It instructs Claude to invoke the /simplify skill after completing the main task.
-const simplifyDirective = "\n\nAfter completing the implementation, use the Skill tool to invoke the \"simplify\" skill to review and improve the changed code for quality and efficiency."
+const simplifyDirective = "\n\nAfter completing the main task, use the Skill tool to invoke the \"simplify\" skill to review and improve the changed code for quality and efficiency."
 
 // maybeAppendSimplify appends the simplify directive to msg when simplify is true.
 func maybeAppendSimplify(msg string, simplify bool) string {
