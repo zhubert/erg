@@ -1,13 +1,16 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -105,8 +108,6 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	ch := make(chan []byte, 8)
 	s.addClient(ch)
 	defer s.removeClient(ch)
@@ -136,7 +137,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("sessionID")
-	if strings.ContainsAny(sessionID, "/\\") || strings.Contains(sessionID, "..") {
+	if sessionID == "" || strings.ContainsAny(sessionID, "/\\") || strings.Contains(sessionID, "..") {
 		http.Error(w, "invalid session ID", http.StatusBadRequest)
 		return
 	}
@@ -149,7 +150,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	lines, err := ReadSessionLog(sessionID, tailN)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		if errors.Is(err, os.ErrNotExist) {
+			http.Error(w, "log not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "failed to read logs", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -203,7 +208,7 @@ func (s *Server) poll(ctx context.Context) {
 				continue
 			}
 			// Only broadcast if state changed
-			if string(data) != string(lastJSON) {
+			if !bytes.Equal(data, lastJSON) {
 				lastJSON = data
 				s.broadcast(data)
 			}

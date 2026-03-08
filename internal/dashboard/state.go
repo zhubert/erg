@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -153,11 +154,16 @@ func ReadSessionLog(sessionID string, tailN int) ([]LogLine, error) {
 	defer f.Close()
 
 	var lines []LogLine
-	dec := json.NewDecoder(f)
-	for {
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
 		var msg streamLogMsg
-		if err := dec.Decode(&msg); err != nil {
-			break
+		if err := json.Unmarshal(line, &msg); err != nil {
+			continue
 		}
 		if msg.Type != "assistant" {
 			continue

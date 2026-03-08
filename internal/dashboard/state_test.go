@@ -152,6 +152,42 @@ func TestReadSessionLog_WithFile(t *testing.T) {
 	}
 }
 
+func TestReadSessionLog_NonJSONLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	paths.Reset()
+
+	logDir := filepath.Join(tmpDir, ".erg", "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "nonjson-test"
+	logContent := `{"type":"assistant","message":{"content":[{"type":"text","text":"before"}]}}
+some random non-json output from claude process
+ERROR: something went wrong
+{"type":"assistant","message":{"content":[{"type":"text","text":"after"}]}}
+`
+	logPath := filepath.Join(logDir, "stream-"+sessionID+".log")
+	if err := os.WriteFile(logPath, []byte(logContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lines, err := ReadSessionLog(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines (skipping non-JSON), got %d: %+v", len(lines), lines)
+	}
+	if lines[0].Text != "before" {
+		t.Errorf("expected 'before', got %q", lines[0].Text)
+	}
+	if lines[1].Text != "after" {
+		t.Errorf("expected 'after', got %q", lines[1].Text)
+	}
+}
+
 func TestReadSessionLog_Tail(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)

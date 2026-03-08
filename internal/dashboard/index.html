@@ -460,11 +460,11 @@
 
   function issueLabel(item) {
     const ref = item.issue_ref;
-    if (!ref || !ref.Source) return item.id;
-    if (ref.Source === 'github' || ref.Source === 'GitHub') {
-      return '#' + ref.ID + (ref.Title ? ' ' + ref.Title : '');
+    if (!ref || !ref.source) return item.id;
+    if (ref.source === 'github') {
+      return '#' + ref.id + (ref.title ? ' ' + ref.title : '');
     }
-    return ref.ID + (ref.Title ? ' ' + ref.Title : '');
+    return ref.id + (ref.title ? ' ' + ref.title : '');
   }
 
   function repoDisplayName(repo) {

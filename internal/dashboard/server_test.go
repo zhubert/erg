@@ -102,6 +102,11 @@ func TestHandleLogs_NoSession(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
 	}
+	// Verify error body doesn't leak filesystem paths
+	body := w.Body.String()
+	if strings.Contains(body, "/") {
+		t.Errorf("error response should not contain paths, got: %s", body)
+	}
 }
 
 func TestHandleLogs_PathTraversal(t *testing.T) {
