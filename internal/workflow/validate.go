@@ -122,6 +122,8 @@ func validateState(name string, state *State, allStates map[string]*State) []Val
 		// Validate params for ai.code action
 		if state.Action == "ai.code" {
 			errs = append(errs, validateCodingParams(prefix, state.Params)...)
+			// simplify is only meaningful for ai.code, not ai.plan
+			errs = append(errs, optionalBoolParam(prefix, state.Params, "simplify")...)
 		}
 
 		// Validate params for ai.plan action (same param shape as ai.code)
@@ -177,6 +179,11 @@ func validateState(name string, state *State, allStates map[string]*State) []Val
 		// Validate params for ai.resolve_conflicts action
 		if state.Action == "ai.resolve_conflicts" {
 			errs = append(errs, validateResolveConflictsParams(prefix, state.Params)...)
+		}
+
+		// Validate simplify param for ai.fix_ci and ai.address_review actions
+		if state.Action == "ai.fix_ci" || state.Action == "ai.address_review" {
+			errs = append(errs, optionalBoolParam(prefix, state.Params, "simplify")...)
 		}
 
 		// Validate params for workflow.retry action
@@ -429,7 +436,9 @@ func validateRebaseParams(prefix string, params map[string]any) []ValidationErro
 
 // validateResolveConflictsParams validates params for ai.resolve_conflicts actions.
 func validateResolveConflictsParams(prefix string, params map[string]any) []ValidationError {
-	return optionalPositiveNum(prefix, params, "max_conflict_rounds")
+	errs := optionalPositiveNum(prefix, params, "max_conflict_rounds")
+	errs = append(errs, optionalBoolParam(prefix, params, "simplify")...)
+	return errs
 }
 
 // validateCIParams validates params for ci.complete events.
@@ -720,6 +729,24 @@ func optionalPositiveNum(prefix string, params map[string]any, key string) []Val
 		return []ValidationError{{
 			Field:   prefix + ".params." + key,
 			Message: key + " must be greater than 0",
+		}}
+	}
+	return nil
+}
+
+// optionalBoolParam validates that an optional param, if present, is a boolean.
+func optionalBoolParam(prefix string, params map[string]any, key string) []ValidationError {
+	if params == nil {
+		return nil
+	}
+	v, ok := params[key]
+	if !ok {
+		return nil
+	}
+	if _, ok := v.(bool); !ok {
+		return []ValidationError{{
+			Field:   prefix + ".params." + key,
+			Message: key + " must be a boolean",
 		}}
 	}
 	return nil
