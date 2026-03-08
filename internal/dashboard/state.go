@@ -1,7 +1,7 @@
 package dashboard
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -134,12 +134,15 @@ type streamLogMsg struct {
 
 // LogLine represents a single parsed log line for display.
 type LogLine struct {
-	Type string `json:"type"`          // "text" or "tool"
-	Text string `json:"text"`          // tool arg/description, or text body
+	Type string `json:"type"`           // "text" or "tool"
+	Text string `json:"text"`           // tool arg/description, or text body
 	Name string `json:"name,omitempty"` // tool name (tool lines only)
 }
 
 // ReadSessionLog reads and parses the stream log for a session.
+// The stream log contains pretty-printed (multi-line) JSON objects,
+// so we use json.Decoder to handle arbitrary formatting correctly.
+// Non-JSON lines (e.g. raw process output) are skipped gracefully.
 func ReadSessionLog(sessionID string, tailN int) ([]LogLine, error) {
 	if sessionID == "" {
 		return nil, fmt.Errorf("no session ID")
@@ -148,24 +151,30 @@ func ReadSessionLog(sessionID string, tailN int) ([]LogLine, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Open(logPath)
+	data, err := os.ReadFile(logPath)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
 	var lines []LogLine
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 || line[0] != '{' {
-			continue
-		}
+
+	for len(data) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(data))
 		var msg streamLogMsg
-		if err := json.Unmarshal(line, &msg); err != nil {
+		if err := dec.Decode(&msg); err != nil {
+			// Skip non-JSON content: advance past the current line
+			// and retry from the next line.
+			idx := bytes.IndexByte(data, '\n')
+			if idx < 0 {
+				break
+			}
+			data = data[idx+1:]
 			continue
 		}
+		// Advance data past what the decoder consumed.
+		consumed := int(dec.InputOffset())
+		data = data[consumed:]
+
 		if msg.Type != "assistant" {
 			continue
 		}
