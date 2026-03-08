@@ -14,12 +14,12 @@ import (
 
 // mockController is a SessionController implementation for tests.
 type mockController struct {
-	stopErr   error
-	retryErr  error
-	msgErr    error
-	stopCalls []string
+	stopErr    error
+	retryErr   error
+	msgErr     error
+	stopCalls  []string
 	retryCalls []string
-	msgCalls  []struct{ itemID, msg string }
+	msgCalls   []struct{ itemID, msg string }
 }
 
 func (m *mockController) StopSession(itemID string) error {
@@ -411,5 +411,58 @@ func TestNew_NoController(t *testing.T) {
 	srv := New("localhost:0")
 	if srv.controller != nil {
 		t.Error("expected controller to be nil by default")
+	}
+}
+
+// ---- validateLoopback ----
+
+func TestValidateLoopback(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    string
+		wantErr bool
+	}{
+		{"localhost", "localhost:8080", false},
+		{"127.0.0.1", "127.0.0.1:8080", false},
+		{"::1", "[::1]:8080", false},
+		{"empty host", ":8080", false},
+		{"0.0.0.0 rejected", "0.0.0.0:8080", true},
+		{"public IP rejected", "192.168.1.1:8080", true},
+		{"no port", "localhost", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateLoopback(tt.addr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateLoopback(%q) error = %v, wantErr %v", tt.addr, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRun_RejectsNonLoopbackWithController(t *testing.T) {
+	ctrl := &mockController{}
+	srv := New("0.0.0.0:0", WithController(ctrl))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+	err := srv.Run(ctx)
+	if err == nil {
+		t.Fatal("expected error for non-loopback address with controller")
+	}
+	if !strings.Contains(err.Error(), "loopback") {
+		t.Errorf("expected loopback error, got: %v", err)
+	}
+}
+
+func TestRun_AllowsNonLoopbackWithoutController(t *testing.T) {
+	// Without a controller, any address should be allowed (read-only mode).
+	srv := New("0.0.0.0:0")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately so Run exits quickly
+	// Run should not fail due to loopback validation; it may fail for other
+	// reasons (context cancelled) but not with a loopback error.
+	err := srv.Run(ctx)
+	if err != nil && strings.Contains(err.Error(), "loopback") {
+		t.Errorf("unexpected loopback error without controller: %v", err)
 	}
 }

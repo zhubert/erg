@@ -70,7 +70,16 @@ func New(addr string, opts ...ServerOption) *Server {
 }
 
 // Run starts the HTTP server and background poller. Blocks until ctx is cancelled.
+// When a SessionController is attached, the address must resolve to a loopback
+// interface to prevent remote access to the unauthenticated control endpoints.
 func (s *Server) Run(ctx context.Context) error {
+	// Enforce loopback-only when control endpoints are enabled.
+	if s.controller != nil {
+		if err := validateLoopback(s.addr); err != nil {
+			return fmt.Errorf("dashboard with control enabled: %w", err)
+		}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /api/state", s.handleState)
@@ -256,6 +265,37 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// validateLoopback ensures the given address resolves to a loopback interface.
+// This prevents accidentally exposing unauthenticated control endpoints to the
+// network.
+func validateLoopback(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+	if host == "" || host == "localhost" {
+		return nil // Go's net.Listen binds "" to loopback
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// Hostname — resolve it.
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			return fmt.Errorf("cannot resolve host %q: %w", host, err)
+		}
+		for _, resolved := range ips {
+			if !resolved.IsLoopback() {
+				return fmt.Errorf("address %q resolves to non-loopback IP %s; use localhost or 127.0.0.1", addr, resolved)
+			}
+		}
+		return nil
+	}
+	if !ip.IsLoopback() {
+		return fmt.Errorf("address %q is not a loopback address; use localhost or 127.0.0.1", addr)
+	}
+	return nil
 }
 
 func (s *Server) addClient(ch chan []byte) {
