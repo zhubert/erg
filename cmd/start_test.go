@@ -78,3 +78,34 @@ func TestStartCmdRegisteredOnRoot(t *testing.T) {
 		t.Error("expected 'start' subcommand to be registered on rootCmd")
 	}
 }
+
+func TestStartCmdDashboardFlagExists(t *testing.T) {
+	flag := startCmd.Flags().Lookup("dashboard")
+	if flag == nil {
+		t.Fatal("expected --dashboard flag on start command")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("expected default value 'false', got %q", flag.DefValue)
+	}
+}
+
+func TestResolveDashboardAddrDefault(t *testing.T) {
+	got := resolveDashboardAddr(true, "")
+	if got != defaultDashboardAddr {
+		t.Errorf("expected %q, got %q", defaultDashboardAddr, got)
+	}
+}
+
+func TestResolveDashboardAddrExplicitOverrides(t *testing.T) {
+	got := resolveDashboardAddr(true, "localhost:9999")
+	if got != "localhost:9999" {
+		t.Errorf("expected explicit addr to win, got %q", got)
+	}
+}
+
+func TestResolveDashboardAddrFlagOff(t *testing.T) {
+	got := resolveDashboardAddr(false, "")
+	if got != "" {
+		t.Errorf("expected empty addr when --dashboard is false and no addr given, got %q", got)
+	}
+}
