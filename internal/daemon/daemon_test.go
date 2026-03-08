@@ -3317,3 +3317,102 @@ func TestCommentOnIssue_UnregisteredProvider(t *testing.T) {
 		t.Error("expected error for unregistered provider")
 	}
 }
+
+func TestUpsertIssueComment_CreatesNewWhenNoExisting(t *testing.T) {
+	cfg := testConfig()
+	provider := &mockIdempotentCommentProvider{
+		src:              issues.SourceLinear,
+		existingComments: nil, // no existing comments
+	}
+	d := testDaemon(cfg)
+	d.issueRegistry = issues.NewProviderRegistry(provider)
+
+	sess := &config.Session{
+		ID:       "sess-upsert-new",
+		RepoPath: "/test/repo",
+		Branch:   "feat-1",
+		IssueRef: &config.IssueRef{Source: "linear", ID: "ENG-42", Title: "Test"},
+	}
+	cfg.AddSession(*sess)
+
+	err := d.UpsertIssueComment(context.Background(), "sess-upsert-new", "New plan\n<!-- erg:plan -->", "<!-- erg:plan -->")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(provider.comments) != 1 {
+		t.Fatalf("expected 1 Comment call, got %d", len(provider.comments))
+	}
+	if provider.comments[0].body != "New plan\n<!-- erg:plan -->" {
+		t.Errorf("unexpected comment body: %q", provider.comments[0].body)
+	}
+	if len(provider.updates) != 0 {
+		t.Errorf("expected 0 UpdateComment calls, got %d", len(provider.updates))
+	}
+}
+
+func TestUpsertIssueComment_UpdatesExistingComment(t *testing.T) {
+	cfg := testConfig()
+	provider := &mockIdempotentCommentProvider{
+		src: issues.SourceLinear,
+		existingComments: []issues.IssueComment{
+			{ID: "comment-1", Body: "Old plan\n<!-- erg:plan -->"},
+		},
+	}
+	d := testDaemon(cfg)
+	d.issueRegistry = issues.NewProviderRegistry(provider)
+
+	sess := &config.Session{
+		ID:       "sess-upsert-update",
+		RepoPath: "/test/repo",
+		Branch:   "feat-1",
+		IssueRef: &config.IssueRef{Source: "linear", ID: "ENG-42", Title: "Test"},
+	}
+	cfg.AddSession(*sess)
+
+	err := d.UpsertIssueComment(context.Background(), "sess-upsert-update", "Revised plan\n<!-- erg:plan -->", "<!-- erg:plan -->")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(provider.updates) != 1 {
+		t.Fatalf("expected 1 UpdateComment call, got %d", len(provider.updates))
+	}
+	if provider.updates[0].commentID != "comment-1" {
+		t.Errorf("expected commentID 'comment-1', got %q", provider.updates[0].commentID)
+	}
+	if provider.updates[0].body != "Revised plan\n<!-- erg:plan -->" {
+		t.Errorf("unexpected updated body: %q", provider.updates[0].body)
+	}
+	if len(provider.comments) != 0 {
+		t.Errorf("expected 0 Comment calls when updating, got %d", len(provider.comments))
+	}
+}
+
+func TestUpsertIssueComment_NoSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	err := d.UpsertIssueComment(context.Background(), "nonexistent", "body", "marker")
+	if err == nil {
+		t.Error("expected error for missing session")
+	}
+}
+
+func TestUpsertIssueComment_GitHubFallbackCreatesNew(t *testing.T) {
+	// When no provider is registered for GitHub, falls back to GitService.
+	mockExec := exec.NewMockExecutor(nil)
+	cfg := testConfig()
+	d := testDaemonWithExec(cfg, mockExec)
+
+	sess := &config.Session{
+		ID:       "sess-upsert-gh",
+		RepoPath: "/test/repo",
+		Branch:   "feat-1",
+		IssueRef: &config.IssueRef{Source: "github", ID: "42", Title: "Test"},
+	}
+	cfg.AddSession(*sess)
+
+	err := d.UpsertIssueComment(context.Background(), "sess-upsert-gh", "Plan body", "<!-- erg:plan -->")
+	if err != nil {
+		t.Errorf("expected success, got error: %v", err)
+	}
+}

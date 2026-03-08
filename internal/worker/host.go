@@ -56,4 +56,9 @@ type Host interface {
 	// given session. Routes through the appropriate provider (GitHub, Asana,
 	// Linear) based on the issue source.
 	CommentOnIssue(ctx context.Context, sessionID, body string) error
+
+	// UpsertIssueComment posts or updates a comment on the issue/task associated
+	// with the given session. If an existing comment contains the given marker,
+	// it is updated in place; otherwise a new comment is created.
+	UpsertIssueComment(ctx context.Context, sessionID, body, marker string) error
 }

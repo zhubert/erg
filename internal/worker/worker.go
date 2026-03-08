@@ -591,10 +591,16 @@ func (w *SessionWorker) handleCommentIssue(req mcp.CommentIssueRequest) {
 
 	body := req.Body
 	if w.planningMode {
-		body += "\n<!-- erg:plan -->"
+		body += "\n" + PlanMarker
 	}
 
-	if err := w.host.CommentOnIssue(w.ctx, w.sessionID, body); err != nil {
+	var err error
+	if w.planningMode {
+		err = w.host.UpsertIssueComment(w.ctx, w.sessionID, body, PlanMarker)
+	} else {
+		err = w.host.CommentOnIssue(w.ctx, w.sessionID, body)
+	}
+	if err != nil {
 		w.runner.SendCommentIssueResponse(mcp.CommentIssueResponse{
 			ID:    req.ID,
 			Error: fmt.Sprintf("Failed to post comment: %v", err),

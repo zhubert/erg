@@ -132,6 +132,59 @@ func (d *Daemon) CommentOnIssue(ctx context.Context, sessionID, body string) err
 	return fmt.Errorf("no provider registered for %s issues", source)
 }
 
+// UpsertIssueComment posts or updates a comment on the issue/task associated
+// with the given session. If an existing comment contains the given marker, it
+// is updated in place; otherwise a new comment is created.
+func (d *Daemon) UpsertIssueComment(ctx context.Context, sessionID, body, marker string) error {
+	sess, err := d.getSessionOrError(sessionID)
+	if err != nil {
+		return err
+	}
+
+	issueRef := sess.GetIssueRef()
+	if issueRef == nil {
+		return fmt.Errorf("no issue associated with session %s", sessionID)
+	}
+
+	commentCtx, cancel := context.WithTimeout(ctx, timeoutStandardOp)
+	defer cancel()
+
+	source := issues.Source(issueRef.Source)
+
+	if d.issueRegistry != nil {
+		if p := d.issueRegistry.GetProvider(source); p != nil {
+			// Try to find and update an existing comment with the marker.
+			if gc, ok := p.(issues.ProviderGateChecker); ok {
+				if cu, ok := p.(issues.ProviderCommentUpdater); ok {
+					existing, listErr := gc.GetIssueComments(commentCtx, sess.RepoPath, issueRef.ID)
+					if listErr == nil {
+						for _, c := range existing {
+							if containsMarker(c, marker) {
+								return cu.UpdateComment(commentCtx, sess.RepoPath, issueRef.ID, c.ID, body)
+							}
+						}
+					}
+				}
+			}
+			// No existing comment found — create a new one.
+			if pa, ok := p.(issues.ProviderActions); ok {
+				return pa.Comment(commentCtx, sess.RepoPath, issueRef.ID, body)
+			}
+		}
+	}
+
+	// Fallback for GitHub when no provider is registered.
+	if source == issues.SourceGitHub {
+		issueNum, err := strconv.Atoi(issueRef.ID)
+		if err != nil {
+			return fmt.Errorf("invalid GitHub issue ID %q: %w", issueRef.ID, err)
+		}
+		return d.gitService.CommentOnIssue(commentCtx, sess.RepoPath, issueNum, body)
+	}
+
+	return fmt.Errorf("no provider registered for %s issues", source)
+}
+
 // workItemView creates a read-only view of a work item snapshot for the engine.
 func (d *Daemon) workItemView(item daemonstate.WorkItem) *workflow.WorkItemView {
 	// Use the session's actual repo path rather than d.repoFilter,
