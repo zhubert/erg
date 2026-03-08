@@ -804,7 +804,8 @@ func TestReconcileClosedIssues_ActiveGitHubIssueClosed(t *testing.T) {
 
 	gitSvc := git.NewGitServiceWithExecutor(mockExec)
 	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
-	d := New(cfg, gitSvc, sessSvc, issues.NewProviderRegistry(), discardLogger())
+	ghProvider := issues.NewGitHubProvider(gitSvc)
+	d := New(cfg, gitSvc, sessSvc, issues.NewProviderRegistry(ghProvider), discardLogger())
 	d.sessionMgr.SetSkipMessageLoad(true)
 	d.state = daemonstate.NewDaemonState("/test/repo")
 	d.repoFilter = "/test/repo"

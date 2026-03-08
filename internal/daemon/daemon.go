@@ -21,6 +21,7 @@ import (
 const (
 	defaultPollInterval       = 30 * time.Second
 	defaultReviewPollInterval = 60 * time.Second
+	defaultReconcileInterval  = 2 * time.Minute
 	autonomousFilterLabel     = "queued"
 )
 
@@ -57,6 +58,7 @@ type Daemon struct {
 	pollInterval          time.Duration
 	reviewPollInterval    time.Duration
 	lastReviewPollAt      time.Time
+	lastReconcileAt       time.Time
 
 	// preseededIssue is an issue to inject on the first poll tick (for erg run).
 	preseededIssue *issues.Issue

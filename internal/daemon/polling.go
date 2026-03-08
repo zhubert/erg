@@ -368,6 +368,11 @@ func (d *Daemon) checkLinkedPRsAndUnqueue(ctx context.Context, repoPath string, 
 // worker is stopped, the queued label is removed, and the item is marked terminal.
 // This prevents closed issues from lingering as "active" in the dashboard.
 func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
+	if time.Since(d.lastReconcileAt) < defaultReconcileInterval {
+		return
+	}
+	d.lastReconcileAt = time.Now()
+
 	log := d.logger.With("component", "issue-reconciler")
 
 	for _, item := range d.state.GetActiveWorkItems() {
@@ -446,14 +451,24 @@ func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
 }
 
 // isIssueClosed checks whether the issue backing a work item is closed.
-// For GitHub, uses GitService.GetIssueState directly. For other providers,
-// uses the IssueStateChecker interface if implemented.
+// Uses the IssueStateChecker interface when a provider is registered,
+// falling back to GitService.GetIssueState for GitHub if no provider is available.
 func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemonstate.WorkItem) (bool, error) {
 	checkCtx, cancel := context.WithTimeout(ctx, timeoutQuickAPI)
 	defer cancel()
 
 	source := issues.Source(item.IssueRef.Source)
 
+	// Try the provider registry first (works for all sources including GitHub)
+	if d.issueRegistry != nil {
+		if p := d.issueRegistry.GetProvider(source); p != nil {
+			if sc, ok := p.(issues.IssueStateChecker); ok {
+				return sc.IsIssueClosed(checkCtx, repoPath, item.IssueRef.ID)
+			}
+		}
+	}
+
+	// Fallback: direct GitService call for GitHub when no provider is registered
 	if source == issues.SourceGitHub {
 		state, err := d.gitService.GetIssueState(checkCtx, repoPath, item.IssueRef.ID)
 		if err != nil {
@@ -462,19 +477,7 @@ func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemon
 		return state == "CLOSED", nil
 	}
 
-	// For non-GitHub providers, check if they implement IssueStateChecker
-	if d.issueRegistry == nil {
-		return false, nil
-	}
-	p := d.issueRegistry.GetProvider(source)
-	if p == nil {
-		return false, nil
-	}
-	sc, ok := p.(issues.IssueStateChecker)
-	if !ok {
-		return false, nil
-	}
-	return sc.IsIssueClosed(checkCtx, repoPath, item.IssueRef.ID)
+	return false, nil
 }
 
 // hasExistingSession checks if a session already exists for the given issue.
