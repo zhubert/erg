@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/zhubert/erg/internal/agentconfig"
 	"github.com/zhubert/erg/internal/claude"
@@ -95,6 +96,14 @@ func (d *Daemon) SetWorkItemData(sessionID, key string, value any) error {
 // It routes through the appropriate provider (GitHub, Asana, Linear) based on the
 // issue source. For GitHub, falls back to GitService if no provider is registered.
 func (d *Daemon) CommentOnIssue(ctx context.Context, sessionID, body string) error {
+	return d.UpsertIssueComment(ctx, sessionID, body, "")
+}
+
+// UpsertIssueComment posts or updates a comment on the issue/task associated
+// with the given session. If marker is non-empty and an existing comment
+// contains it, the comment is updated in place; otherwise a new comment is
+// created. When marker is empty, a new comment is always created.
+func (d *Daemon) UpsertIssueComment(ctx context.Context, sessionID, body, marker string) error {
 	sess, err := d.getSessionOrError(sessionID)
 	if err != nil {
 		return err
@@ -110,21 +119,49 @@ func (d *Daemon) CommentOnIssue(ctx context.Context, sessionID, body string) err
 
 	source := issues.Source(issueRef.Source)
 
-	// Try the provider registry first — works for all providers including GitHub.
 	if d.issueRegistry != nil {
 		if p := d.issueRegistry.GetProvider(source); p != nil {
+			// Try to find and update an existing comment with the marker.
+			if marker != "" {
+				if gc, ok := p.(issues.ProviderGateChecker); ok {
+					if cu, ok := p.(issues.ProviderCommentUpdater); ok {
+						existing, listErr := gc.GetIssueComments(commentCtx, sess.RepoPath, issueRef.ID)
+						if listErr == nil {
+							for i := len(existing) - 1; i >= 0; i-- {
+								if containsMarker(existing[i], marker) {
+									return cu.UpdateComment(commentCtx, sess.RepoPath, issueRef.ID, existing[i].ID, body)
+								}
+							}
+						} else {
+							d.logger.Warn("failed to list comments for upsert, creating new", "error", listErr)
+						}
+					}
+				}
+			}
+			// No existing comment found (or no marker) — create a new one.
 			if pa, ok := p.(issues.ProviderActions); ok {
 				return pa.Comment(commentCtx, sess.RepoPath, issueRef.ID, body)
 			}
 		}
 	}
 
-	// Fallback for GitHub when no provider is registered (e.g., in tests
-	// or minimal daemon configurations).
+	// Fallback for GitHub when no provider is registered.
 	if source == issues.SourceGitHub {
 		issueNum, err := strconv.Atoi(issueRef.ID)
 		if err != nil {
 			return fmt.Errorf("invalid GitHub issue ID %q: %w", issueRef.ID, err)
+		}
+		if marker != "" {
+			existing, listErr := d.gitService.ListIssueComments(commentCtx, sess.RepoPath, issueNum)
+			if listErr == nil {
+				for i := len(existing) - 1; i >= 0; i-- {
+					if strings.Contains(existing[i].Body, marker) {
+						return d.gitService.UpdateIssueComment(commentCtx, sess.RepoPath, existing[i].ID, body)
+					}
+				}
+			} else {
+				d.logger.Warn("failed to list GitHub comments for upsert, creating new", "error", listErr)
+			}
 		}
 		return d.gitService.CommentOnIssue(commentCtx, sess.RepoPath, issueNum, body)
 	}

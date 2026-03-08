@@ -41,11 +41,19 @@ type mockHost struct {
 	workItemData        map[string]map[string]any // sessionID -> key -> value
 	commentOnIssueErr   error                     // error to return from CommentOnIssue
 	commentOnIssueCalls []commentOnIssueCall      // recorded calls
+	upsertIssueErr      error                     // error to return from UpsertIssueComment
+	upsertIssueCalls    []upsertIssueCall         // recorded calls
 }
 
 type commentOnIssueCall struct {
 	SessionID string
 	Body      string
+}
+
+type upsertIssueCall struct {
+	SessionID string
+	Body      string
+	Marker    string
 }
 
 func newMockHost(mockExec *exec.MockExecutor) *mockHost {
@@ -115,6 +123,11 @@ func (h *mockHost) RecordItemSpend(sessionID string, costUSD float64, outputToke
 func (h *mockHost) CommentOnIssue(ctx context.Context, sessionID, body string) error {
 	h.commentOnIssueCalls = append(h.commentOnIssueCalls, commentOnIssueCall{SessionID: sessionID, Body: body})
 	return h.commentOnIssueErr
+}
+
+func (h *mockHost) UpsertIssueComment(ctx context.Context, sessionID, body, marker string) error {
+	h.upsertIssueCalls = append(h.upsertIssueCalls, upsertIssueCall{SessionID: sessionID, Body: body, Marker: marker})
+	return h.upsertIssueErr
 }
 
 func (h *mockHost) SetWorkItemData(sessionID, key string, value any) error {
@@ -821,7 +834,7 @@ func TestSessionWorker_HandleCommentIssue_Success(t *testing.T) {
 
 	w.handleCommentIssue(mcp.CommentIssueRequest{ID: 1, Body: "Here is the plan"})
 
-	// Verify the call was delegated to the host.
+	// Verify the call was delegated to the host via CommentOnIssue (not upsert).
 	if len(h.commentOnIssueCalls) != 1 {
 		t.Fatalf("expected 1 CommentOnIssue call, got %d", len(h.commentOnIssueCalls))
 	}
@@ -832,9 +845,12 @@ func TestSessionWorker_HandleCommentIssue_Success(t *testing.T) {
 	if call.Body != "Here is the plan" {
 		t.Errorf("expected body 'Here is the plan', got %q", call.Body)
 	}
+	if len(h.upsertIssueCalls) != 0 {
+		t.Errorf("expected 0 UpsertIssueComment calls in non-planning mode, got %d", len(h.upsertIssueCalls))
+	}
 }
 
-func TestSessionWorker_HandleCommentIssue_PlanningModeAppendsPlanMarker(t *testing.T) {
+func TestSessionWorker_HandleCommentIssue_PlanningModeUsesUpsert(t *testing.T) {
 	mockExec := exec.NewMockExecutor(nil)
 	h := newMockHost(mockExec)
 
@@ -849,10 +865,17 @@ func TestSessionWorker_HandleCommentIssue_PlanningModeAppendsPlanMarker(t *testi
 
 	w.handleCommentIssue(mcp.CommentIssueRequest{ID: 1, Body: "## Plan\n1. Do stuff"})
 
-	if len(h.commentOnIssueCalls) != 1 {
-		t.Fatalf("expected 1 CommentOnIssue call, got %d", len(h.commentOnIssueCalls))
+	// In planning mode, should use UpsertIssueComment, not CommentOnIssue.
+	if len(h.commentOnIssueCalls) != 0 {
+		t.Errorf("expected 0 CommentOnIssue calls in planning mode, got %d", len(h.commentOnIssueCalls))
 	}
-	call := h.commentOnIssueCalls[0]
+	if len(h.upsertIssueCalls) != 1 {
+		t.Fatalf("expected 1 UpsertIssueComment call, got %d", len(h.upsertIssueCalls))
+	}
+	call := h.upsertIssueCalls[0]
+	if call.Marker != PlanMarker {
+		t.Errorf("expected marker %q, got %q", PlanMarker, call.Marker)
+	}
 	if !strings.Contains(call.Body, PlanMarker) {
 		t.Errorf("expected plan marker in body, got %q", call.Body)
 	}

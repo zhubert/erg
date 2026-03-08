@@ -590,11 +590,14 @@ func (w *SessionWorker) handleCommentIssue(req mcp.CommentIssueRequest) {
 	log.Info("posting issue comment via MCP tool")
 
 	body := req.Body
+	var err error
 	if w.planningMode {
-		body += "\n<!-- erg:plan -->"
+		body += "\n" + PlanMarker
+		err = w.host.UpsertIssueComment(w.ctx, w.sessionID, body, PlanMarker)
+	} else {
+		err = w.host.CommentOnIssue(w.ctx, w.sessionID, body)
 	}
-
-	if err := w.host.CommentOnIssue(w.ctx, w.sessionID, body); err != nil {
+	if err != nil {
 		w.runner.SendCommentIssueResponse(mcp.CommentIssueResponse{
 			ID:    req.ID,
 			Error: fmt.Sprintf("Failed to post comment: %v", err),

@@ -98,7 +98,8 @@ If the task description includes a "User feedback on the previous plan" section,
 reviewed your earlier plan and provided feedback. In that case:
 - Carefully read their feedback
 - Revise the plan to address their concerns
-- Post a new, updated plan as an issue comment
+- Post the updated plan using the comment_issue MCP tool (the system will automatically edit
+  the previous plan comment in place rather than creating a new one)
 - Acknowledge the feedback and explain what changed
 
 POSTING THE PLAN:
