@@ -428,22 +428,6 @@ func TestConfigureRunner_ToolOverride(t *testing.T) {
 	}
 }
 
-func TestPlanningSession_DisallowsMutationTools(t *testing.T) {
-	// Verify that planning sessions set disallowed tools to prevent Claude from
-	// using mutation tools even through meta-tools like Agent.
-	runner := claude.NewMockRunner("plan-session", false, nil)
-
-	// Simulate what startPlanning does
-	runner.SetDisallowedTools(claude.ToolSetPlanningDeny)
-
-	disallowed := runner.GetDisallowedTools()
-	for _, tool := range []string{"Edit", "Write", "Bash", "Agent", "NotebookEdit", "TodoWrite"} {
-		if !slices.Contains(disallowed, tool) {
-			t.Errorf("planning session should disallow %q", tool)
-		}
-	}
-}
-
 func TestConfigureRunner_ContainerMode(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
@@ -8323,6 +8307,69 @@ func TestStartPlanning_CreatesWorktreeSession(t *testing.T) {
 	// Config session ID must match item's SessionID
 	if sess.ID != updatedItem.SessionID {
 		t.Errorf("config session ID %q does not match item.SessionID %q", sess.ID, updatedItem.SessionID)
+	}
+
+}
+
+func TestStartPlanning_DisallowsMutationTools(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"remote", "get-url", "origin"}, exec.MockResponse{
+		Stdout: []byte("https://github.com/owner/repo.git\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"fetch", "origin"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"rev-parse", "--verify", "origin/main"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("git", []string{"worktree", "add"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	// Inject a mock runner factory so we can inspect configuration
+	var capturedRunner *claude.MockRunner
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		capturedRunner = claude.NewMockRunner(sessionID, sessionStarted, initialMessages)
+		return capturedRunner
+	})
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Plan feature"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	err := d.startPlanning(t.Context(), *item)
+	if err != nil {
+		t.Fatalf("startPlanning failed: %v", err)
+	}
+
+	if capturedRunner == nil {
+		t.Fatal("expected runner factory to be called")
+	}
+
+	// Verify disallowed tools were set on the runner
+	disallowed := capturedRunner.GetDisallowedTools()
+	for _, tool := range claude.ToolSetPlanningDeny {
+		if !slices.Contains(disallowed, tool) {
+			t.Errorf("planning runner should disallow %q, got %v", tool, disallowed)
+		}
+	}
+
+	// Also verify allowed tools are read-only
+	allowed := capturedRunner.GetAllowedTools()
+	for _, forbidden := range []string{"Edit", "Write", "Bash"} {
+		if slices.Contains(allowed, forbidden) {
+			t.Errorf("planning runner should not allow %q", forbidden)
+		}
 	}
 }
 
