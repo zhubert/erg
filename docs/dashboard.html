@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>erg - workflow-driven autonomous coding daemon for Claude Code</title>
+    <title>Dashboard — erg</title>
     <meta
       name="description"
       content="erg — workflow-driven autonomous coding daemon for Claude Code."
@@ -343,6 +343,123 @@
       .btn-ghost:hover {
         color: var(--text);
         border-color: var(--text-dim);
+      }
+
+      /* ---- Feature grid ---- */
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.85rem;
+        margin: 1rem 0 1.5rem;
+      }
+
+      .feature-item {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+        padding: 1.25rem 1.4rem;
+        transition:
+          transform 0.15s,
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+
+      .feature-item:nth-child(2) {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(3) {
+        border-left-color: var(--violet);
+      }
+      .feature-item:nth-child(4) {
+        border-left-color: var(--green);
+      }
+      .feature-item:nth-child(5) {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(6) {
+        border-left-color: var(--violet);
+      }
+
+      .feature-item:hover {
+        border-color: var(--border-light);
+        transform: scale(1.01);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+      }
+      .feature-item:hover {
+        border-left-color: var(--accent);
+      }
+      .feature-item:nth-child(2):hover {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(3):hover {
+        border-left-color: var(--violet);
+      }
+      .feature-item:nth-child(4):hover {
+        border-left-color: var(--green);
+      }
+      .feature-item:nth-child(5):hover {
+        border-left-color: var(--cyan);
+      }
+      .feature-item:nth-child(6):hover {
+        border-left-color: var(--violet);
+      }
+
+      .feature-item h4 {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text);
+        margin: 0 0 0.35rem;
+      }
+
+      .feature-item .fi-icon {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--accent);
+        margin-bottom: 0.65rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        background: var(--accent-bg);
+        border: 1px solid var(--accent-border);
+      }
+
+      .feature-item:nth-child(2) .fi-icon {
+        color: var(--cyan);
+        background: rgba(34, 211, 238, 0.08);
+        border-color: rgba(34, 211, 238, 0.2);
+      }
+      .feature-item:nth-child(3) .fi-icon {
+        color: var(--violet);
+        background: rgba(167, 139, 250, 0.08);
+        border-color: rgba(167, 139, 250, 0.2);
+      }
+      .feature-item:nth-child(4) .fi-icon {
+        color: var(--green);
+        background: rgba(52, 211, 153, 0.08);
+        border-color: rgba(52, 211, 153, 0.2);
+      }
+      .feature-item:nth-child(5) .fi-icon {
+        color: var(--cyan);
+        background: rgba(34, 211, 238, 0.08);
+        border-color: rgba(34, 211, 238, 0.2);
+      }
+      .feature-item:nth-child(6) .fi-icon {
+        color: var(--violet);
+        background: rgba(167, 139, 250, 0.08);
+        border-color: rgba(167, 139, 250, 0.2);
+      }
+
+      .feature-item p {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin: 0;
       }
 
       /* ---- Steps (how it works) ---- */
@@ -779,10 +896,12 @@
           padding: 1.5rem 1.25rem 3rem;
         }
 
+        .feature-grid,
         .info-grid {
           grid-template-columns: 1fr;
         }
 
+        .feature-item,
         .info-card,
         .action-ref {
           overflow: hidden;
@@ -1056,7 +1175,6 @@
         }
       }
     </style>
-    <script src="./mermaid.min.js"></script>
   </head>
   <body>
     <div class="mobile-header">
@@ -1078,11 +1196,11 @@
         <ul class="sidebar-nav">
           <li class="sidebar-section">
             <span class="sidebar-section-title">Getting started</span>
-            <a href="#overview" class="sidebar-link">Overview</a>
-            <a href="#how-it-works" class="sidebar-link">How it works</a>
-            <a href="#install" class="sidebar-link">Installation</a>
-            <a href="#quickstart" class="sidebar-sublink">Quick start</a>
-            <a href="#file-layout" class="sidebar-sublink">File layout</a>
+            <a href="index.html#overview" class="sidebar-link">Overview</a>
+            <a href="index.html#how-it-works" class="sidebar-link">How it works</a>
+            <a href="index.html#install" class="sidebar-link">Installation</a>
+            <a href="index.html#quickstart" class="sidebar-sublink">Quick start</a>
+            <a href="index.html#file-layout" class="sidebar-sublink">File layout</a>
           </li>
           <li class="sidebar-section">
             <span class="sidebar-section-title">Workflow</span>
@@ -1103,7 +1221,9 @@
             <a href="cli.html#cli" class="sidebar-link">CLI commands</a>
             <a href="cli.html#cli-run" class="sidebar-sublink">erg run</a>
             <a href="cli.html#cli-stats" class="sidebar-sublink">erg stats</a>
-            <a href="dashboard.html#dashboard" class="sidebar-link">Dashboard</a>
+            <a href="dashboard.html#dashboard" class="sidebar-link active">Dashboard</a>
+            <a href="dashboard.html#dashboard-features" class="sidebar-sublink">Features</a>
+            <a href="dashboard.html#dashboard-api" class="sidebar-sublink">API</a>
             <a href="multi-repo.html#multi-repo" class="sidebar-link">Multi-repo</a>
             <a href="multi-repo.html#services" class="sidebar-link">Brew services</a>
             <a href="actions.html#actions" class="sidebar-link">Actions</a>
@@ -1142,98 +1262,16 @@
 
       <!-- Content -->
       <main class="main">
-        <!-- Overview -->
-        <section id="overview">
-          <span class="hero-badge">autonomous coding daemon</span>
-          <p class="hero-tagline">
-            <span class="hero-tagline-accent">workflow-driven.</span>
-          </p>
-          <p>
-            Autonomous daemon for Claude Code. Polls GitHub, Asana, or
-            Linear for issues, starts containerized Claude sessions, and drives
-            the full PR lifecycle &mdash; as automated as your workflow allows.
-          </p>
-          <div class="hero-cta">
-            <a href="#install" class="btn btn-primary">install</a>
-            <a href="https://github.com/zhubert/erg" class="btn btn-ghost"
-              >view on github</a
-            >
-          </div>
-        </section>
-
-        <!-- How it works -->
-        <h2 id="how-it-works">How it works</h2>
+        <h2 id="dashboard">Dashboard</h2>
         <p>
-          At its core, erg is a
-          <strong>state machine engine paired with AI coding</strong>. Each
-          issue becomes a work item that advances through a configurable
-          flowchart of states — from AI-generated code to a merged PR. You
-          define exactly how much automation applies: require human review,
-          auto-merge after CI, loop back for fixes, or notify external systems
-          at any step.
+          The erg dashboard provides a real-time web interface for monitoring all
+          running daemons and their work items. It uses Server-Sent Events (SSE)
+          for live streaming updates.
         </p>
-        <ol class="steps-list">
-          <li>
-            <div class="step-body">
-              <h4>Tag or label an issue</h4>
-              <p>
-                Mark a task in GitHub, Asana, or Linear with the configured
-                trigger label (e.g. <code>plan</code> or <code>queued</code>).
-              </p>
-            </div>
-          </li>
-          <li>
-            <div class="step-body">
-              <h4>Daemon picks it up</h4>
-              <p>
-                erg starts a containerized Claude session. With planning
-                enabled, no branch is created yet — Claude reads the codebase in
-                read-only mode.
-              </p>
-            </div>
-          </li>
-          <li>
-            <div class="step-body">
-              <h4>Claude analyzes and posts a plan</h4>
-              <p>
-                The <code>ai.plan</code> session explores the codebase and posts
-                a structured implementation plan as an issue comment — no code
-                written yet.
-              </p>
-            </div>
-          </li>
-          <li>
-            <div class="step-body">
-              <h4>You review and approve</h4>
-              <p>
-                Reply with approval (e.g. "LGTM") to proceed, or leave feedback.
-                Claude revises the plan and loops back until you approve.
-              </p>
-            </div>
-          </li>
-          <li>
-            <div class="step-body">
-              <h4>Claude writes the code</h4>
-              <p>
-                Once approved, <code>ai.code</code> creates a branch, implements
-                the changes, runs tests, and commits.
-              </p>
-            </div>
-          </li>
-          <li>
-            <div class="step-body">
-              <h4>State machine advances</h4>
-              <p>
-                The workflow engine opens a PR, waits for CI, handles review
-                feedback, and merges — automatically, according to your rules.
-              </p>
-            </div>
-          </li>
-        </ol>
 
-        <!-- ============ LIVE DASHBOARD SIMULATION ============ -->
-        <div class="sim-wrap" style="margin: 2rem 0 2.5rem;">
-          <div class="sim-label">live dashboard preview</div>
+        <!-- ============ LIVE SIMULATION ============ -->
+        <div class="sim-wrap" style="margin: 1.5rem 0 2rem;">
+          <div class="sim-label">live simulation</div>
           <div class="sim-header">
             <div class="sim-header-left">
               <h3><span>erg</span> dashboard</h3>
@@ -1248,72 +1286,96 @@
             <div id="simContent"></div>
           </div>
         </div>
-        <p style="font-size: 0.82rem; color: var(--text-dim); text-align: center; margin-top: -1.5rem; margin-bottom: 2rem;">
-          Monitor all your agents in real time. <a href="dashboard.html#dashboard">Learn more &rarr;</a>
-        </p>
         <!-- ============ END SIMULATION ============ -->
 
-        <!-- Installation -->
-        <h2 id="install">Installation</h2>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>brew install zhubert/tap/erg</code>
-          <button
-            class="copy-btn"
-            onclick="copyCmd(this, 'brew install zhubert/tap/erg')"
-          >
-            copy
-          </button>
-        </div>
-        <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.75rem;">
-          Or build from source: <code>go build -o erg .</code>
-        </p>
-
-        <h3 id="quickstart">Quick start</h3>
-        <p>
-          Run <code>erg configure</code> inside your repo. It will walk you through
-          choosing an issue provider (GitHub, Asana, or Linear), configuring
-          credentials, and scaffolding a workflow — then start the daemon.
-        </p>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>erg configure</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'erg configure')">
-            copy
-          </button>
+        <p>Start the dashboard:</p>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-filename">terminal</span>
+          </div>
+          <pre><span class="ck">erg</span> dashboard              <span class="cc"># Start on default port 21122</span>
+<span class="ck">erg</span> dashboard --port 8080  <span class="cc"># Start on custom port</span></pre>
         </div>
 
-
-        <h3 id="file-layout">File layout</h3>
-        <p>
-          Erg stores configuration, session data, and logs under
-          <code>~/.erg/</code> by default. If <code>~/.erg/</code>
-          does not exist, Erg respects the
-          <a href="https://specifications.freedesktop.org/basedir-spec/latest/">XDG Base Directory Specification</a>:
-        </p>
         <table class="cli-table">
           <thead>
             <tr>
-              <th>Data type</th>
-              <th>Default path</th>
-              <th>XDG override</th>
+              <th>Flag</th>
+              <th>Description</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Config (<code>config.json</code>)</td>
-              <td><code>~/.erg/</code></td>
-              <td><code>$XDG_CONFIG_HOME/erg/</code></td>
+              <td><code>--port</code></td>
+              <td>Port for the dashboard server (default: 21122)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 id="dashboard-features">Features</h3>
+        <ul>
+          <li>
+            <strong>Summary bar</strong> &mdash; aggregate counts across all
+            daemons: daemon count, active/queued/completed/failed items, total
+            spend, and token usage
+          </li>
+          <li>
+            <strong>Per-daemon sections</strong> &mdash; each running daemon gets
+            its own section showing repo name, PID, uptime, slot count, and cost
+          </li>
+          <li>
+            <strong>Work item cards</strong> &mdash; each work item displays its
+            issue reference, current workflow step, phase, age, cost, and feedback
+            rounds. Cards are color-coded by state: orange border for active,
+            green for completed, red for failed, gray for queued
+          </li>
+          <li>
+            <strong>Live session logs</strong> &mdash; click any work item card
+            to expand it and view the live session log. Tool calls are shown in
+            cyan, text output in gray. Logs auto-refresh every 3 seconds
+          </li>
+          <li>
+            <strong>PR links</strong> &mdash; completed items show clickable
+            links to their pull requests
+          </li>
+          <li>
+            <strong>Error display</strong> &mdash; failed items show the error
+            message inline
+          </li>
+          <li>
+            <strong>Connection status</strong> &mdash; header indicator shows
+            whether the SSE connection is live
+          </li>
+        </ul>
+
+        <h3 id="dashboard-api">API</h3>
+        <p>
+          The dashboard exposes a small HTTP API that can be used for custom
+          integrations or scripting.
+        </p>
+        <table class="cli-table">
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /</code></td>
+              <td>Serves the embedded dashboard UI</td>
             </tr>
             <tr>
-              <td>Session data</td>
-              <td><code>~/.erg/sessions/</code></td>
-              <td><code>$XDG_DATA_HOME/erg/sessions/</code></td>
+              <td><code>GET /api/state</code></td>
+              <td>Returns current state as JSON (one-shot)</td>
             </tr>
             <tr>
-              <td>Logs &amp; state</td>
-              <td><code>~/.erg/logs/</code></td>
-              <td><code>$XDG_STATE_HOME/erg/logs/</code></td>
+              <td><code>GET /api/events</code></td>
+              <td>SSE stream &mdash; pushes state JSON on every change (polled every 1.5s)</td>
+            </tr>
+            <tr>
+              <td><code>GET /api/logs/{sessionID}?tail=N</code></td>
+              <td>Returns parsed session log lines (default tail=200). Each line has a type (<code>"text"</code> or <code>"tool"</code>) and text content</td>
             </tr>
           </tbody>
         </table>
@@ -1345,37 +1407,6 @@
     </div>
 
     <script>
-      mermaid.initialize({ startOnLoad: false, theme: "dark" });
-
-      function switchTab(btn, tab) {
-        var tabs = btn.closest(".example-tabs");
-        tabs.querySelectorAll(".tab-btn").forEach(function (b) {
-          b.classList.remove("active");
-        });
-        btn.classList.add("active");
-        tabs.querySelectorAll("[data-panel]").forEach(function (p) {
-          p.style.display = "none";
-        });
-        var panel = tabs.querySelector('[data-panel="' + tab + '"]');
-        if (panel) panel.style.display = "";
-        if (tab === "diagram" && !tabs.dataset.rendered) {
-          tabs.dataset.rendered = "1";
-          var el = tabs.querySelector(".mermaid");
-          if (el) mermaid.run({ nodes: [el] });
-        }
-      }
-
-      function copyCmd(btn, cmd) {
-        navigator.clipboard.writeText(cmd).then(function () {
-          btn.textContent = "copied";
-          btn.classList.add("copied");
-          setTimeout(function () {
-            btn.textContent = "copy";
-            btn.classList.remove("copied");
-          }, 2000);
-        });
-      }
-
       function toggleSidebar() {
         document.getElementById("sidebar").classList.toggle("open");
         document.getElementById("sidebarOverlay").classList.toggle("open");
@@ -1443,4 +1474,3 @@
     </script>
   </body>
 </html>
-
