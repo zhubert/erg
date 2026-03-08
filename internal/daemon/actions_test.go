@@ -9361,7 +9361,9 @@ func TestStartFixCI_SimplifyDirectiveAppended(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startFixCI(context.Background(), *item, sess, 1, "CI failed: test failure")
+	if err := d.startFixCI(context.Background(), *item, sess, 1, "CI failed: test failure"); err != nil {
+		t.Fatalf("startFixCI returned error: %v", err)
+	}
 
 	d.mu.Lock()
 	w := d.workers["item-fix-simplify"]
@@ -9401,7 +9403,9 @@ func TestStartAddressReview_SimplifyDirectiveAppended(t *testing.T) {
 	}
 	d.state.AddWorkItem(item)
 
-	_ = d.startAddressReview(context.Background(), *item, sess, 1, nil)
+	if err := d.startAddressReview(context.Background(), *item, sess, 1, nil); err != nil {
+		t.Fatalf("startAddressReview returned error: %v", err)
+	}
 
 	d.mu.Lock()
 	w := d.workers["item-review-simplify"]

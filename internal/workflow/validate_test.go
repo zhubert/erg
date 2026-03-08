@@ -388,6 +388,18 @@ func TestValidate(t *testing.T) {
 			wantFields: nil,
 		},
 		{
+			name: "ai.address_review simplify non-bool rejected",
+			cfg: &Config{
+				Start:  "c",
+				Source: SourceConfig{Provider: "github", Filter: FilterConfig{Label: "q"}},
+				States: map[string]*State{
+					"c":    {Type: StateTypeTask, Action: "ai.address_review", Params: map[string]any{"simplify": "yes"}, Next: "done"},
+					"done": {Type: StateTypeSucceed},
+				},
+			},
+			wantFields: []string{"states.c.params.simplify"},
+		},
+		{
 			name: "ai.resolve_conflicts simplify true accepted",
 			cfg: &Config{
 				Start:  "c",

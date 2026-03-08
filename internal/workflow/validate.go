@@ -122,6 +122,8 @@ func validateState(name string, state *State, allStates map[string]*State) []Val
 		// Validate params for ai.code action
 		if state.Action == "ai.code" {
 			errs = append(errs, validateCodingParams(prefix, state.Params)...)
+			// simplify is only meaningful for ai.code, not ai.plan
+			errs = append(errs, optionalBoolParam(prefix, state.Params, "simplify")...)
 		}
 
 		// Validate params for ai.plan action (same param shape as ai.code)
@@ -386,9 +388,6 @@ func validateCodingParams(prefix string, params map[string]any) []ValidationErro
 			})
 		}
 	}
-
-	// Validate simplify if present (must be a boolean)
-	errs = append(errs, optionalBoolParam(prefix, params, "simplify")...)
 
 	return errs
 }
