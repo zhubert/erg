@@ -670,6 +670,7 @@
     const content = document.getElementById('content');
 
     if (state.daemons.length === 0) {
+      hoveredItemId = null;
       content.innerHTML = `
         <div class="empty-state">
           <h2>No running daemons</h2>
@@ -731,9 +732,17 @@
       });
     });
 
-    // Pin log viewers to bottom after each render
+    // Clear hoveredItemId if its element was removed during re-render
+    if (hoveredItemId && !content.querySelector(`.work-item[data-id="${CSS.escape(hoveredItemId)}"]`)) {
+      hoveredItemId = null;
+    }
+
+    // Pin log viewers to bottom only when already scrolled to (or near) the bottom
     content.querySelectorAll('.log-viewer').forEach(lv => {
-      lv.scrollTop = lv.scrollHeight;
+      const threshold = 50; // px
+      if (lv.scrollHeight - lv.scrollTop - lv.clientHeight <= threshold) {
+        lv.scrollTop = lv.scrollHeight;
+      }
     });
   }
 
