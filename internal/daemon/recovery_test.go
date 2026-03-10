@@ -491,6 +491,50 @@ func TestDaemon_RecoverAsyncPending_CustomWorkflow_PastCI(t *testing.T) {
 	}
 }
 
+// TestDaemon_RecoverIdleTaskState verifies that recovery executes sync task
+// states left in idle phase (e.g. asana.move_to_section after planning cleanup).
+func TestDaemon_RecoverIdleTaskState(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+
+	// Register a workflow with a sync task state
+	wfCfg := &workflow.Config{
+		Start: "plan_phase",
+		States: map[string]*workflow.State{
+			"plan_phase":      {Type: workflow.StateTypeTask, Action: "ai.plan", Next: "move_to_done"},
+			"move_to_done":    {Type: workflow.StateTypeTask, Action: "asana.move_to_section", Params: map[string]any{"section": "Done"}, Next: "done"},
+			"done":            {Type: workflow.StateTypeSucceed},
+		},
+	}
+	registry := workflow.NewActionRegistry()
+	d.engines = map[string]*workflow.Engine{
+		"/test/repo": workflow.NewEngine(wfCfg, registry, nil, discardLogger()),
+	}
+
+	// Simulate post-planning state: work item at a sync task step in idle phase
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-idle-task",
+		IssueRef:    config.IssueRef{Source: "asana", ID: "task-123"},
+		CurrentStep: "move_to_done",
+		Phase:       "idle",
+		StepData:    map[string]any{"_repo_path": "/test/repo"},
+	})
+	d.state.UpdateWorkItem("item-idle-task", func(it *daemonstate.WorkItem) {
+		it.State = daemonstate.WorkItemActive
+	})
+
+	d.recoverFromState(context.Background())
+
+	// The action will fail (no asana provider), but the point is that
+	// executeSyncChain was called — the item should move to failed state
+	// rather than remaining active in idle.
+	item, _ := d.state.GetWorkItem("item-idle-task")
+	if item.State == daemonstate.WorkItemActive && item.Phase == "idle" {
+		t.Error("expected recovery to execute the idle task state, but it was left untouched")
+	}
+}
+
 func TestDaemon_ReconstructSessions_SetsWorktreePath(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)

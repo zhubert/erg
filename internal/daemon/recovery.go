@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zhubert/erg/internal/config"
+	"github.com/zhubert/erg/internal/workflow"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/paths"
@@ -105,6 +106,19 @@ func (d *Daemon) recoverFromState(ctx context.Context) {
 			if item.State == daemonstate.WorkItemQueued {
 				log.Info("work item queued, will start on next tick")
 			} else {
+				// Check if this is a sync task state that needs execution
+				// (e.g. after planning cleanup, a move_to_section task is left
+				// in idle and needs to be kicked off).
+				repoPath := d.resolveRepoPath(ctx, item)
+				engine := d.getEngine(repoPath)
+				if engine != nil {
+					state := engine.GetState(item.CurrentStep)
+					if state != nil && state.Type == workflow.StateTypeTask {
+						log.Info("recovering idle task state, executing sync chain")
+						d.executeSyncChain(ctx, item.ID, engine)
+						continue
+					}
+				}
 				log.Info("work item in wait state, resuming polling")
 			}
 		}
