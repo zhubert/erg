@@ -205,10 +205,10 @@ func TestRunConfigure_GitHub_AutoMerge_False(t *testing.T) {
 }
 
 func TestRunConfigure_Asana(t *testing.T) {
-	// tracker=2(Asana), project=proj123, org=1(tags), tag=(default),
+	// tracker=2(Asana), keychain=n, project=proj123, org=1(tags), tag=(default),
 	// section=(skip), completion=(skip), plan=n, reviewer=(skip),
 	// automerge=y, merge=1(rebase), containers=n, confirm=y
-	input := "2\nproj123\n1\n\n\n\nn\n\ny\n1\nn\ny\n"
+	input := "2\nn\nproj123\n1\n\n\n\nn\n\ny\n1\nn\ny\n"
 	var out bytes.Buffer
 	err := runConfigureWithIO(strings.NewReader(input), &out, allFoundChecker, ".", noopWriter, true)
 	if err != nil {
@@ -228,10 +228,10 @@ func TestRunConfigure_Asana(t *testing.T) {
 
 func TestRunConfigure_Asana_WizardCaptures(t *testing.T) {
 	var captured workflow.WizardConfig
-	// tracker=2(Asana), project=1234, org=1(tags), tag=ready,
+	// tracker=2(Asana), keychain=n, project=1234, org=1(tags), tag=ready,
 	// section=(skip), completion=Done, plan=n, reviewer=(skip),
 	// automerge=y, merge=1(rebase), containers=n, confirm=y
-	input := "2\n1234\n1\nready\n\nDone\nn\n\ny\n1\nn\ny\n"
+	input := "2\nn\n1234\n1\nready\n\nDone\nn\n\ny\n1\nn\ny\n"
 	var out bytes.Buffer
 	err := runConfigureWithIO(strings.NewReader(input), &out, allFoundChecker, ".", captureWriter(&captured), true)
 	if err != nil {
@@ -256,10 +256,10 @@ func TestRunConfigure_Asana_WizardCaptures(t *testing.T) {
 }
 
 func TestRunConfigure_Linear(t *testing.T) {
-	// tracker=3(Linear), team=team1, org=1(labels), label=(default),
+	// tracker=3(Linear), keychain=n, team=team1, org=1(labels), label=(default),
 	// completionState=(skip), plan=n, reviewer=(skip),
 	// automerge=y, merge=1(rebase), containers=n, confirm=y
-	input := "3\nteam1\n1\n\n\nn\n\ny\n1\nn\ny\n"
+	input := "3\nn\nteam1\n1\n\n\nn\n\ny\n1\nn\ny\n"
 	var out bytes.Buffer
 	err := runConfigureWithIO(strings.NewReader(input), &out, allFoundChecker, ".", noopWriter, true)
 	if err != nil {
@@ -279,10 +279,10 @@ func TestRunConfigure_Linear(t *testing.T) {
 
 func TestRunConfigure_Linear_WizardCaptures(t *testing.T) {
 	var captured workflow.WizardConfig
-	// tracker=3(Linear), team=team-xyz, org=1(labels), label=(default),
+	// tracker=3(Linear), keychain=n, team=team-xyz, org=1(labels), label=(default),
 	// completionState=Merged, plan=n, reviewer=(skip),
 	// automerge=y, merge=1(rebase), containers=n, confirm=y
-	input := "3\nteam-xyz\n1\n\nMerged\nn\n\ny\n1\nn\ny\n"
+	input := "3\nn\nteam-xyz\n1\n\nMerged\nn\n\ny\n1\nn\ny\n"
 	var out bytes.Buffer
 	err := runConfigureWithIO(strings.NewReader(input), &out, allFoundChecker, ".", captureWriter(&captured), true)
 	if err != nil {
@@ -378,10 +378,10 @@ func TestRunConfigure_ShowsErgStart(t *testing.T) {
 
 func TestRunConfigure_Asana_Kanban_WizardCaptures(t *testing.T) {
 	var captured workflow.WizardConfig
-	// tracker=2(Asana), project=1234, org=2(kanban), section=(default "To do"),
+	// tracker=2(Asana), keychain=n, project=1234, org=2(kanban), section=(default "To do"),
 	// completion=(default Done), plan=n, reviewer=(skip),
 	// automerge=y, merge=1(rebase), containers=n, confirm=y
-	input := "2\n1234\n2\n\n\nn\n\ny\n1\nn\ny\n"
+	input := "2\nn\n1234\n2\n\n\nn\n\ny\n1\nn\ny\n"
 	var out bytes.Buffer
 	err := runConfigureWithIO(strings.NewReader(input), &out, allFoundChecker, ".", captureWriter(&captured), true)
 	if err != nil {
@@ -407,10 +407,10 @@ func TestRunConfigure_Asana_Kanban_WizardCaptures(t *testing.T) {
 
 func TestRunConfigure_Linear_Kanban_WizardCaptures(t *testing.T) {
 	var captured workflow.WizardConfig
-	// tracker=3(Linear), team=team-xyz, org=2(kanban), label=(default "queued"),
+	// tracker=3(Linear), keychain=n, team=team-xyz, org=2(kanban), label=(default "queued"),
 	// completionState=(default Done), plan=n, reviewer=(skip),
 	// automerge=y, merge=1(rebase), containers=n, confirm=y
-	input := "3\nteam-xyz\n2\n\n\nn\n\ny\n1\nn\ny\n"
+	input := "3\nn\nteam-xyz\n2\n\n\nn\n\ny\n1\nn\ny\n"
 	var out bytes.Buffer
 	err := runConfigureWithIO(strings.NewReader(input), &out, allFoundChecker, ".", captureWriter(&captured), true)
 	if err != nil {

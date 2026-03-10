@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zhubert/erg/internal/cli"
+	"github.com/zhubert/erg/internal/secrets"
 	"github.com/zhubert/erg/internal/workflow"
 )
 
@@ -180,6 +181,23 @@ func checkPrereqs(output io.Writer, checker prereqCheckerFn) bool {
 }
 
 func collectAsanaConfig(scanner *bufio.Scanner, output io.Writer, cfg *workflow.WizardConfig) {
+	if secrets.IsKeychainAvailable() {
+		fmt.Fprintln(output, "You can store your Asana PAT in the macOS Keychain")
+		fmt.Fprintln(output, "so erg works via brew services without shell env vars.")
+		fmt.Fprintln(output)
+		if promptYN(scanner, output, "Store ASANA_PAT in Keychain?", true) {
+			pat := promptString(scanner, output, "Paste your Asana PAT")
+			if pat != "" {
+				if err := secrets.Set("erg/ASANA_PAT", pat); err != nil {
+					fmt.Fprintf(output, "Warning: failed to store in Keychain: %v\n", err)
+				} else {
+					fmt.Fprintln(output, "Saved to macOS Keychain.")
+				}
+			}
+		}
+		fmt.Fprintln(output)
+	}
+
 	cfg.Project = promptString(scanner, output, "Asana project GID (from URL: https://app.asana.com/0/GID/list)")
 
 	fmt.Fprintln(output, "How do you organize work in Asana?")
@@ -200,6 +218,23 @@ func collectAsanaConfig(scanner *bufio.Scanner, output io.Writer, cfg *workflow.
 }
 
 func collectLinearConfig(scanner *bufio.Scanner, output io.Writer, cfg *workflow.WizardConfig) {
+	if secrets.IsKeychainAvailable() {
+		fmt.Fprintln(output, "You can store your Linear API key in the macOS Keychain")
+		fmt.Fprintln(output, "so erg works via brew services without shell env vars.")
+		fmt.Fprintln(output)
+		if promptYN(scanner, output, "Store LINEAR_API_KEY in Keychain?", true) {
+			key := promptString(scanner, output, "Paste your Linear API key")
+			if key != "" {
+				if err := secrets.Set("erg/LINEAR_API_KEY", key); err != nil {
+					fmt.Fprintf(output, "Warning: failed to store in Keychain: %v\n", err)
+				} else {
+					fmt.Fprintln(output, "Saved to macOS Keychain.")
+				}
+			}
+		}
+		fmt.Fprintln(output)
+	}
+
 	cfg.Team = promptString(scanner, output, "Linear team ID (from Settings → API)")
 
 	fmt.Fprintln(output, "How do you organize work in Linear?")
@@ -247,10 +282,11 @@ func buildProviderSetupText(provider string) string {
 		b.WriteString("       https://app.asana.com/0/my-apps\n")
 		b.WriteString("  2. Click \"+ New access token\"\n")
 		b.WriteString("  3. Give it a description (e.g., \"erg\") and copy the token\n\n")
-		b.WriteString("Add the token to your shell profile (~/.zshrc or ~/.bashrc):\n\n")
-		b.WriteString("  export ASANA_PAT=\"your-token-here\"\n\n")
-		b.WriteString("  # Reload your shell:\n")
-		b.WriteString("  source ~/.zshrc\n\n")
+		b.WriteString("You can either:\n")
+		b.WriteString("  a) Store it in the macOS Keychain (recommended for brew services) —\n")
+		b.WriteString("     you'll be prompted in the next step\n")
+		b.WriteString("  b) Add it to your shell profile (~/.zshrc or ~/.bashrc):\n")
+		b.WriteString("       export ASANA_PAT=\"your-token-here\"\n\n")
 		b.WriteString("Find your project GID in the Asana project URL:\n")
 		b.WriteString("  https://app.asana.com/0/PROJECT_GID/list")
 	case "linear":
@@ -259,10 +295,11 @@ func buildProviderSetupText(provider string) string {
 		b.WriteString("  1. Log in at https://linear.app\n")
 		b.WriteString("  2. Go to Settings → API → Personal API Keys\n")
 		b.WriteString("  3. Click \"New API key\", give it a name (e.g., \"erg\"), and copy the key\n\n")
-		b.WriteString("Add the key to your shell profile (~/.zshrc or ~/.bashrc):\n\n")
-		b.WriteString("  export LINEAR_API_KEY=\"your-key-here\"\n\n")
-		b.WriteString("  # Reload your shell:\n")
-		b.WriteString("  source ~/.zshrc\n\n")
+		b.WriteString("You can either:\n")
+		b.WriteString("  a) Store it in the macOS Keychain (recommended for brew services) —\n")
+		b.WriteString("     you'll be prompted in the next step\n")
+		b.WriteString("  b) Add it to your shell profile (~/.zshrc or ~/.bashrc):\n")
+		b.WriteString("       export LINEAR_API_KEY=\"your-key-here\"\n\n")
 		b.WriteString("Find your team ID in Linear: Settings → API → or in the team URL.")
 	}
 	return b.String()
