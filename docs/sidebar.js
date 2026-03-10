@@ -50,6 +50,8 @@
         { href: "cli.html#cli-run", text: "erg run", type: "sub" },
         { href: "cli.html#cli-stats", text: "erg stats", type: "sub" },
         { href: "dashboard.html#dashboard", text: "Dashboard", type: "link" },
+        { href: "dashboard.html#dashboard-features", text: "Features", type: "sub" },
+        { href: "dashboard.html#dashboard-api", text: "API", type: "sub" },
         { href: "multi-repo.html#multi-repo", text: "Multi-repo", type: "link" },
         { href: "multi-repo.html#services", text: "Brew services", type: "link" },
         { href: "actions.html#actions", text: "Actions", type: "link" },
