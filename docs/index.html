@@ -1071,75 +1071,8 @@
     ></div>
 
     <div class="page">
-      <nav class="sidebar" id="sidebar">
-        <div class="sidebar-logo">
-          <a href="index.html">erg<span>.</span></a>
-        </div>
-        <ul class="sidebar-nav">
-          <li class="sidebar-section">
-            <span class="sidebar-section-title">Getting started</span>
-            <a href="#overview" class="sidebar-link">Overview</a>
-            <a href="#how-it-works" class="sidebar-link">How it works</a>
-            <a href="#install" class="sidebar-link">Installation</a>
-            <a href="#quickstart" class="sidebar-sublink">Quick start</a>
-            <a href="#file-layout" class="sidebar-sublink">File layout</a>
-          </li>
-          <li class="sidebar-section">
-            <span class="sidebar-section-title">Workflow</span>
-            <a href="workflow.html#workflow" class="sidebar-link">Configuration</a>
-            <a href="workflow.html#settings" class="sidebar-sublink">settings</a>
-            <a href="workflow.html#source-filter" class="sidebar-sublink">source.filter</a>
-            <a href="workflow.html#states" class="sidebar-link">State types</a>
-            <a href="workflow.html#state-task" class="sidebar-sublink">task</a>
-            <a href="workflow.html#state-wait" class="sidebar-sublink">wait</a>
-            <a href="workflow.html#state-choice" class="sidebar-sublink">choice</a>
-            <a href="workflow.html#state-pass" class="sidebar-sublink">pass</a>
-            <a href="workflow.html#state-template" class="sidebar-sublink">template</a>
-            <a href="workflow.html#templates" class="sidebar-link">Built-in templates</a>
-            <a href="workflow.html#tmpl-plan" class="sidebar-sublink">builtin:plan</a>
-            <a href="workflow.html#tmpl-code" class="sidebar-sublink">builtin:code</a>
-            <a href="workflow.html#tmpl-pr" class="sidebar-sublink">builtin:pr</a>
-            <a href="workflow.html#tmpl-ci" class="sidebar-sublink">builtin:ci</a>
-            <a href="workflow.html#tmpl-review" class="sidebar-sublink">builtin:review</a>
-            <a href="workflow.html#tmpl-merge" class="sidebar-sublink">builtin:merge</a>
-            <a href="workflow.html#tmpl-asana-move" class="sidebar-sublink">builtin:asana_move_section</a>
-            <a href="workflow.html#tmpl-linear-move" class="sidebar-sublink">builtin:linear_move_state</a>
-            <a href="workflow.html#tmpl-asana-await" class="sidebar-sublink">builtin:asana_await_section</a>
-            <a href="workflow.html#tmpl-linear-await" class="sidebar-sublink">builtin:linear_await_state</a>
-            <a href="workflow.html#error-handling" class="sidebar-link">Error handling</a>
-            <a href="workflow.html#hooks" class="sidebar-link">Hooks</a>
-          </li>
-          <li class="sidebar-section">
-            <span class="sidebar-section-title">Reference</span>
-            <a href="cli.html#cli" class="sidebar-link">CLI commands</a>
-            <a href="cli.html#cli-run" class="sidebar-sublink">erg run</a>
-            <a href="cli.html#cli-stats" class="sidebar-sublink">erg stats</a>
-            <a href="dashboard.html#dashboard" class="sidebar-link">Dashboard</a>
-            <a href="multi-repo.html#multi-repo" class="sidebar-link">Multi-repo</a>
-            <a href="multi-repo.html#services" class="sidebar-link">Brew services</a>
-            <a href="actions.html#actions" class="sidebar-link">Actions</a>
-            <a href="actions.html#actions-ai" class="sidebar-sublink">ai</a>
-            <a href="actions.html#actions-github" class="sidebar-sublink">github</a>
-            <a href="actions.html#actions-git" class="sidebar-sublink">git</a>
-            <a href="actions.html#actions-asana" class="sidebar-sublink">asana</a>
-            <a href="actions.html#actions-linear" class="sidebar-sublink">linear</a>
-            <a href="actions.html#actions-slack" class="sidebar-sublink">slack</a>
-            <a href="actions.html#actions-webhook" class="sidebar-sublink">webhook</a>
-            <a href="actions.html#actions-workflow" class="sidebar-sublink">workflow</a>
-            <a href="events.html#events" class="sidebar-link">Wait events</a>
-            <a href="events.html#events-pr" class="sidebar-sublink">pr</a>
-            <a href="events.html#events-ci" class="sidebar-sublink">ci</a>
-            <a href="events.html#events-plan" class="sidebar-sublink">plan</a>
-            <a href="events.html#events-asana" class="sidebar-sublink">asana</a>
-            <a href="events.html#events-linear" class="sidebar-sublink">linear</a>
-            <a href="events.html#events-gate" class="sidebar-sublink">gate</a>
-          </li>
-        </ul>
-        <div class="sidebar-footer">
-          <a href="https://github.com/zhubert/erg">GitHub</a>
-          <a href="https://github.com/zhubert/erg/issues">Issues</a>
-        </div>
-      </nav>
+      <nav class="sidebar" id="sidebar"></nav>
+      <script src="sidebar.js"></script>
 
       <!-- Content -->
       <main class="main">
@@ -1383,55 +1316,6 @@
           }, 2000);
         });
       }
-
-      function toggleSidebar() {
-        document.getElementById("sidebar").classList.toggle("open");
-        document.getElementById("sidebarOverlay").classList.toggle("open");
-      }
-
-      // Scroll spy for sidebar
-      (function () {
-        var links = document.querySelectorAll(".sidebar-link");
-        var sections = [];
-        links.forEach(function (link) {
-          var id = link.getAttribute("href");
-          if (id && id.startsWith("#")) {
-            var el = document.querySelector(id);
-            if (el) sections.push({ el: el, link: link });
-          }
-        });
-
-        function update() {
-          var scrollY = window.scrollY + 80;
-          var current = sections[0];
-          for (var i = 0; i < sections.length; i++) {
-            if (sections[i].el.offsetTop <= scrollY) {
-              current = sections[i];
-            }
-          }
-          links.forEach(function (l) {
-            l.classList.remove("active");
-          });
-          if (current) current.link.classList.add("active");
-        }
-
-        window.addEventListener("scroll", update, { passive: true });
-        update();
-      })();
-
-      // Close sidebar on link click (mobile)
-      document
-        .querySelectorAll(".sidebar-link, .sidebar-sublink")
-        .forEach(function (link) {
-          link.addEventListener("click", function () {
-            if (window.innerWidth <= 860) {
-              document.getElementById("sidebar").classList.remove("open");
-              document
-                .getElementById("sidebarOverlay")
-                .classList.remove("open");
-            }
-          });
-        });
 
       // Label param-table cells for responsive stacking
       document.querySelectorAll(".param-table").forEach(function (table) {
