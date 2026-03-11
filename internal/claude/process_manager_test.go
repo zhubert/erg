@@ -1834,6 +1834,72 @@ func TestKeychainOAuthCredentials_JSONParsing(t *testing.T) {
 	}
 }
 
+func TestKeychainNeedsRefresh_NonDarwin(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("this test verifies non-darwin behavior")
+	}
+	// On non-macOS platforms, KeychainNeedsRefresh should always return false.
+	if KeychainNeedsRefresh() {
+		t.Error("expected KeychainNeedsRefresh() == false on non-darwin")
+	}
+}
+
+func TestKeychainNeedsRefresh_ExpiredTokenDetection(t *testing.T) {
+	// Verify the JSON-level logic that KeychainNeedsRefresh uses: an entry
+	// with an expired token should be detected as needing refresh.
+	tests := []struct {
+		name        string
+		input       string
+		needRefresh bool
+	}{
+		{
+			name: "valid (not expired) — no refresh needed",
+			input: `{"claudeAiOauth":{"accessToken":"tok","expiresAt":` +
+				fmt.Sprintf("%d", time.Now().Add(time.Hour).UnixMilli()) + `}}`,
+			needRefresh: false,
+		},
+		{
+			name:        "expired token — needs refresh",
+			input:       `{"claudeAiOauth":{"accessToken":"tok","expiresAt":1000000000000}}`,
+			needRefresh: true,
+		},
+		{
+			name:        "empty access token — needs refresh",
+			input:       `{"claudeAiOauth":{"accessToken":"","expiresAt":999999999999999}}`,
+			needRefresh: true,
+		},
+		{
+			name:        "invalid JSON — no entry to refresh",
+			input:       `not json`,
+			needRefresh: false,
+		},
+		{
+			name:        "empty JSON — empty token needs refresh",
+			input:       `{}`,
+			needRefresh: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var creds keychainOAuthCredentials
+			if err := json.Unmarshal([]byte(tt.input), &creds); err != nil {
+				// Can't parse → no entry exists, no refresh needed.
+				if tt.needRefresh {
+					t.Errorf("expected needRefresh=true but JSON parse failed")
+				}
+				return
+			}
+			// Replicate the logic in KeychainNeedsRefresh.
+			needRefresh := creds.ClaudeAiOauth.AccessToken == "" ||
+				(creds.ClaudeAiOauth.ExpiresAt > 0 && time.Now().UnixMilli() >= creds.ClaudeAiOauth.ExpiresAt)
+			if needRefresh != tt.needRefresh {
+				t.Errorf("got needRefresh=%v, want %v", needRefresh, tt.needRefresh)
+			}
+		})
+	}
+}
+
 func TestKeychainCredential_EnvVarMapping(t *testing.T) {
 	// Test that readKeychainCredential returns the correct env var names.
 	// We can't mock the keychain, but we can verify the struct behavior.

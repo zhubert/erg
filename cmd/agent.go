@@ -48,10 +48,10 @@ func init() {
 	rootCmd.Flags().StringVar(&agentWorkflowFile, "workflow", "", "Path to workflow config file (default: <repo>/.erg/workflow.yaml)")
 	rootCmd.Flags().StringVar(&agentConfigFile, "config", "", "Path to config file for multi-repo mode")
 	rootCmd.Flags().StringVar(&agentDashboardAddr, "dashboard-addr", "", "Start an embedded dashboard server at this address (e.g. localhost:21122)")
-	rootCmd.Flags().MarkHidden("_daemon")       //nolint:errcheck
-	rootCmd.Flags().MarkHidden("once")          //nolint:errcheck
-	rootCmd.Flags().MarkHidden("repo")          //nolint:errcheck
-	rootCmd.Flags().MarkHidden("config")        //nolint:errcheck
+	rootCmd.Flags().MarkHidden("_daemon")        //nolint:errcheck
+	rootCmd.Flags().MarkHidden("once")           //nolint:errcheck
+	rootCmd.Flags().MarkHidden("repo")           //nolint:errcheck
+	rootCmd.Flags().MarkHidden("config")         //nolint:errcheck
 	rootCmd.Flags().MarkHidden("dashboard-addr") //nolint:errcheck
 }
 
@@ -87,8 +87,10 @@ func daemonize(cmd *cobra.Command, args []string) error {
 	// When auth comes from the macOS keychain, the OAuth access token may be
 	// stale. Running `claude -v` on the host forces the CLI to refresh it
 	// before we read it. We also show the version as useful context.
+	// Also refresh when the keychain entry exists but the token is expired —
+	// otherwise ContainerAuthSource() returns "" and we'd skip the refresh.
 	authSource := claude.ContainerAuthSource()
-	if strings.Contains(authSource, "keychain") {
+	if strings.Contains(authSource, "keychain") || claude.KeychainNeedsRefresh() {
 		if out, err := exec.Command("claude", "-v").Output(); err == nil {
 			fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
 		}
@@ -355,8 +357,10 @@ func runForeground(_ *cobra.Command, _ []string) error {
 	// When auth comes from the macOS keychain, the OAuth access token may be
 	// stale. Running `claude -v` on the host forces the CLI to refresh it
 	// before we read it. We also show the version as useful context.
+	// Also refresh when the keychain entry exists but the token is expired —
+	// otherwise ContainerAuthSource() returns "" and we'd skip the refresh.
 	authSource := claude.ContainerAuthSource()
-	if strings.Contains(authSource, "keychain") {
+	if strings.Contains(authSource, "keychain") || claude.KeychainNeedsRefresh() {
 		if out, err := exec.Command("claude", "-v").Output(); err == nil {
 			fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
 		}
