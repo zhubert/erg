@@ -444,15 +444,47 @@ func (s *DaemonState) GetSpend() (costUSD float64, outputTokens, inputTokens int
 func (s *DaemonState) SetRepoLabels(labels []string, pathLabels map[string]string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.RepoLabels = labels
-	s.RepoPathLabels = pathLabels
+
+	// Defensive copy of labels slice to prevent callers from mutating internal state.
+	if labels != nil {
+		copiedLabels := make([]string, len(labels))
+		copy(copiedLabels, labels)
+		s.RepoLabels = copiedLabels
+	} else {
+		s.RepoLabels = nil
+	}
+
+	// Defensive copy of pathLabels map to prevent callers from mutating internal state.
+	if pathLabels != nil {
+		copiedPathLabels := make(map[string]string, len(pathLabels))
+		for k, v := range pathLabels {
+			copiedPathLabels[k] = v
+		}
+		s.RepoPathLabels = copiedPathLabels
+	} else {
+		s.RepoPathLabels = nil
+	}
 }
 
 // GetRepoLabels returns the resolved display labels in a thread-safe manner.
 func (s *DaemonState) GetRepoLabels() (labels []string, pathLabels map[string]string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.RepoLabels, s.RepoPathLabels
+
+	// Return defensive copies to avoid exposing internal mutable state.
+	if s.RepoLabels != nil {
+		labels = make([]string, len(s.RepoLabels))
+		copy(labels, s.RepoLabels)
+	}
+
+	if s.RepoPathLabels != nil {
+		pathLabels = make(map[string]string, len(s.RepoPathLabels))
+		for k, v := range s.RepoPathLabels {
+			pathLabels[k] = v
+		}
+	}
+
+	return labels, pathLabels
 }
 
 // StateExists returns true if any daemon state file exists on disk.

@@ -14,8 +14,8 @@ import (
 )
 
 // writeFakeLockAndState writes a lock file (with the current process PID so it
-// appears alive) and a matching state file under tmpDir, returning the repoPath
-// key embedded in the state.
+// appears alive) and a matching state file for the given repoKey using
+// daemonstate's path helpers, with the repoKey embedded in the state.
 func writeFakeLockAndState(t *testing.T, tmpDir, repoKey string, mutate func(*daemonstate.DaemonState)) {
 	t.Helper()
 
