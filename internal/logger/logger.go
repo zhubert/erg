@@ -66,16 +66,25 @@ func Init(path string) error {
 		return nil
 	}
 
-	// Ensure the directory exists
+	// Ensure the directory exists with owner-only permissions.
+	// Chmod after MkdirAll to tighten permissions on pre-existing directories.
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("failed to create log directory %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		return fmt.Errorf("failed to set log directory permissions %s: %w", dir, err)
 	}
 
 	logPath = path
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open log file %s: %w", path, err)
+	}
+	// Chmod after open to tighten permissions on pre-existing log files.
+	if err := f.Chmod(0600); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to set log file permissions %s: %w", path, err)
 	}
 	logFile = f
 	handler := slog.NewTextHandler(f, &slog.HandlerOptions{Level: levelVar})
@@ -99,18 +108,26 @@ func ensureInit() {
 		return
 	}
 
-	// Ensure the logs directory exists
+	// Ensure the logs directory exists with owner-only permissions.
+	// Chmod after MkdirAll to tighten permissions on pre-existing directories.
 	dir := filepath.Dir(defaultPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to create log directory %s: %v\n", dir, err)
 		return
 	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to set log directory permissions %s: %v\n", dir, err)
+	}
 
 	logPath = defaultPath
-	f, err := os.OpenFile(defaultPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(defaultPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to open log file %s: %v\n", defaultPath, err)
 		return
+	}
+	// Chmod after open to tighten permissions on pre-existing log files.
+	if err := f.Chmod(0600); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to set log file permissions %s: %v\n", defaultPath, err)
 	}
 	logFile = f
 	handler := slog.NewTextHandler(f, &slog.HandlerOptions{Level: levelVar})

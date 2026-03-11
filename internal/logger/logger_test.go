@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zhubert/erg/internal/paths"
 )
 
 // setupTestLogger creates a temp log file and initializes the logger with it.
@@ -466,6 +468,77 @@ func TestConcurrent_InitAndGet(t *testing.T) {
 		}
 	}
 	Reset()
+}
+
+func TestInit_LogFilePermissions(t *testing.T) {
+	Reset()
+	defer Reset()
+
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "subdir", "test.log")
+
+	if err := Init(logFile); err != nil {
+		t.Fatalf("Init() failed: %v", err)
+	}
+
+	dirInfo, err := os.Stat(filepath.Dir(logFile))
+	if err != nil {
+		t.Fatalf("Stat log dir failed: %v", err)
+	}
+	if perm := dirInfo.Mode().Perm(); perm != 0700 {
+		t.Errorf("log directory permissions = %04o, want 0700", perm)
+	}
+
+	fileInfo, err := os.Stat(logFile)
+	if err != nil {
+		t.Fatalf("Stat log file failed: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0600 {
+		t.Errorf("log file permissions = %04o, want 0600", perm)
+	}
+}
+
+func TestEnsureInit_LogFilePermissions(t *testing.T) {
+	Reset()
+	defer Reset()
+
+	// Use an isolated temp HOME so the test doesn't touch the real ~/.erg/logs
+	// and so DefaultLogPath resolves under our controlled directory.
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	paths.Reset()
+	defer paths.Reset()
+
+	// Trigger lazy init via Get() without calling Init()
+	log := Get()
+	if log == nil {
+		t.Fatal("Get() returned nil")
+	}
+	log.Info("permissions test")
+
+	defaultPath, err := DefaultLogPath()
+	if err != nil {
+		t.Fatalf("DefaultLogPath() failed: %v", err)
+	}
+
+	dirInfo, err := os.Stat(filepath.Dir(defaultPath))
+	if err != nil {
+		t.Fatalf("Stat log dir failed: %v", err)
+	}
+	if perm := dirInfo.Mode().Perm(); perm != 0700 {
+		t.Errorf("log directory permissions = %04o, want 0700", perm)
+	}
+
+	fileInfo, err := os.Stat(defaultPath)
+	if err != nil {
+		t.Fatalf("Stat log file failed: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0600 {
+		t.Errorf("log file permissions = %04o, want 0600", perm)
+	}
 }
 
 func TestMCPLogPath(t *testing.T) {
