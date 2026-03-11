@@ -22,6 +22,16 @@ func isValidVersion(v string) bool {
 	return validVersionRe.MatchString(v)
 }
 
+// validRustVersionRe matches well-formed Rust toolchain specs:
+//   - numeric releases:     "1.77", "1.77.0"
+//   - named channels:       "stable", "beta", "nightly"
+//   - date-pinned channels: "nightly-2024-01-01", "beta-2024-01-01"
+var validRustVersionRe = regexp.MustCompile(`^(?:\d+(?:\.\d+)*|(?:stable|beta|nightly)(?:-\d{4}-\d{2}-\d{2})?)$`)
+
+func isValidRustVersion(v string) bool {
+	return validRustVersionRe.MatchString(v)
+}
+
 // defaultVersions are used when a version cannot be parsed from the repo.
 var defaultVersions = map[Language]string{
 	LangGo:     "1.23",
@@ -162,7 +172,7 @@ func languageInstallBlock(l DetectedLang) (string, error) {
 		// Build dependencies only — mise handles the actual Python install.
 		return "RUN apk add --no-cache libffi-dev openssl-dev bzip2-dev xz-dev readline-dev sqlite-dev\n", nil
 	case LangRust:
-		if !isValidVersion(v) {
+		if !isValidRustVersion(v) {
 			return "", fmt.Errorf("invalid version string %q for language %s", v, l.Lang)
 		}
 		return fmt.Sprintf(""+

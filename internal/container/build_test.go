@@ -726,6 +726,68 @@ func TestIsValidVersion(t *testing.T) {
 	}
 }
 
+func TestIsValidRustVersion(t *testing.T) {
+	tests := []struct {
+		version string
+		valid   bool
+	}{
+		// Numeric releases
+		{"1.77", true},
+		{"1.77.0", true},
+		{"1.23", true},
+		// Named channels
+		{"stable", true},
+		{"beta", true},
+		{"nightly", true},
+		// Date-pinned channels
+		{"nightly-2024-01-01", true},
+		{"beta-2024-01-01", true},
+		// Invalid
+		{"", false},
+		{"stable && echo hi", false},
+		{"nightly; rm -rf /", false},
+		{"nightly-latest", false},
+		{"1.77 && evil", false},
+		{"abc", false},
+		{"1.", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.version, func(t *testing.T) {
+			got := isValidRustVersion(tt.version)
+			if got != tt.valid {
+				t.Errorf("isValidRustVersion(%q) = %v, want %v", tt.version, got, tt.valid)
+			}
+		})
+	}
+}
+
+func TestGenerateDockerfile_RustChannelVersions(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+	}{
+		{"stable channel", "stable"},
+		{"beta channel", "beta"},
+		{"nightly channel", "nightly"},
+		{"date-pinned nightly", "nightly-2024-01-01"},
+		{"date-pinned beta", "beta-2024-01-01"},
+		{"numeric version", "1.77.0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			df, err := GenerateDockerfile([]DetectedLang{
+				{Lang: LangRust, Version: tt.version},
+			}, "0.2.11", "")
+			if err != nil {
+				t.Fatalf("unexpected error for Rust version %q: %v", tt.version, err)
+			}
+			if !strings.Contains(df, "--default-toolchain "+tt.version) {
+				t.Errorf("expected --default-toolchain %s in Dockerfile", tt.version)
+			}
+		})
+	}
+}
+
 func TestGenerateDockerfile_RejectsInvalidVersion(t *testing.T) {
 	tests := []struct {
 		name  string
