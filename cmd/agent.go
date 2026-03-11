@@ -257,7 +257,7 @@ func daemonize(cmd *cobra.Command, args []string) error {
 	}
 
 	logPath, _ := logger.DefaultLogPath()
-	fmt.Printf("erg daemon started (PID %d)\nLogs: %s\n", childPID, logPath)
+	fmt.Printf("erg orchestrator started (PID %d)\nLogs: %s\n", childPID, logPath)
 	return nil
 }
 
@@ -769,7 +769,7 @@ func uptimeFromLockFile(repo string) time.Duration {
 func displaySummary(repo string) error {
 	pid, running := daemonstate.ReadLockStatus(repo)
 	if !running && pid == 0 {
-		fmt.Println("Daemon: not running")
+		fmt.Println("Orchestrator: not running")
 		return nil
 	}
 
@@ -784,7 +784,7 @@ func displaySummary(repo string) error {
 		uptimeStr = fmt.Sprintf(", uptime %s", formatUptime(uptime))
 	}
 
-	fmt.Printf("Daemon: %s (PID %d%s)\n", status, pid, uptimeStr)
+	fmt.Printf("Orchestrator: %s (PID %d%s)\n", status, pid, uptimeStr)
 	fmt.Printf("Repo:   %s\n", repo)
 
 	// Load state for counts

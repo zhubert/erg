@@ -22,9 +22,9 @@ var (
 
 var startCmd = &cobra.Command{
 	Use:     "start",
-	Short:   "Start the daemon",
+	Short:   "Start the orchestrator",
 	GroupID: "daemon",
-	Long: `Start the erg daemon for the given repository or set of repositories.
+	Long: `Start the erg orchestrator for the given repository or set of repositories.
 
 By default, forks into the background and detaches from the terminal.
 Use -f/--foreground to stay attached with a live status display.
@@ -39,11 +39,11 @@ service management (includes the dashboard automatically).
 
 Examples:
   erg start                           # Start using default config or current repo
-  erg start --repo owner/repo         # Start daemon for specific repo
+  erg start --repo owner/repo         # Start orchestrator for specific repo
   erg start -f --repo owner/repo      # Foreground with live status display
   erg start --once --repo owner/repo  # Run one tick, then exit
   erg start --config config.yaml       # Watch multiple repos
-  erg start --dashboard               # Start daemon with embedded web dashboard`,
+  erg start --dashboard               # Start orchestrator with embedded web dashboard`,
 	RunE: runStart,
 }
 
