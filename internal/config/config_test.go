@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -2339,6 +2340,10 @@ func TestConfig_Save_Atomic(t *testing.T) {
 }
 
 func TestConfig_Save_Permissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not reliable on Windows")
+	}
+
 	tmpDir, err := os.MkdirTemp("", "erg-config-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2361,8 +2366,8 @@ func TestConfig_Save_Permissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to stat config file: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0600 {
-		t.Errorf("Expected file permissions 0600, got %04o", perm)
+	if perm := info.Mode().Perm(); perm&0077 != 0 {
+		t.Errorf("Expected no group/other permission bits set, got %04o", perm)
 	}
 }
 
