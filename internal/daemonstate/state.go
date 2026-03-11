@@ -81,6 +81,13 @@ type DaemonState struct {
 	TotalOutputTokens int     `json:"total_output_tokens"`
 	TotalInputTokens  int     `json:"total_input_tokens"`
 
+	// Repo display labels resolved at daemon startup from git remote URLs.
+	// RepoLabels is an ordered list of owner/repo labels for all repos this daemon manages.
+	// RepoPathLabels maps local filesystem path → owner/repo label.
+	// Both fields are omitempty for backward compatibility with existing state files.
+	RepoLabels     []string          `json:"repo_labels,omitempty"`
+	RepoPathLabels map[string]string `json:"repo_path_labels,omitempty"`
+
 	mu       sync.RWMutex
 	filePath string
 }
@@ -430,6 +437,22 @@ func (s *DaemonState) GetSpend() (costUSD float64, outputTokens, inputTokens int
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.TotalCostUSD, s.TotalOutputTokens, s.TotalInputTokens
+}
+
+// SetRepoLabels stores resolved owner/repo display labels under the write lock.
+// labels is an ordered list matching config.GetRepos(); pathLabels maps local path → label.
+func (s *DaemonState) SetRepoLabels(labels []string, pathLabels map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.RepoLabels = labels
+	s.RepoPathLabels = pathLabels
+}
+
+// GetRepoLabels returns the resolved display labels in a thread-safe manner.
+func (s *DaemonState) GetRepoLabels() (labels []string, pathLabels map[string]string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.RepoLabels, s.RepoPathLabels
 }
 
 // StateExists returns true if any daemon state file exists on disk.
