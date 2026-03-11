@@ -52,8 +52,8 @@ func TestHandleIndex(t *testing.T) {
 		t.Errorf("expected text/html, got %s", ct)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "erg dashboard") {
-		t.Error("expected HTML to contain 'erg dashboard'")
+	if !strings.Contains(body, "erg orchestrator dashboard") {
+		t.Error("expected HTML to contain 'erg orchestrator dashboard'")
 	}
 }
 

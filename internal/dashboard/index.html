@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>erg dashboard</title>
+<title>erg orchestrator dashboard</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
@@ -506,7 +506,7 @@
 
 <div class="header">
   <div class="header-left">
-    <h1><span>erg</span> dashboard</h1>
+    <h1><span>erg</span> orchestrator dashboard</h1>
   </div>
   <div class="connection-status">
     <div class="status-dot" id="statusDot"></div>
@@ -651,7 +651,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
 
     const summaryHtml = `
       <div class="summary-stat">
-        <div class="label">Daemons</div>
+        <div class="label">Workers</div>
         <div class="value accent">${state.daemons.length}</div>
       </div>
       <div class="summary-stat">
@@ -688,8 +688,8 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
     if (state.daemons.length === 0) {
       content.innerHTML = `
         <div class="empty-state">
-          <h2>No running daemons</h2>
-          <p>Start a daemon with <code>erg start</code> to see your agents here.</p>
+          <h2>No running orchestrators</h2>
+          <p>Start an orchestrator with <code>erg start</code> to see your workers here.</p>
         </div>
       `;
       return;
