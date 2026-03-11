@@ -66,6 +66,16 @@
   .header h1 span {
     color: var(--accent);
   }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .auth-info {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
   .connection-status {
     display: flex;
     align-items: center;
@@ -508,9 +518,12 @@
   <div class="header-left">
     <h1><span>erg</span> orchestrator dashboard</h1>
   </div>
-  <div class="connection-status">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="statusText">connecting</span>
+  <div class="header-right">
+    <span class="auth-info" id="authInfo"></span>
+    <div class="connection-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">connecting</span>
+    </div>
   </div>
 </div>
 
@@ -969,6 +982,28 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
     }
   }, 3000);
 
+  // Fetch auth info and display account email/subscription in the header.
+  async function fetchAuthInfo() {
+    try {
+      const resp = await fetch('/api/auth');
+      if (!resp.ok) return;
+      const info = await resp.json();
+      const el = document.getElementById('authInfo');
+      if (!el) return;
+      if (info && info.email) {
+        const sub = info.subscription ? ' (' + info.subscription + ')' : '';
+        el.textContent = info.email + sub;
+      } else {
+        el.textContent = '';
+      }
+    } catch(e) {
+      // Silently ignore — auth info is best-effort
+    }
+  }
+
+  // Refresh auth info every 5 minutes
+  setInterval(fetchAuthInfo, 5 * 60 * 1000);
+
   // Fetch capabilities to determine whether control buttons are available.
   async function fetchCapabilities() {
     try {
@@ -1096,6 +1131,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
 
   // Start
   fetchCapabilities();
+  fetchAuthInfo();
   connect();
 })();
 </script>

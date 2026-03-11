@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	iexec "github.com/zhubert/erg/internal/exec"
 )
 
 // mockController is a SessionController implementation for tests.
@@ -411,6 +413,120 @@ func TestNew_NoController(t *testing.T) {
 	srv := New("localhost:0")
 	if srv.controller != nil {
 		t.Error("expected controller to be nil by default")
+	}
+}
+
+// ---- /api/auth ----
+
+func TestHandleAuth_CachedInfo(t *testing.T) {
+	ex := iexec.NewMockExecutor(nil)
+	srv := New("localhost:0", WithAuthExecutor(ex))
+
+	// Pre-populate a fresh cache — no subprocess should be invoked.
+	srv.authCache = &AuthInfo{Email: "cached@example.com", IsLoggedIn: true}
+	srv.authFetchAt = time.Now()
+
+	req := httptest.NewRequest("GET", "/api/auth", nil)
+	w := httptest.NewRecorder()
+	srv.handleAuth(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var info AuthInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if info.Email != "cached@example.com" {
+		t.Errorf("expected cached@example.com, got %q", info.Email)
+	}
+
+	if calls := ex.GetCalls(); len(calls) != 0 {
+		t.Errorf("expected no subprocess calls, got %d", len(calls))
+	}
+}
+
+func TestHandleAuth_FreshFetch(t *testing.T) {
+	ex := iexec.NewMockExecutor(nil)
+	ex.AddExactMatch("claude", []string{"auth", "status"}, iexec.MockResponse{
+		Stdout: []byte(`{"isLoggedIn":true,"claudeAiOAuthAccount":{"emailAddress":"fresh@example.com"}}`),
+	})
+
+	srv := New("localhost:0", WithAuthExecutor(ex))
+	// Cache is empty — should trigger fresh fetch.
+
+	req := httptest.NewRequest("GET", "/api/auth", nil)
+	w := httptest.NewRecorder()
+	srv.handleAuth(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var info AuthInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if info.Email != "fresh@example.com" {
+		t.Errorf("expected fresh@example.com, got %q", info.Email)
+	}
+
+	if calls := ex.GetCalls(); len(calls) != 1 {
+		t.Errorf("expected 1 subprocess call, got %d", len(calls))
+	}
+}
+
+func TestHandleAuth_StaleCache(t *testing.T) {
+	ex := iexec.NewMockExecutor(nil)
+	ex.AddExactMatch("claude", []string{"auth", "status"}, iexec.MockResponse{
+		Stdout: []byte(`{"isLoggedIn":true,"claudeAiOAuthAccount":{"emailAddress":"refreshed@example.com"}}`),
+	})
+
+	srv := New("localhost:0", WithAuthExecutor(ex))
+	// Set a stale cache (older than 5 minutes).
+	srv.authCache = &AuthInfo{Email: "stale@example.com", IsLoggedIn: true}
+	srv.authFetchAt = time.Now().Add(-10 * time.Minute)
+
+	req := httptest.NewRequest("GET", "/api/auth", nil)
+	w := httptest.NewRecorder()
+	srv.handleAuth(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var info AuthInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if info.Email != "refreshed@example.com" {
+		t.Errorf("expected refreshed@example.com, got %q", info.Email)
+	}
+}
+
+func TestHandleAuth_CommandFails(t *testing.T) {
+	ex := iexec.NewMockExecutor(nil)
+	ex.AddExactMatch("claude", []string{"auth", "status"}, iexec.MockResponse{
+		Err: fmt.Errorf("claude not found"),
+	})
+
+	srv := New("localhost:0", WithAuthExecutor(ex))
+	req := httptest.NewRequest("GET", "/api/auth", nil)
+	w := httptest.NewRecorder()
+	srv.handleAuth(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	// Should return empty object when subprocess fails.
+	body := strings.TrimSpace(w.Body.String())
+	if body != "{}" {
+		t.Errorf("expected empty object {}, got %q", body)
 	}
 }
 
