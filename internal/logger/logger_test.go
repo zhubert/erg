@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zhubert/erg/internal/paths"
 )
 
 // setupTestLogger creates a temp log file and initializes the logger with it.
@@ -499,6 +501,16 @@ func TestInit_LogFilePermissions(t *testing.T) {
 func TestEnsureInit_LogFilePermissions(t *testing.T) {
 	Reset()
 	defer Reset()
+
+	// Use an isolated temp HOME so the test doesn't touch the real ~/.erg/logs
+	// and so DefaultLogPath resolves under our controlled directory.
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	paths.Reset()
+	defer paths.Reset()
 
 	// Trigger lazy init via Get() without calling Init()
 	log := Get()
