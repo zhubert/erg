@@ -7,30 +7,18 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/zhubert/erg/internal/secrets"
 )
 
-// sensitiveEnvVars lists environment variable names that must not be passed to
-// user-defined hook scripts to prevent accidental credential exfiltration.
-var sensitiveEnvVars = []string{
-	"ANTHROPIC_API_KEY",
-	"CLAUDE_CODE_OAUTH_TOKEN",
-	"LINEAR_API_KEY",
-	"ASANA_PAT",
-	"GITHUB_TOKEN",
-	"GH_TOKEN",
-}
-
 // filteredEnv returns os.Environ() with sensitive credential variables removed.
+// It uses the precomputed secrets.KnownSecretEnvVarsSet for O(1) lookup.
 func filteredEnv() []string {
-	blocked := make(map[string]bool, len(sensitiveEnvVars))
-	for _, name := range sensitiveEnvVars {
-		blocked[name] = true
-	}
 	env := os.Environ()
 	result := make([]string, 0, len(env))
 	for _, kv := range env {
 		key, _, _ := strings.Cut(kv, "=")
-		if !blocked[key] {
+		if _, blocked := secrets.KnownSecretEnvVarsSet[key]; !blocked {
 			result = append(result, kv)
 		}
 	}
