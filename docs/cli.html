@@ -1347,6 +1347,40 @@
           </tbody>
         </table>
 
+        <h3 id="file-layout">File layout</h3>
+        <p>
+          Erg stores configuration, session data, and logs under
+          <code>~/.erg/</code> by default. If <code>~/.erg/</code>
+          does not exist, Erg respects the
+          <a href="https://specifications.freedesktop.org/basedir-spec/latest/">XDG Base Directory Specification</a>:
+        </p>
+        <table class="cli-table">
+          <thead>
+            <tr>
+              <th>Data type</th>
+              <th>Default path</th>
+              <th>XDG override</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Config (<code>config.json</code>)</td>
+              <td><code>~/.erg/</code></td>
+              <td><code>$XDG_CONFIG_HOME/erg/</code></td>
+            </tr>
+            <tr>
+              <td>Session data</td>
+              <td><code>~/.erg/sessions/</code></td>
+              <td><code>$XDG_DATA_HOME/erg/sessions/</code></td>
+            </tr>
+            <tr>
+              <td>Logs &amp; state</td>
+              <td><code>~/.erg/logs/</code></td>
+              <td><code>$XDG_STATE_HOME/erg/logs/</code></td>
+            </tr>
+          </tbody>
+        </table>
+
         <div
           style="
             margin-top: 3rem;
