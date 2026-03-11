@@ -131,6 +131,8 @@
   .summary-stat .value.accent { color: var(--accent); }
   .summary-stat .value.green { color: var(--green); }
   .summary-stat .value.cyan { color: var(--cyan); }
+  .summary-stat .value.yellow { color: var(--yellow); }
+  .summary-stat .value.red { color: var(--red); }
 
   /* Needs Attention section */
   .needs-attention-section {
@@ -506,8 +508,10 @@
     display: inline-flex;
     align-items: center;
   }
-  .ctrl-btn.issue:hover {
+  .ctrl-btn.issue:hover,
+  .ctrl-btn.issue:focus {
     background: rgba(167, 139, 250, 0.2);
+    text-decoration: none;
   }
   .ctrl-flash {
     font-family: var(--font-mono);
@@ -686,7 +690,11 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
   }
 
   function isAwaiting(item) {
-    return item.state === 'active' && item.current_step && item.current_step.startsWith('await_');
+    return (
+      item.state === 'active' &&
+      item.current_step &&
+      /(^|_)await_/.test(item.current_step)
+    );
   }
 
   function renderSummary() {
@@ -721,7 +729,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
       </div>
       ${totalAwaiting > 0 ? `<div class="summary-stat">
         <div class="label">Awaiting</div>
-        <div class="value" style="color:var(--yellow)">${totalAwaiting}</div>
+        <div class="value yellow">${totalAwaiting}</div>
       </div>` : ''}
       <div class="summary-stat">
         <div class="label">Queued</div>
@@ -733,7 +741,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
       </div>
       ${totalFailed > 0 ? `<div class="summary-stat">
         <div class="label">Failed</div>
-        <div class="value" style="color:var(--red)">${totalFailed}</div>
+        <div class="value red">${totalFailed}</div>
       </div>` : ''}
       <div class="summary-stat">
         <div class="label">Spend</div>
@@ -885,7 +893,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
     }
 
     const issueUrl = item.issue_ref && item.issue_ref.url;
-    if (issueUrl) {
+    if (issueUrl && /^https?:\/\//i.test(issueUrl)) {
       extraHtml += `<div class="item-pr"><a class="ctrl-btn issue" href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener">Open Issue</a></div>`;
     }
 
