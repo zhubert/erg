@@ -769,7 +769,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
 
     let itemsHtml = '';
     for (const item of sorted) {
-      itemsHtml += renderWorkItem(item);
+      itemsHtml += renderWorkItem(item, daemon.repo);
     }
 
     if (sorted.length === 0) {
@@ -792,7 +792,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
     `;
   }
 
-  function renderWorkItem(item) {
+  function renderWorkItem(item, repo) {
     const isExpanded = expandedItems.has(item.id);
     const msgOpen = messagePanelOpen.has(item.id);
     const label = issueLabel(item);
@@ -875,6 +875,10 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
           <span class="item-state-badge ${item.state}">${item.state}</span>
         </div>
         <div class="item-meta">
+          ${repo ? `<div class="meta-item">
+            <span class="meta-label">repo</span>
+            <span class="meta-value">${escapeHtml(repoDisplayName(repo))}</span>
+          </div>` : ''}
           <div class="meta-item">
             <span class="meta-label">step</span>
             <span class="meta-value step">${escapeHtml(step)}</span>
