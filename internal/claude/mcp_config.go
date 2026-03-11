@@ -187,14 +187,14 @@ func (r *Runner) createContainerMCPConfigLocked(containerPort int) (string, erro
 		return "", err
 	}
 
-	// Write to ~/.erg/ (under $HOME) instead of os.TempDir() (/var/folders/ on macOS).
+	// Write to ~/.local/state/erg (under $HOME) instead of os.TempDir() (/var/folders/ on macOS).
 	// Colima shares $HOME with the Docker VM by default, but /var/folders/ is NOT shared.
 	// When Docker can't access the host file, it creates an empty directory at the mount
 	// point inside the container, causing Claude CLI to hang trying to read a directory
 	// as a JSON file.
-	configDir, err := paths.ConfigDir()
+	configDir, err := paths.StateDir()
 	if err != nil {
-		// Fall back to temp dir if config dir is unavailable
+		// Fall back to temp dir if state dir is unavailable
 		configDir = os.TempDir()
 	}
 	if err := os.MkdirAll(configDir, 0700); err != nil {
@@ -208,9 +208,9 @@ func (r *Runner) createContainerMCPConfigLocked(containerPort int) (string, erro
 	return configPath, nil
 }
 
-// FindMCPConfigFiles returns the paths of all erg-mcp-*.json files in the config directory.
+// FindMCPConfigFiles returns the paths of all erg-mcp-*.json files in the state directory.
 func FindMCPConfigFiles() ([]string, error) {
-	dir, err := paths.ConfigDir()
+	dir, err := paths.StateDir()
 	if err != nil {
 		return nil, nil
 	}

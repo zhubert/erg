@@ -113,11 +113,11 @@ func buildContainerRunArgs(config ProcessConfig, claudeArgs []string) (container
 }
 
 // containerAuthDir returns the directory for storing container auth files.
-// Uses the config directory which is user-private, unlike /tmp which is world-readable.
-// Returns empty string if the config directory cannot be determined (credentials
+// Uses the state directory which is user-private, unlike /tmp which is world-readable.
+// Returns empty string if the state directory cannot be determined (credentials
 // will not be written rather than falling back to an insecure location).
 func containerAuthDir() string {
-	dir, err := paths.ConfigDir()
+	dir, err := paths.StateDir()
 	if err != nil {
 		return ""
 	}
