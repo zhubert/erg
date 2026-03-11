@@ -30,7 +30,7 @@ func (s *GitService) CreateEmptyCommit(ctx context.Context, worktreePath, messag
 // performs a full-text search against each commit's log message.
 func (s *GitService) CountCommitsMatchingMessage(ctx context.Context, repoPath, branch, baseBranch, grepPattern string) (int, error) {
 	output, err := s.executor.Output(ctx, repoPath, "git", "rev-list", "--count",
-		"--grep="+grepPattern, baseBranch+".."+branch)
+		"--grep", grepPattern, baseBranch+".."+branch)
 	if err != nil {
 		return 0, fmt.Errorf("git rev-list failed: %w", err)
 	}

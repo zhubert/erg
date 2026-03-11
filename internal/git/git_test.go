@@ -3154,7 +3154,7 @@ func TestCreateEmptyCommit_Integration(t *testing.T) {
 
 func TestCountCommitsMatchingMessage_Success(t *testing.T) {
 	mock := pexec.NewMockExecutor(nil)
-	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep=ci-fix: start", "main..feature"}, pexec.MockResponse{
+	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep", "ci-fix: start", "main..feature"}, pexec.MockResponse{
 		Stdout: []byte("2\n"),
 	})
 	s := NewGitServiceWithExecutor(mock)
@@ -3170,7 +3170,7 @@ func TestCountCommitsMatchingMessage_Success(t *testing.T) {
 
 func TestCountCommitsMatchingMessage_Zero(t *testing.T) {
 	mock := pexec.NewMockExecutor(nil)
-	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep=ci-fix: start", "main..feature"}, pexec.MockResponse{
+	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep", "ci-fix: start", "main..feature"}, pexec.MockResponse{
 		Stdout: []byte("0\n"),
 	})
 	s := NewGitServiceWithExecutor(mock)
@@ -3186,7 +3186,7 @@ func TestCountCommitsMatchingMessage_Zero(t *testing.T) {
 
 func TestCountCommitsMatchingMessage_GitError(t *testing.T) {
 	mock := pexec.NewMockExecutor(nil)
-	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep=ci-fix: start", "main..feature"}, pexec.MockResponse{
+	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep", "ci-fix: start", "main..feature"}, pexec.MockResponse{
 		Err: fmt.Errorf("exit status 128"),
 	})
 	s := NewGitServiceWithExecutor(mock)
@@ -3199,7 +3199,7 @@ func TestCountCommitsMatchingMessage_GitError(t *testing.T) {
 
 func TestCountCommitsMatchingMessage_BadOutput(t *testing.T) {
 	mock := pexec.NewMockExecutor(nil)
-	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep=ci-fix: start", "main..feature"}, pexec.MockResponse{
+	mock.AddExactMatch("git", []string{"rev-list", "--count", "--grep", "ci-fix: start", "main..feature"}, pexec.MockResponse{
 		Stdout: []byte("not-a-number\n"),
 	})
 	s := NewGitServiceWithExecutor(mock)

@@ -1785,7 +1785,7 @@ func TestFixCIAction_Execute_MaxRoundsFromGit(t *testing.T) {
 		Stdout: []byte("abc123\n"),
 	})
 	// CountCommitsMatchingMessage: return 3 (max reached)
-	mockExec.AddPrefixMatch("git", []string{"rev-list", "--count", "--grep=" + git.CIFixMarkerMessage}, exec.MockResponse{
+	mockExec.AddPrefixMatch("git", []string{"rev-list", "--count", "--grep", git.CIFixMarkerMessage}, exec.MockResponse{
 		Stdout: []byte("3\n"),
 	})
 
@@ -1830,7 +1830,7 @@ func TestFixCIAction_Execute_GitRoundsBelowMax(t *testing.T) {
 		Stdout: []byte("abc123\n"),
 	})
 	// CountCommitsMatchingMessage: return 1 (one round done, below max of 3)
-	mockExec.AddPrefixMatch("git", []string{"rev-list", "--count", "--grep=" + git.CIFixMarkerMessage}, exec.MockResponse{
+	mockExec.AddPrefixMatch("git", []string{"rev-list", "--count", "--grep", git.CIFixMarkerMessage}, exec.MockResponse{
 		Stdout: []byte("1\n"),
 	})
 	// gh run list (CI logs fetch) — return empty so it falls back to generic message
@@ -1875,7 +1875,7 @@ func TestFixCIAction_Execute_FallsBackToStepDataOnGitError(t *testing.T) {
 		Stdout: []byte("abc123\n"),
 	})
 	// CountCommitsMatchingMessage: git rev-list fails
-	mockExec.AddPrefixMatch("git", []string{"rev-list", "--count", "--grep=" + git.CIFixMarkerMessage}, exec.MockResponse{
+	mockExec.AddPrefixMatch("git", []string{"rev-list", "--count", "--grep", git.CIFixMarkerMessage}, exec.MockResponse{
 		Err: fmt.Errorf("exit status 128"),
 	})
 
@@ -1914,7 +1914,7 @@ func TestCountCIFixRoundsFromGit_UsesRemoteBranch(t *testing.T) {
 		Stdout: []byte("abc123\n"),
 	})
 	// rev-list with origin/main as base
-	mockExec.AddExactMatch("git", []string{"rev-list", "--count", "--grep=" + git.CIFixMarkerMessage, "origin/main..feature"}, exec.MockResponse{
+	mockExec.AddExactMatch("git", []string{"rev-list", "--count", "--grep", git.CIFixMarkerMessage, "origin/main..feature"}, exec.MockResponse{
 		Stdout: []byte("2\n"),
 	})
 
@@ -1942,7 +1942,7 @@ func TestCountCIFixRoundsFromGit_FallsBackToLocalBase(t *testing.T) {
 		Err: fmt.Errorf("exit status 128"),
 	})
 	// rev-list with local main as base
-	mockExec.AddExactMatch("git", []string{"rev-list", "--count", "--grep=" + git.CIFixMarkerMessage, "main..feature"}, exec.MockResponse{
+	mockExec.AddExactMatch("git", []string{"rev-list", "--count", "--grep", git.CIFixMarkerMessage, "main..feature"}, exec.MockResponse{
 		Stdout: []byte("1\n"),
 	})
 
