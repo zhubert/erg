@@ -197,6 +197,14 @@ type keychainOAuthCredentials struct {
 	} `json:"claudeAiOauth"`
 }
 
+// oauthNeedsRefresh checks parsed keychain OAuth credentials and returns true
+// when the access token is missing or expired. This is the shared decision
+// logic used by both readKeychainOAuthToken and KeychainNeedsRefresh.
+func oauthNeedsRefresh(creds keychainOAuthCredentials) bool {
+	return creds.ClaudeAiOauth.AccessToken == "" ||
+		(creds.ClaudeAiOauth.ExpiresAt > 0 && time.Now().UnixMilli() >= creds.ClaudeAiOauth.ExpiresAt)
+}
+
 // readKeychainOAuthToken reads an OAuth access token from the macOS keychain
 // "Claude Code-credentials" entry, used by Claude Pro/Max subscriptions.
 // Returns empty string if not found, expired, on error, or on non-macOS platforms.
@@ -211,16 +219,29 @@ func readKeychainOAuthToken() string {
 		return ""
 	}
 
-	if creds.ClaudeAiOauth.AccessToken == "" {
-		return ""
-	}
-
-	// Check if token is expired
-	if creds.ClaudeAiOauth.ExpiresAt > 0 && time.Now().UnixMilli() >= creds.ClaudeAiOauth.ExpiresAt {
+	if oauthNeedsRefresh(creds) {
 		return ""
 	}
 
 	return creds.ClaudeAiOauth.AccessToken
+}
+
+// KeychainNeedsRefresh reports whether the macOS keychain has an OAuth entry
+// whose access token is missing or expired. When true, running `claude -v` on
+// the host will force the CLI to refresh the token before we read it.
+func KeychainNeedsRefresh() bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	raw := readKeychainPassword("Claude Code-credentials")
+	if raw == "" {
+		return false
+	}
+	var creds keychainOAuthCredentials
+	if err := json.Unmarshal([]byte(raw), &creds); err != nil {
+		return false
+	}
+	return oauthNeedsRefresh(creds)
 }
 
 // credentialsFileExists checks whether ~/.claude/.credentials.json exists.
