@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	iexec "github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/logger"
 )
 
@@ -44,15 +45,29 @@ func WithController(c SessionController) ServerOption {
 	return func(s *Server) { s.controller = c }
 }
 
+// WithAuthExecutor sets a custom CommandExecutor for running `claude auth status`.
+// Primarily used in tests to inject mock executors.
+func WithAuthExecutor(e iexec.CommandExecutor) ServerOption {
+	return func(s *Server) { s.authExec = e }
+}
+
+const authCacheTTL     = 5 * time.Minute
+const authFetchTimeout = 10 * time.Second
+
 // Server is the dashboard HTTP server with SSE support.
 type Server struct {
 	addr       string
 	log        *slog.Logger
 	pollRate   time.Duration
 	controller SessionController // nil = read-only mode
+	authExec   iexec.CommandExecutor
 
 	mu      sync.RWMutex
 	clients map[chan []byte]struct{}
+
+	authMu      sync.Mutex
+	authCache   *AuthInfo
+	authFetchAt time.Time
 }
 
 // New creates a new dashboard server.
@@ -62,6 +77,7 @@ func New(addr string, opts ...ServerOption) *Server {
 		log:      logger.Get(),
 		pollRate: 1500 * time.Millisecond,
 		clients:  make(map[chan []byte]struct{}),
+		authExec: iexec.NewRealExecutor(),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -86,6 +102,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /api/events", s.handleSSE)
 	mux.HandleFunc("GET /api/logs/{sessionID}", s.handleLogs)
 	mux.HandleFunc("GET /api/capabilities", s.handleCapabilities)
+	mux.HandleFunc("GET /api/auth", s.handleAuth)
 	mux.HandleFunc("POST /api/workitems/{itemID}/stop", s.handleStop)
 	mux.HandleFunc("POST /api/workitems/{itemID}/retry", s.handleRetry)
 	mux.HandleFunc("POST /api/workitems/{itemID}/message", s.handleMessage)
@@ -207,6 +224,34 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"control": s.controller != nil})
 }
 
+// handleAuth returns cached auth info, fetching fresh data if the cache is
+// absent or stale. When the subprocess fails, any previously-cached value is
+// returned. If no value has been cached yet, an empty JSON object is returned.
+// Either way the fetch attempt time is recorded so failures are rate-limited
+// to authCacheTTL and do not hammer the system during outages.
+func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+	s.authMu.Lock()
+	if time.Since(s.authFetchAt) > authCacheTTL {
+		ctx, cancel := context.WithTimeout(r.Context(), authFetchTimeout)
+		fresh, err := FetchAuthInfo(ctx, s.authExec)
+		cancel()
+		now := time.Now()
+		if err == nil {
+			s.authCache = fresh
+		}
+		s.authFetchAt = now
+	}
+	info := s.authCache
+	s.authMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if info == nil {
+		w.Write([]byte("{}\n"))
+		return
+	}
+	json.NewEncoder(w).Encode(info)
+}
+
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	if s.controller == nil {
 		http.Error(w, "control not available", http.StatusServiceUnavailable)
@@ -324,9 +369,13 @@ func (s *Server) broadcast(data []byte) {
 }
 
 // poll periodically collects state and broadcasts to SSE clients.
+// It also refreshes the auth info cache every authCacheTTL.
 func (s *Server) poll(ctx context.Context) {
 	ticker := time.NewTicker(s.pollRate)
 	defer ticker.Stop()
+
+	authRefresh := time.NewTicker(authCacheTTL)
+	defer authRefresh.Stop()
 
 	var lastJSON []byte
 
@@ -348,6 +397,16 @@ func (s *Server) poll(ctx context.Context) {
 				lastJSON = data
 				s.broadcast(data)
 			}
+		case <-authRefresh.C:
+			authCtx, cancel := context.WithTimeout(ctx, authFetchTimeout)
+			s.authMu.Lock()
+			info, err := FetchAuthInfo(authCtx, s.authExec)
+			if err == nil {
+				s.authCache = info
+				s.authFetchAt = time.Now()
+			}
+			s.authMu.Unlock()
+			cancel()
 		}
 	}
 }
