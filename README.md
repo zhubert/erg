@@ -1,6 +1,6 @@
 # erg
 
-**Workflow-driven autonomous coding orchestrator for Claude Code.**
+**Complete workflow orchestrator for Claude Code.**
 
 **Docs: [zhubert.com/erg](https://zhubert.com/erg/)** — setup, workflow configuration, CLI reference, and more.
 

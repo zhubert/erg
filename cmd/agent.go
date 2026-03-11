@@ -42,7 +42,7 @@ var osExecutable = os.Executable
 
 func init() {
 	rootCmd.RunE = runAgent
-	rootCmd.Flags().BoolVar(&agentOnce, "once", false, "Run one tick and exit (vs continuous daemon)")
+	rootCmd.Flags().BoolVar(&agentOnce, "once", false, "Run one tick and exit (vs continuous orchestrator)")
 	rootCmd.Flags().StringVar(&agentRepo, "repo", "", "Repo to poll (owner/repo or filesystem path)")
 	rootCmd.Flags().BoolVar(&agentDaemonMode, "_daemon", false, "Internal: run as detached daemon child")
 	rootCmd.Flags().StringVar(&agentWorkflowFile, "workflow", "", "Path to workflow config file (default: <repo>/.erg/workflow.yaml)")
@@ -312,7 +312,7 @@ func runDaemonChild(_ *cobra.Command, _ []string) error {
 	// The parent wrote our PID into the lock file before detaching.
 	lock, err := daemonstate.AdoptLock(lockKey)
 	if err != nil {
-		return fmt.Errorf("failed to adopt daemon lock: %w", err)
+		return fmt.Errorf("failed to adopt orchestrator lock: %w", err)
 	}
 	// Safety net: release if runDaemonWithLogger fails before daemon.Run takes over.
 	// Release is idempotent, so the daemon's own defer releaseLock is harmless.
