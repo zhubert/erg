@@ -191,7 +191,7 @@ func (c *Config) Save() error {
 
 	// Atomic write: temp file + rename
 	tmpFile := c.filePath + ".tmp"
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+	if err := os.WriteFile(tmpFile, data, 0600); err != nil {
 		return fmt.Errorf("failed to write temp config file: %w", err)
 	}
 	if err := os.Rename(tmpFile, c.filePath); err != nil {

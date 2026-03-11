@@ -2338,6 +2338,34 @@ func TestConfig_Save_Atomic(t *testing.T) {
 	}
 }
 
+func TestConfig_Save_Permissions(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "erg-config-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	cfg := &Config{
+		Repos:    []string{"/path/to/repo"},
+		Sessions: []Session{},
+		filePath: configPath,
+	}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("Failed to stat config file: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("Expected file permissions 0600, got %04o", perm)
+	}
+}
+
 func TestCountSessionMessageFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)

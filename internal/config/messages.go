@@ -54,7 +54,7 @@ func SaveSessionMessages(sessionID string, messages []Message, maxLines int) err
 	}
 
 	path := filepath.Join(dir, sessionID+".json")
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // LoadSessionMessages loads messages for a session
