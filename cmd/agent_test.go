@@ -441,6 +441,12 @@ func TestEnsureDockerHost_AlreadySet(t *testing.T) {
 func TestEnsureDockerHost_FindsSocket(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "")
 
+	// Override the default socket path so the early-return check doesn't
+	// short-circuit on CI runners that have /var/run/docker.sock.
+	origDefault := defaultSocketPath
+	defer func() { defaultSocketPath = origDefault }()
+	defaultSocketPath = "/nonexistent/default.sock"
+
 	// Create a temp dir with a fake socket file to simulate a runtime socket.
 	tmp := t.TempDir()
 	fakeSock := filepath.Join(tmp, "docker.sock")
@@ -464,6 +470,10 @@ func TestEnsureDockerHost_FindsSocket(t *testing.T) {
 
 func TestEnsureDockerHost_NoSocket(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "")
+
+	origDefault := defaultSocketPath
+	defer func() { defaultSocketPath = origDefault }()
+	defaultSocketPath = "/nonexistent/default.sock"
 
 	origPaths := dockerSocketPathsFunc
 	defer func() { dockerSocketPathsFunc = origPaths }()

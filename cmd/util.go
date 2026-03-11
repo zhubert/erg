@@ -49,6 +49,9 @@ var dockerSocketPathsFunc = func() []string {
 	}
 }
 
+// defaultSocketPath is the standard Docker socket. Overridden in tests.
+var defaultSocketPath = "/var/run/docker.sock"
+
 // ensureDockerHost sets DOCKER_HOST if it is not already set and the default
 // socket (/var/run/docker.sock) does not exist. It probes well-known socket
 // paths for Colima, OrbStack, and Docker Desktop so that erg works correctly
@@ -58,7 +61,7 @@ func ensureDockerHost() {
 		return
 	}
 	// If the default socket exists, Docker CLI will find it on its own.
-	if _, err := os.Stat("/var/run/docker.sock"); err == nil {
+	if _, err := os.Stat(defaultSocketPath); err == nil {
 		return
 	}
 	for _, sock := range dockerSocketPathsFunc() {
