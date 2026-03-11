@@ -1165,28 +1165,6 @@
           </li>
         </ol>
 
-        <!-- ============ LIVE DASHBOARD SIMULATION ============ -->
-        <div class="sim-wrap" style="margin: 2rem 0 2.5rem;">
-          <div class="sim-label">live dashboard preview</div>
-          <div class="sim-header">
-            <div class="sim-header-left">
-              <h3><span>erg</span> dashboard</h3>
-            </div>
-            <div class="sim-conn">
-              <div class="sim-conn-dot"></div>
-              <span>connected</span>
-            </div>
-          </div>
-          <div class="sim-body">
-            <div class="sim-summary" id="simSummary"></div>
-            <div id="simContent"></div>
-          </div>
-        </div>
-        <p style="font-size: 0.82rem; color: var(--text-dim); text-align: center; margin-top: -1.5rem; margin-bottom: 2rem;">
-          Monitor all your agents in real time. <a href="dashboard.html#dashboard">Learn more &rarr;</a>
-        </p>
-        <!-- ============ END SIMULATION ============ -->
-
         <!-- Installation -->
         <h2 id="install">Installation</h2>
         <div class="install-block">
@@ -1211,53 +1189,88 @@
         </p>
 
         <h3 id="quickstart">Quick start</h3>
-        <p>
-          Run <code>erg configure</code> inside your repo. It will walk you through
-          choosing an issue provider (GitHub, Asana, or Linear), configuring
-          credentials, and scaffolding a workflow — then start the orchestrator.
-        </p>
-        <div class="install-block">
-          <span class="prompt-char">$</span>
-          <code>erg configure</code>
-          <button class="copy-btn" onclick="copyCmd(this, 'erg configure')">
-            copy
-          </button>
+        <ol class="steps-list">
+          <li>
+            <div class="step-body">
+              <h4>Configure erg</h4>
+              <p>
+                Run <code>erg configure</code> inside your repo. It will ask which
+                issue tracker you use (GitHub, Asana, or Linear), walk through
+                credentials, and scaffold a default workflow file.
+              </p>
+              <div class="install-block" style="margin-top: 0.75rem; max-width: 100%;">
+                <span class="prompt-char">$</span>
+                <code>erg configure</code>
+                <button class="copy-btn" onclick="copyCmd(this, 'erg configure')">copy</button>
+              </div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h4>Confirm your container runtime is running</h4>
+              <p>
+                OrbStack, Docker Desktop, or Colima must be up before erg can
+                launch sessions. Verify with <code>docker ps</code>.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h4>Start the daemon</h4>
+              <p>
+                Start erg with <code>brew services start erg</code>, then check
+                it's healthy: <code>erg status</code>. If something looks off,
+                tail the log: <code>tail -f ~/.erg/logs/erg.log</code>.
+              </p>
+              <div class="install-block" style="margin-top: 0.75rem; max-width: 100%;">
+                <span class="prompt-char">$</span>
+                <code>brew services start erg</code>
+                <button class="copy-btn" onclick="copyCmd(this, 'brew services start erg')">copy</button>
+              </div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h4>Label your first issue</h4>
+              <p>
+                Open an issue in your configured tracker and apply the trigger
+                label (e.g. <code>queued</code>). erg will pick it up within the
+                next poll interval.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h4>Watch it go</h4>
+              <p>
+                Open <code>http://localhost:21122</code> in your browser. You'll
+                see the session appear and progress in real time.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <!-- ============ LIVE DASHBOARD SIMULATION ============ -->
+        <div class="sim-wrap" style="margin: 2rem 0 2.5rem;">
+          <div class="sim-label">live dashboard preview</div>
+          <div class="sim-header">
+            <div class="sim-header-left">
+              <h3><span>erg</span> dashboard</h3>
+            </div>
+            <div class="sim-conn">
+              <div class="sim-conn-dot"></div>
+              <span>connected</span>
+            </div>
+          </div>
+          <div class="sim-body">
+            <div class="sim-summary" id="simSummary"></div>
+            <div id="simContent"></div>
+          </div>
         </div>
-
-
-        <h3 id="file-layout">File layout</h3>
-        <p>
-          Erg stores configuration, session data, and logs under
-          <code>~/.erg/</code> by default. If <code>~/.erg/</code>
-          does not exist, Erg respects the
-          <a href="https://specifications.freedesktop.org/basedir-spec/latest/">XDG Base Directory Specification</a>:
+        <p style="font-size: 0.82rem; color: var(--text-dim); text-align: center; margin-top: -1.5rem; margin-bottom: 2rem;">
+          Monitor all your agents in real time. <a href="dashboard.html#dashboard">Learn more &rarr;</a>
         </p>
-        <table class="cli-table">
-          <thead>
-            <tr>
-              <th>Data type</th>
-              <th>Default path</th>
-              <th>XDG override</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Config (<code>config.json</code>)</td>
-              <td><code>~/.erg/</code></td>
-              <td><code>$XDG_CONFIG_HOME/erg/</code></td>
-            </tr>
-            <tr>
-              <td>Session data</td>
-              <td><code>~/.erg/sessions/</code></td>
-              <td><code>$XDG_DATA_HOME/erg/sessions/</code></td>
-            </tr>
-            <tr>
-              <td>Logs &amp; state</td>
-              <td><code>~/.erg/logs/</code></td>
-              <td><code>$XDG_STATE_HOME/erg/logs/</code></td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- ============ END SIMULATION ============ -->
 
         <div
           style="

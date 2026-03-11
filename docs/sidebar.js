@@ -13,7 +13,6 @@
         { href: "index.html#how-it-works", text: "How it works", type: "link" },
         { href: "index.html#install", text: "Installation", type: "link" },
         { href: "index.html#quickstart", text: "Quick start", type: "sub" },
-        { href: "index.html#file-layout", text: "File layout", type: "sub" },
       ],
     },
     {
@@ -49,6 +48,7 @@
         { href: "cli.html#cli", text: "CLI commands", type: "link" },
         { href: "cli.html#cli-run", text: "erg run", type: "sub" },
         { href: "cli.html#cli-stats", text: "erg stats", type: "sub" },
+        { href: "cli.html#file-layout", text: "File layout", type: "sub" },
         { href: "dashboard.html#dashboard", text: "Dashboard", type: "link" },
         { href: "dashboard.html#dashboard-features", text: "Features", type: "sub" },
         { href: "dashboard.html#dashboard-api", text: "API", type: "sub" },
