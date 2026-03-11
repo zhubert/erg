@@ -553,6 +553,41 @@ func TestLoadDaemonState_MigratesLegacyStates(t *testing.T) {
 	}
 }
 
+func TestDaemonState_SavePermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+	fp := filepath.Join(tmpDir, "subdir", "daemon-state.json")
+
+	state := &DaemonState{
+		Version:   stateVersion,
+		RepoPath:  "/test/repo",
+		WorkItems: make(map[string]*WorkItem),
+		StartedAt: time.Now(),
+		filePath:  fp,
+	}
+
+	if err := state.Save(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Directory must be owner-only (0700)
+	dirInfo, err := os.Stat(filepath.Dir(fp))
+	if err != nil {
+		t.Fatalf("failed to stat state directory: %v", err)
+	}
+	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+		t.Errorf("state directory permissions = %04o, want 0700", perm)
+	}
+
+	// State file must be owner-only (0600)
+	fileInfo, err := os.Stat(fp)
+	if err != nil {
+		t.Fatalf("failed to stat state file: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0o600 {
+		t.Errorf("state file permissions = %04o, want 0600", perm)
+	}
+}
+
 func TestDaemonState_SaveAtomicity(t *testing.T) {
 	tmpDir := t.TempDir()
 	fp := filepath.Join(tmpDir, "daemon-state.json")

@@ -39,13 +39,13 @@ func AcquireLock(repoPath string) (*DaemonLock, error) {
 	fp := LockFilePath(repoPath)
 
 	dir := filepath.Dir(fp)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 
 	// Try up to 2 times: once normally, once after stale lock cleanup.
 	for attempt := range 2 {
-		f, err := os.OpenFile(fp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(fp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
 			// Successfully created lock file — write our PID
 			fmt.Fprintf(f, "%d", os.Getpid())
