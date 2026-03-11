@@ -40,13 +40,17 @@ func hasContainerRuntime() bool {
 // Docker CLI context configuration may not be available.
 // Overridden in tests.
 var dockerSocketPathsFunc = func() []string {
-	home, _ := os.UserHomeDir()
-	return []string{
-		filepath.Join(home, ".colima/default/docker.sock"),              // Colima
-		filepath.Join(home, ".orbstack/run/docker.sock"),                // OrbStack
-		filepath.Join(home, ".docker/run/docker.sock"),                  // Docker Desktop (macOS)
-		"/var/run/docker.sock",                                          // Standard default
+	home, err := os.UserHomeDir()
+	var paths []string
+	if err == nil && home != "" && filepath.IsAbs(home) {
+		paths = append(paths,
+			filepath.Join(home, ".colima/default/docker.sock"), // Colima
+			filepath.Join(home, ".orbstack/run/docker.sock"),   // OrbStack
+			filepath.Join(home, ".docker/run/docker.sock"),     // Docker Desktop (macOS)
+		)
 	}
+	paths = append(paths, "/var/run/docker.sock") // Standard default
+	return paths
 }
 
 // defaultSocketPath is the standard Docker socket. Overridden in tests.
