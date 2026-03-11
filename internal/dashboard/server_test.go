@@ -8,11 +8,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	iexec "github.com/zhubert/erg/internal/exec"
+	"github.com/zhubert/erg/internal/logger"
 )
 
 // mockController is a SessionController implementation for tests.
@@ -117,19 +120,50 @@ func TestHandleSSE(t *testing.T) {
 }
 
 func TestHandleLogs_TailCapped(t *testing.T) {
-	// A very large tail value must not exceed maxTailLines.
-	// We can't easily observe the internal tailN value, but we can confirm
-	// that the handler doesn't panic or return an error for huge ?tail= values
-	// and that it caps cleanly at maxTailLines (the log file doesn't exist so
-	// we'll get 404, which is expected — the important thing is no panic/500).
+	// Write a temporary stream log with more than maxTailLines entries and
+	// assert the response contains at most maxTailLines log lines.
+	sessionID := "tail-cap-test"
+	logPath, err := logger.StreamLogPath(sessionID)
+	if err != nil {
+		t.Fatalf("stream log path: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(logPath) })
+
+	// Ensure the logs directory exists.
+	if err := os.MkdirAll(filepath.Dir(logPath), 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Each stream log entry with one text line produces one LogLine.
+	totalLines := maxTailLines + 500
+	f, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create log file: %v", err)
+	}
+	for i := 0; i < totalLines; i++ {
+		fmt.Fprintf(f, `{"type":"assistant","message":{"content":[{"type":"text","text":"line %d"}]}}`+"\n", i)
+	}
+	f.Close()
+
 	srv := New("localhost:0")
-	req := httptest.NewRequest("GET", "/api/logs/some-session?tail=1000000000", nil)
-	req.SetPathValue("sessionID", "some-session")
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/logs/%s?tail=1000000000", sessionID), nil)
+	req.SetPathValue("sessionID", sessionID)
 	w := httptest.NewRecorder()
 	srv.handleLogs(w, req)
-	// 404 because the log file doesn't exist — that's fine.
-	if w.Result().StatusCode == http.StatusInternalServerError {
-		t.Errorf("unexpected 500 for large ?tail= value")
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Result().StatusCode, w.Body.String())
+	}
+
+	var lines []LogLine
+	if err := json.NewDecoder(w.Body).Decode(&lines); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(lines) > maxTailLines {
+		t.Errorf("expected at most %d lines, got %d", maxTailLines, len(lines))
+	}
+	if len(lines) != maxTailLines {
+		t.Errorf("expected exactly %d lines (capped), got %d", maxTailLines, len(lines))
 	}
 }
 

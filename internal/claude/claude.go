@@ -227,6 +227,11 @@ func New(sessionID, workingDir, repoPath string, sessionStarted bool, initialMes
 		streamLogFile, err = os.OpenFile(streamLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			log.Warn("failed to open stream log file", "path", streamLogPath, "error", err)
+		} else {
+			// Ensure existing stream log files are also restricted to 0600
+			if chmodErr := os.Chmod(streamLogPath, 0600); chmodErr != nil {
+				log.Warn("failed to chmod stream log file to 0600", "path", streamLogPath, "error", chmodErr)
+			}
 		}
 	}
 

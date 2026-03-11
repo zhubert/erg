@@ -53,7 +53,7 @@ func WithAuthExecutor(e iexec.CommandExecutor) ServerOption {
 
 const authCacheTTL     = 5 * time.Minute
 const authFetchTimeout = 10 * time.Second
-const maxTailLines     = 10_000 // upper bound on ?tail= to limit memory usage
+const maxTailLines     = 10_000 // upper bound on ?tail= to cap log response size
 
 // Server is the dashboard HTTP server with SSE support.
 type Server struct {
@@ -203,7 +203,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("sessionID")
-	if sessionID == "" || strings.ContainsAny(sessionID, "/\\") || strings.Contains(sessionID, "..") {
+	if !validateItemID(sessionID) {
 		http.Error(w, "invalid session ID", http.StatusBadRequest)
 		return
 	}
@@ -401,9 +401,6 @@ func validateLoopback(addr string) error {
 		// An empty host causes net.Listen to bind on all interfaces (0.0.0.0),
 		// not loopback. Require an explicit loopback address.
 		return fmt.Errorf("address %q uses an empty host which binds to all interfaces; use localhost or 127.0.0.1", addr)
-	}
-	if host == "localhost" {
-		return nil
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
