@@ -9,6 +9,29 @@ import (
 
 const keychainAccount = "erg"
 
+// KnownSecretEnvVars is the canonical list of environment variable names that
+// hold sensitive credentials. Both the hook env filter (workflow) and the
+// transcript redactor (claude) must cover the same set to prevent leaks.
+var KnownSecretEnvVars = []string{
+	"ANTHROPIC_API_KEY",
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"LINEAR_API_KEY",
+	"ASANA_PAT",
+	"GITHUB_TOKEN",
+	"GH_TOKEN",
+}
+
+// KnownSecretEnvVarsSet is a precomputed set of KnownSecretEnvVars for O(1)
+// lookup. Use this when filtering environment slices rather than iterating the
+// slice on every call.
+var KnownSecretEnvVarsSet = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(KnownSecretEnvVars))
+	for _, name := range KnownSecretEnvVars {
+		m[name] = struct{}{}
+	}
+	return m
+}()
+
 // Keychain service names for issue tracker tokens.
 const (
 	AsanaPATService     = "erg/ASANA_PAT"

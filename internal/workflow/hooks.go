@@ -6,7 +6,24 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
+
+	"github.com/zhubert/erg/internal/secrets"
 )
+
+// filteredEnv returns os.Environ() with sensitive credential variables removed.
+// It uses the precomputed secrets.KnownSecretEnvVarsSet for O(1) lookup.
+func filteredEnv() []string {
+	env := os.Environ()
+	result := make([]string, 0, len(env))
+	for _, kv := range env {
+		key, _, _ := strings.Cut(kv, "=")
+		if _, blocked := secrets.KnownSecretEnvVarsSet[key]; !blocked {
+			result = append(result, kv)
+		}
+	}
+	return result
+}
 
 // HookContext provides environment variables for hook execution.
 type HookContext struct {
@@ -45,7 +62,7 @@ func RunHooks(ctx context.Context, hooks []HookConfig, hookCtx HookContext, logg
 
 		cmd := exec.CommandContext(ctx, "sh", "-c", hook.Run)
 		cmd.Dir = hookCtx.RepoPath
-		cmd.Env = append(os.Environ(), hookCtx.envVars()...)
+		cmd.Env = append(filteredEnv(), hookCtx.envVars()...)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -74,7 +91,7 @@ func RunBeforeHooks(ctx context.Context, hooks []HookConfig, hookCtx HookContext
 
 		cmd := exec.CommandContext(ctx, "sh", "-c", hook.Run)
 		cmd.Dir = hookCtx.RepoPath
-		cmd.Env = append(os.Environ(), hookCtx.envVars()...)
+		cmd.Env = append(filteredEnv(), hookCtx.envVars()...)
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
