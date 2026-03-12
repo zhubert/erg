@@ -428,6 +428,9 @@ func (s *Server) addClient(ch chan []byte) {
 	s.clients[ch] = struct{}{}
 }
 
+// removeClient removes a client channel from the set and closes it.
+// The close MUST happen under the write lock so that broadcast (which holds
+// a read lock) never attempts to send on a closed channel.
 func (s *Server) removeClient(ch chan []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
