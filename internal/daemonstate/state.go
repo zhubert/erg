@@ -209,7 +209,8 @@ func (s *DaemonState) Save() error {
 
 // AdvanceWorkItem moves a work item to a new step and phase.
 // An optional displayName parameter sets StepDisplayName on the item.
-// When not provided (or empty), StepDisplayName is cleared.
+// When the step changes and no displayName is provided, StepDisplayName is cleared.
+// When only the phase changes (step unchanged), StepDisplayName is preserved.
 func (s *DaemonState) AdvanceWorkItem(id, newStep, newPhase string, displayName ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

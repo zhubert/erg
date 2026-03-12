@@ -46,6 +46,10 @@ func TestStepLabel(t *testing.T) {
 		{"_t_review_address_review", "Address Review"},
 		// Single-word prefix
 		{"_t_x_coding", "Coding"},
+		// Template name with underscores: strings.Index only strips the first segment,
+		// so the result is imperfect. In practice, template expansion now always sets
+		// DisplayName, so StepLabel is a fallback for old/custom state files only.
+		{"_t_my_template_state_coding", "Template State Coding"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.step, func(t *testing.T) {
