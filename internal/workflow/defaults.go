@@ -33,8 +33,9 @@ func DefaultWorkflowConfig() *Config {
 		},
 		States: map[string]*State{
 			"coding": {
-				Type:   StateTypeTask,
-				Action: "ai.code",
+				Type:        StateTypeTask,
+				Action:      "ai.code",
+				DisplayName: "Coding",
 				Params: map[string]any{
 					"max_turns":     50,
 					"max_duration":  "30m",
@@ -44,8 +45,9 @@ func DefaultWorkflowConfig() *Config {
 				Error: "failed",
 			},
 			"open_pr": {
-				Type:   StateTypeTask,
-				Action: "github.create_pr",
+				Type:        StateTypeTask,
+				Action:      "github.create_pr",
+				DisplayName: "Opening PR",
 				Params: map[string]any{
 					"link_issue": true,
 				},
@@ -54,9 +56,10 @@ func DefaultWorkflowConfig() *Config {
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"await_ci": {
-				Type:    StateTypeWait,
-				Event:   "ci.complete",
-				Timeout: &Duration{2 * time.Hour},
+				Type:        StateTypeWait,
+				Event:       "ci.complete",
+				DisplayName: "Awaiting CI",
+				Timeout:     &Duration{2 * time.Hour},
 				Params: map[string]any{
 					"on_failure": "fix",
 				},
@@ -65,7 +68,8 @@ func DefaultWorkflowConfig() *Config {
 				Error:       "failed",
 			},
 			"check_ci_result": {
-				Type: StateTypeChoice,
+				Type:        StateTypeChoice,
+				DisplayName: "Checking CI Result",
 				Choices: []ChoiceRule{
 					{Variable: "conflicting", Equals: true, Next: "rebase"},
 					{Variable: "ci_passed", Equals: true, Next: "await_review"},
@@ -74,8 +78,9 @@ func DefaultWorkflowConfig() *Config {
 				Default: "failed",
 			},
 			"rebase": {
-				Type:   StateTypeTask,
-				Action: "git.rebase",
+				Type:        StateTypeTask,
+				Action:      "git.rebase",
+				DisplayName: "Rebasing",
 				Params: map[string]any{
 					"max_rebase_rounds": 3,
 				},
@@ -84,8 +89,9 @@ func DefaultWorkflowConfig() *Config {
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"resolve_conflicts": {
-				Type:   StateTypeTask,
-				Action: "ai.resolve_conflicts",
+				Type:        StateTypeTask,
+				Action:      "ai.resolve_conflicts",
+				DisplayName: "Resolving Conflicts",
 				Params: map[string]any{
 					"max_conflict_rounds": 3,
 				},
@@ -93,15 +99,17 @@ func DefaultWorkflowConfig() *Config {
 				Error: "failed",
 			},
 			"push_conflict_fix": {
-				Type:   StateTypeTask,
-				Action: "github.push",
-				Next:   "await_ci",
-				Error:  "failed",
-				Retry:  []RetryConfig{DefaultRetryConfig()},
+				Type:        StateTypeTask,
+				Action:      "github.push",
+				DisplayName: "Pushing",
+				Next:        "await_ci",
+				Error:       "failed",
+				Retry:       []RetryConfig{DefaultRetryConfig()},
 			},
 			"fix_ci": {
-				Type:   StateTypeTask,
-				Action: "ai.fix_ci",
+				Type:        StateTypeTask,
+				Action:      "ai.fix_ci",
+				DisplayName: "Fixing CI",
 				Params: map[string]any{
 					"max_ci_fix_rounds": 3,
 				},
@@ -109,15 +117,17 @@ func DefaultWorkflowConfig() *Config {
 				Error: "failed",
 			},
 			"push_ci_fix": {
-				Type:   StateTypeTask,
-				Action: "github.push",
-				Next:   "await_ci",
-				Error:  "failed",
-				Retry:  []RetryConfig{DefaultRetryConfig()},
+				Type:        StateTypeTask,
+				Action:      "github.push",
+				DisplayName: "Pushing",
+				Next:        "await_ci",
+				Error:       "failed",
+				Retry:       []RetryConfig{DefaultRetryConfig()},
 			},
 			"await_review": {
-				Type:  StateTypeWait,
-				Event: "pr.reviewed",
+				Type:        StateTypeWait,
+				Event:       "pr.reviewed",
+				DisplayName: "Awaiting Review",
 				Params: map[string]any{
 					"auto_address": false,
 				},
@@ -125,7 +135,8 @@ func DefaultWorkflowConfig() *Config {
 				Error: "failed",
 			},
 			"check_review_result": {
-				Type: StateTypeChoice,
+				Type:        StateTypeChoice,
+				DisplayName: "Checking Review",
 				Choices: []ChoiceRule{
 					{Variable: "review_approved", Equals: true, Next: "merge"},
 					{Variable: "changes_requested", Equals: true, Next: "address_review"},
@@ -134,8 +145,9 @@ func DefaultWorkflowConfig() *Config {
 				Default: "failed",
 			},
 			"address_review": {
-				Type:   StateTypeTask,
-				Action: "ai.address_review",
+				Type:        StateTypeTask,
+				Action:      "ai.address_review",
+				DisplayName: "Addressing Review",
 				Params: map[string]any{
 					"max_review_rounds": 3,
 				},
@@ -143,15 +155,17 @@ func DefaultWorkflowConfig() *Config {
 				Error: "failed",
 			},
 			"push_review_fix": {
-				Type:   StateTypeTask,
-				Action: "github.push",
-				Next:   "await_review",
-				Error:  "failed",
-				Retry:  []RetryConfig{DefaultRetryConfig()},
+				Type:        StateTypeTask,
+				Action:      "github.push",
+				DisplayName: "Pushing",
+				Next:        "await_review",
+				Error:       "failed",
+				Retry:       []RetryConfig{DefaultRetryConfig()},
 			},
 			"merge": {
-				Type:   StateTypeTask,
-				Action: "github.merge",
+				Type:        StateTypeTask,
+				Action:      "github.merge",
+				DisplayName: "Merging",
 				Params: map[string]any{
 					"method":  "rebase",
 					"cleanup": true,
@@ -161,10 +175,12 @@ func DefaultWorkflowConfig() *Config {
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -187,8 +203,9 @@ func DefaultPlanningWorkflowConfig() *Config {
 	cfg.Start = "planning"
 
 	cfg.States["planning"] = &State{
-		Type:   StateTypeTask,
-		Action: "ai.plan",
+		Type:        StateTypeTask,
+		Action:      "ai.plan",
+		DisplayName: "Planning",
 		Params: map[string]any{
 			"max_turns":     30,
 			"max_duration":  "15m",
@@ -198,9 +215,10 @@ func DefaultPlanningWorkflowConfig() *Config {
 		Error: "failed",
 	}
 	cfg.States["await_plan_feedback"] = &State{
-		Type:    StateTypeWait,
-		Event:   "plan.user_replied",
-		Timeout: &Duration{72 * time.Hour},
+		Type:        StateTypeWait,
+		Event:       "plan.user_replied",
+		DisplayName: "Awaiting Plan Feedback",
+		Timeout:     &Duration{72 * time.Hour},
 		Params: map[string]any{
 			"approval_pattern": `(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)`,
 		},
@@ -209,7 +227,8 @@ func DefaultPlanningWorkflowConfig() *Config {
 		Error:       "failed",
 	}
 	cfg.States["check_plan_feedback"] = &State{
-		Type: StateTypeChoice,
+		Type:        StateTypeChoice,
+		DisplayName: "Checking Plan Feedback",
 		Choices: []ChoiceRule{
 			{Variable: "plan_approved", Equals: true, Next: "coding"},
 			{Variable: "plan_approved", Equals: false, Next: "planning"},
@@ -241,8 +260,9 @@ func PlanTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"planning": {
-				Type:   StateTypeTask,
-				Action: "ai.plan",
+				Type:        StateTypeTask,
+				Action:      "ai.plan",
+				DisplayName: "Planning",
 				Params: map[string]any{
 					"max_turns":     30,
 					"max_duration":  "15m",
@@ -252,9 +272,10 @@ func PlanTemplateConfig() *TemplateConfig {
 				Error: "plan_failed",
 			},
 			"await_plan_feedback": {
-				Type:    StateTypeWait,
-				Event:   "plan.user_replied",
-				Timeout: &Duration{72 * time.Hour},
+				Type:        StateTypeWait,
+				Event:       "plan.user_replied",
+				DisplayName: "Awaiting Plan Feedback",
+				Timeout:     &Duration{72 * time.Hour},
 				Params: map[string]any{
 					"approval_pattern": `(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)`,
 				},
@@ -263,7 +284,8 @@ func PlanTemplateConfig() *TemplateConfig {
 				Error:       "plan_failed",
 			},
 			"check_plan_feedback": {
-				Type: StateTypeChoice,
+				Type:        StateTypeChoice,
+				DisplayName: "Checking Plan Feedback",
 				Choices: []ChoiceRule{
 					{Variable: "plan_approved", Equals: true, Next: "plan_done"},
 					{Variable: "plan_approved", Equals: false, Next: "planning"},
@@ -271,8 +293,9 @@ func PlanTemplateConfig() *TemplateConfig {
 				Default: "plan_failed",
 			},
 			"plan_expired": {
-				Type:   StateTypeTask,
-				Action: "github.comment_issue",
+				Type:        StateTypeTask,
+				Action:      "github.comment_issue",
+				DisplayName: "Plan Expired",
 				Params: map[string]any{
 					"body": "Plan has been awaiting feedback for 72 hours. Moving to failed.",
 				},
@@ -280,10 +303,12 @@ func PlanTemplateConfig() *TemplateConfig {
 				Error: "plan_failed",
 			},
 			"plan_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"plan_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -304,8 +329,9 @@ func CodeTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"coding": {
-				Type:   StateTypeTask,
-				Action: "ai.code",
+				Type:        StateTypeTask,
+				Action:      "ai.code",
+				DisplayName: "Coding",
 				Params: map[string]any{
 					"max_turns":     50,
 					"max_duration":  "30m",
@@ -316,10 +342,12 @@ func CodeTemplateConfig() *TemplateConfig {
 				Error: "code_failed",
 			},
 			"code_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"code_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -336,8 +364,9 @@ func PRTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"open_pr": {
-				Type:   StateTypeTask,
-				Action: "github.create_pr",
+				Type:        StateTypeTask,
+				Action:      "github.create_pr",
+				DisplayName: "Opening PR",
 				Params: map[string]any{
 					"link_issue": true,
 				},
@@ -346,10 +375,12 @@ func PRTemplateConfig() *TemplateConfig {
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"pr_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"pr_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -370,9 +401,10 @@ func CITemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"await_ci": {
-				Type:    StateTypeWait,
-				Event:   "ci.complete",
-				Timeout: &Duration{2 * time.Hour},
+				Type:        StateTypeWait,
+				Event:       "ci.complete",
+				DisplayName: "Awaiting CI",
+				Timeout:     &Duration{2 * time.Hour},
 				Params: map[string]any{
 					"on_failure": "fix",
 				},
@@ -381,7 +413,8 @@ func CITemplateConfig() *TemplateConfig {
 				Error:       "ci_failed",
 			},
 			"check_ci_result": {
-				Type: StateTypeChoice,
+				Type:        StateTypeChoice,
+				DisplayName: "Checking CI Result",
 				Choices: []ChoiceRule{
 					{Variable: "conflicting", Equals: true, Next: "rebase"},
 					{Variable: "ci_passed", Equals: true, Next: "ci_done"},
@@ -390,8 +423,9 @@ func CITemplateConfig() *TemplateConfig {
 				Default: "ci_failed",
 			},
 			"rebase": {
-				Type:   StateTypeTask,
-				Action: "git.rebase",
+				Type:        StateTypeTask,
+				Action:      "git.rebase",
+				DisplayName: "Rebasing",
 				Params: map[string]any{
 					"max_rebase_rounds": 3,
 				},
@@ -400,8 +434,9 @@ func CITemplateConfig() *TemplateConfig {
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"resolve_conflicts": {
-				Type:   StateTypeTask,
-				Action: "ai.resolve_conflicts",
+				Type:        StateTypeTask,
+				Action:      "ai.resolve_conflicts",
+				DisplayName: "Resolving Conflicts",
 				Params: map[string]any{
 					"max_conflict_rounds": 3,
 					"simplify":            "{{simplify}}",
@@ -410,15 +445,17 @@ func CITemplateConfig() *TemplateConfig {
 				Error: "ci_failed",
 			},
 			"push_conflict_fix": {
-				Type:   StateTypeTask,
-				Action: "github.push",
-				Next:   "await_ci",
-				Error:  "ci_failed",
-				Retry:  []RetryConfig{DefaultRetryConfig()},
+				Type:        StateTypeTask,
+				Action:      "github.push",
+				DisplayName: "Pushing",
+				Next:        "await_ci",
+				Error:       "ci_failed",
+				Retry:       []RetryConfig{DefaultRetryConfig()},
 			},
 			"fix_ci": {
-				Type:   StateTypeTask,
-				Action: "ai.fix_ci",
+				Type:        StateTypeTask,
+				Action:      "ai.fix_ci",
+				DisplayName: "Fixing CI",
 				Params: map[string]any{
 					"max_ci_fix_rounds": 3,
 					"simplify":          "{{simplify}}",
@@ -427,15 +464,17 @@ func CITemplateConfig() *TemplateConfig {
 				Error: "ci_unfixable",
 			},
 			"push_ci_fix": {
-				Type:   StateTypeTask,
-				Action: "github.push",
-				Next:   "await_ci",
-				Error:  "ci_failed",
-				Retry:  []RetryConfig{DefaultRetryConfig()},
+				Type:        StateTypeTask,
+				Action:      "github.push",
+				DisplayName: "Pushing",
+				Next:        "await_ci",
+				Error:       "ci_failed",
+				Retry:       []RetryConfig{DefaultRetryConfig()},
 			},
 			"ci_unfixable": {
-				Type:   StateTypeTask,
-				Action: "github.comment_pr",
+				Type:        StateTypeTask,
+				Action:      "github.comment_pr",
+				DisplayName: "CI Unfixable",
 				Params: map[string]any{
 					"body": "CI fix exhausted after 3 rounds. Manual intervention required.",
 				},
@@ -443,8 +482,9 @@ func CITemplateConfig() *TemplateConfig {
 				Error: "ci_failed",
 			},
 			"ci_timed_out": {
-				Type:   StateTypeTask,
-				Action: "github.comment_pr",
+				Type:        StateTypeTask,
+				Action:      "github.comment_pr",
+				DisplayName: "CI Timed Out",
 				Params: map[string]any{
 					"body": "CI has been running for over 2 hours. Manual intervention required.",
 				},
@@ -452,10 +492,12 @@ func CITemplateConfig() *TemplateConfig {
 				Error: "ci_failed",
 			},
 			"ci_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"ci_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -476,9 +518,10 @@ func ReviewTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"await_review": {
-				Type:    StateTypeWait,
-				Event:   "pr.reviewed",
-				Timeout: &Duration{48 * time.Hour},
+				Type:        StateTypeWait,
+				Event:       "pr.reviewed",
+				DisplayName: "Awaiting Review",
+				Timeout:     &Duration{48 * time.Hour},
 				Params: map[string]any{
 					"auto_address":        true,
 					"max_feedback_rounds": 3,
@@ -488,7 +531,8 @@ func ReviewTemplateConfig() *TemplateConfig {
 				Error:       "review_failed",
 			},
 			"check_review_result": {
-				Type: StateTypeChoice,
+				Type:        StateTypeChoice,
+				DisplayName: "Checking Review",
 				Choices: []ChoiceRule{
 					{Variable: "review_approved", Equals: true, Next: "review_done"},
 					{Variable: "changes_requested", Equals: true, Next: "address_review"},
@@ -497,8 +541,9 @@ func ReviewTemplateConfig() *TemplateConfig {
 				Default: "review_failed",
 			},
 			"address_review": {
-				Type:   StateTypeTask,
-				Action: "ai.address_review",
+				Type:        StateTypeTask,
+				Action:      "ai.address_review",
+				DisplayName: "Addressing Review",
 				Params: map[string]any{
 					"max_review_rounds": 3,
 					"simplify":          "{{simplify}}",
@@ -507,15 +552,17 @@ func ReviewTemplateConfig() *TemplateConfig {
 				Error: "review_failed",
 			},
 			"push_review_fix": {
-				Type:   StateTypeTask,
-				Action: "github.push",
-				Next:   "await_review",
-				Error:  "review_failed",
-				Retry:  []RetryConfig{DefaultRetryConfig()},
+				Type:        StateTypeTask,
+				Action:      "github.push",
+				DisplayName: "Pushing",
+				Next:        "await_review",
+				Error:       "review_failed",
+				Retry:       []RetryConfig{DefaultRetryConfig()},
 			},
 			"review_overdue": {
-				Type:   StateTypeTask,
-				Action: "github.comment_pr",
+				Type:        StateTypeTask,
+				Action:      "github.comment_pr",
+				DisplayName: "Review Overdue",
 				Params: map[string]any{
 					"body": "PR has been awaiting review for 48 hours. Manual intervention required.",
 				},
@@ -523,10 +570,12 @@ func ReviewTemplateConfig() *TemplateConfig {
 				Error: "review_failed",
 			},
 			"review_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"review_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -546,8 +595,9 @@ func MergeTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"merge": {
-				Type:   StateTypeTask,
-				Action: "github.merge",
+				Type:        StateTypeTask,
+				Action:      "github.merge",
+				DisplayName: "Merging",
 				Params: map[string]any{
 					"method":  "{{method}}",
 					"cleanup": true,
@@ -557,10 +607,12 @@ func MergeTemplateConfig() *TemplateConfig {
 				Retry: []RetryConfig{DefaultRetryConfig()},
 			},
 			"merge_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"merge_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -580,8 +632,9 @@ func AsanaMoveSectionTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"move": {
-				Type:   StateTypeTask,
-				Action: "asana.move_to_section",
+				Type:        StateTypeTask,
+				Action:      "asana.move_to_section",
+				DisplayName: "Moving Section",
 				Params: map[string]any{
 					"section": "{{section}}",
 				},
@@ -589,10 +642,12 @@ func AsanaMoveSectionTemplateConfig() *TemplateConfig {
 				Error: "move_failed",
 			},
 			"move_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"move_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -612,8 +667,9 @@ func LinearMoveStateTemplateConfig() *TemplateConfig {
 		},
 		States: map[string]*State{
 			"move": {
-				Type:   StateTypeTask,
-				Action: "linear.move_to_state",
+				Type:        StateTypeTask,
+				Action:      "linear.move_to_state",
+				DisplayName: "Moving State",
 				Params: map[string]any{
 					"state": "{{state}}",
 				},
@@ -621,10 +677,12 @@ func LinearMoveStateTemplateConfig() *TemplateConfig {
 				Error: "move_failed",
 			},
 			"move_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"move_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -647,6 +705,7 @@ func AsanaAwaitSectionTemplateConfig() *TemplateConfig {
 			"await": {
 				Type:        StateTypeWait,
 				Event:       "asana.in_section",
+				DisplayName: "Awaiting Section",
 				Timeout:     &Duration{7 * 24 * time.Hour},
 				TimeoutNext: "await_failed",
 				Params: map[string]any{
@@ -656,10 +715,12 @@ func AsanaAwaitSectionTemplateConfig() *TemplateConfig {
 				Error: "await_failed",
 			},
 			"await_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"await_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
@@ -682,6 +743,7 @@ func LinearAwaitStateTemplateConfig() *TemplateConfig {
 			"await": {
 				Type:        StateTypeWait,
 				Event:       "linear.in_state",
+				DisplayName: "Awaiting State",
 				Timeout:     &Duration{7 * 24 * time.Hour},
 				TimeoutNext: "await_failed",
 				Params: map[string]any{
@@ -691,10 +753,12 @@ func LinearAwaitStateTemplateConfig() *TemplateConfig {
 				Error: "await_failed",
 			},
 			"await_done": {
-				Type: StateTypeSucceed,
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
 			},
 			"await_failed": {
-				Type: StateTypeFail,
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
 			},
 		},
 	}
