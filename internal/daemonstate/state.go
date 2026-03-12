@@ -291,6 +291,23 @@ func (s *DaemonState) GetWorkItem(id string) (WorkItem, bool) {
 	return *item, true
 }
 
+// GetWorkItemBySessionID returns a copy of the work item associated with the
+// given session ID. Returns the zero value and false if no match is found.
+// This is an O(n) scan, which is acceptable because work item count is bounded
+// by max_concurrent (typically 1–10). An index is not maintained because
+// SessionID is mutated through UpdateWorkItem's callback, making index
+// consistency harder than the linear scan it would save.
+func (s *DaemonState) GetWorkItemBySessionID(sessionID string) (WorkItem, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, item := range s.WorkItems {
+		if item.SessionID == sessionID {
+			return *item, true
+		}
+	}
+	return WorkItem{}, false
+}
+
 // GetWorkItemsByState returns copies of all work items in a given state.
 func (s *DaemonState) GetWorkItemsByState(state WorkItemState) []WorkItem {
 	s.mu.RLock()

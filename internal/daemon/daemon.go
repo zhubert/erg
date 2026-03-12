@@ -325,6 +325,7 @@ func (d *Daemon) notifyWorkerDone() {
 // tick performs one iteration of the daemon event loop.
 func (d *Daemon) tick(ctx context.Context) {
 	d.collectCompletedWorkers(ctx) // Always: detect finished sessions
+	d.retryConfigSave()            // Always: attempt recovery if config saves are paused
 	dockerOK := d.checkDockerHealth(ctx)
 	if dockerOK {
 		d.processRetryItems(ctx)     // Re-execute items whose retry delay has elapsed
