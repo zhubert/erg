@@ -45,6 +45,11 @@ type WorkItem struct {
 	CompletedAt       *time.Time      `json:"completed_at,omitempty"`
 	StepEnteredAt     time.Time       `json:"step_entered_at"`
 
+	// StepDisplayName is a human-readable label for CurrentStep, set when the
+	// workflow engine advances to a new step. Empty for custom workflows that
+	// don't define display names; callers should fall back to StepLabel.
+	StepDisplayName string `json:"step_display_name,omitempty"`
+
 	// Per-session spend (accumulated across all turns in this session)
 	CostUSD      float64 `json:"cost_usd,omitempty"`
 	InputTokens  int     `json:"input_tokens,omitempty"`
@@ -203,7 +208,10 @@ func (s *DaemonState) Save() error {
 }
 
 // AdvanceWorkItem moves a work item to a new step and phase.
-func (s *DaemonState) AdvanceWorkItem(id, newStep, newPhase string) error {
+// An optional displayName parameter sets StepDisplayName on the item.
+// When the step changes and no displayName is provided, StepDisplayName is cleared.
+// When only the phase changes (step unchanged), StepDisplayName is preserved.
+func (s *DaemonState) AdvanceWorkItem(id, newStep, newPhase string, displayName ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -213,11 +221,19 @@ func (s *DaemonState) AdvanceWorkItem(id, newStep, newPhase string) error {
 	}
 
 	now := time.Now()
-	if item.CurrentStep != newStep {
+	stepChanged := item.CurrentStep != newStep
+	if stepChanged {
 		item.StepEnteredAt = now
 	}
 	item.CurrentStep = newStep
 	item.Phase = newPhase
+	if len(displayName) > 0 {
+		item.StepDisplayName = displayName[0]
+	} else if stepChanged {
+		// Clear display name when advancing to a new step without an explicit name.
+		item.StepDisplayName = ""
+	}
+	// When the step is unchanged (phase-only reset), preserve existing StepDisplayName.
 	item.UpdatedAt = now
 
 	return nil

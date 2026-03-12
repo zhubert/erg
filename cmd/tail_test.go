@@ -375,12 +375,12 @@ func TestRenderTailView_SingleItem(t *testing.T) {
 	if !strings.Contains(out, "#42") {
 		t.Errorf("expected '#42' in output, got %q", out)
 	}
-	// Subheader should contain step and phase
-	if !strings.Contains(out, "coding") {
-		t.Errorf("expected 'coding' in output, got %q", out)
+	// Subheader should contain step label and phase label
+	if !strings.Contains(out, "Coding") {
+		t.Errorf("expected 'Coding' in output, got %q", out)
 	}
-	if !strings.Contains(out, "async_pending") {
-		t.Errorf("expected 'async_pending' in output, got %q", out)
+	if !strings.Contains(out, "In Progress") {
+		t.Errorf("expected 'In Progress' in output, got %q", out)
 	}
 }
 
@@ -666,7 +666,7 @@ func TestDrawTailFrame_WithActiveItem(t *testing.T) {
 	if !strings.Contains(out, "#55") {
 		t.Errorf("expected issue '#55' in output, got: %q", out)
 	}
-	if !strings.Contains(out, "coding") {
-		t.Errorf("expected step 'coding' in output, got: %q", out)
+	if !strings.Contains(out, "Coding") {
+		t.Errorf("expected step label 'Coding' in output, got: %q", out)
 	}
 }

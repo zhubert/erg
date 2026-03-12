@@ -17,6 +17,7 @@ import (
 	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/logger"
+	"github.com/zhubert/erg/internal/workflow"
 )
 
 // ioctlWinsize is the TIOCGWINSZ ioctl argument struct (Linux/macOS).
@@ -208,12 +209,13 @@ func renderTailView(w io.Writer, items []*daemonstate.WorkItem, termRows, termCo
 		if step == "" {
 			step = "pending"
 		}
-		phase := item.Phase
-		if phase == "" {
-			phase = "idle"
+		stepLabel := item.StepDisplayName
+		if stepLabel == "" {
+			stepLabel = workflow.StepLabel(step)
 		}
+		phaseLabel := workflow.PhaseLabel(item.Phase)
 		cols[i].header = header
-		cols[i].subheader = fmt.Sprintf("%s / %s", step, phase)
+		cols[i].subheader = fmt.Sprintf("%s / %s", stepLabel, phaseLabel)
 
 		logLines, err := readStreamLogLines(item.SessionID)
 		if err != nil {

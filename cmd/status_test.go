@@ -352,8 +352,8 @@ func TestPrintTableView_EmptyPhase(t *testing.T) {
 	printTableView(&buf, items)
 	out := buf.String()
 
-	if !strings.Contains(out, "idle") {
-		t.Errorf("expected 'idle' for empty phase in output: %q", out)
+	if !strings.Contains(out, "Idle") {
+		t.Errorf("expected 'Idle' for empty phase in output: %q", out)
 	}
 }
 
@@ -562,7 +562,7 @@ func TestFormatCellInfo_ActiveWithPhase(t *testing.T) {
 		StepEnteredAt: time.Now().Add(-5 * time.Minute),
 	}
 	got := formatCellInfo(item)
-	if !strings.Contains(got, "async_pending") {
+	if !strings.Contains(got, "In Progress") {
 		t.Errorf("expected phase in cell info, got %q", got)
 	}
 	if !strings.Contains(got, "5m") {
@@ -577,8 +577,8 @@ func TestFormatCellInfo_EmptyPhaseDefaultsToIdle(t *testing.T) {
 		StepEnteredAt: time.Now().Add(-10 * time.Minute),
 	}
 	got := formatCellInfo(item)
-	if !strings.Contains(got, "idle") {
-		t.Errorf("expected 'idle' for empty phase, got %q", got)
+	if !strings.Contains(got, "Idle") {
+		t.Errorf("expected 'Idle' for empty phase, got %q", got)
 	}
 }
 
@@ -683,8 +683,8 @@ func TestPrintMatrixView_CellPopulatedAtCorrectState(t *testing.T) {
 	if reviewLine == "" {
 		t.Fatalf("could not find await_review row in output: %q", out)
 	}
-	if !strings.Contains(reviewLine, "idle") {
-		t.Errorf("expected cell info 'idle' on await_review row: %q", reviewLine)
+	if !strings.Contains(reviewLine, "Idle") {
+		t.Errorf("expected cell info 'Idle' on await_review row: %q", reviewLine)
 	}
 	if !strings.Contains(reviewLine, "20m") {
 		t.Errorf("expected age '20m' on await_review row: %q", reviewLine)
@@ -733,8 +733,8 @@ func TestPrintMatrixView_MultipleItems(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(codingLine, "async_pending") {
-		t.Errorf("expected async_pending in coding row: %q", codingLine)
+	if !strings.Contains(codingLine, "In Progress") {
+		t.Errorf("expected 'In Progress' in coding row: %q", codingLine)
 	}
 }
 
@@ -816,7 +816,7 @@ func TestPrintMatrixRow_ItemAtState(t *testing.T) {
 	var buf bytes.Buffer
 	printMatrixRow(&buf, "coding", items, cfg, 20, 16)
 	out := buf.String()
-	if !strings.Contains(out, "async_pending") {
+	if !strings.Contains(out, "In Progress") {
 		t.Errorf("expected cell info when item is at state: %q", out)
 	}
 }

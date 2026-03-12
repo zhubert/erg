@@ -116,7 +116,7 @@ func (d *Daemon) handleAsyncComplete(ctx context.Context, item daemonstate.WorkI
 		if state != nil {
 			d.runHooks(ctx, state.After, item, sess)
 		}
-		d.state.AdvanceWorkItem(item.ID, "done", "idle")
+		d.state.AdvanceWorkItem(item.ID, "done", "idle", stepDisplayName(engine, "done"))
 		d.state.MarkWorkItemTerminal(item.ID, true)
 
 		mergeState := engine.GetState("merge")
@@ -139,7 +139,7 @@ func (d *Daemon) handleAsyncComplete(ctx context.Context, item daemonstate.WorkI
 			if prState != nil {
 				d.runHooks(ctx, prState.After, item, sess)
 			}
-			d.state.AdvanceWorkItem(item.ID, "await_review", "idle")
+			d.state.AdvanceWorkItem(item.ID, "await_review", "idle", stepDisplayName(engine, "await_review"))
 			return
 		}
 	}
@@ -252,13 +252,13 @@ func (d *Daemon) handleAsyncComplete(ctx context.Context, item daemonstate.WorkI
 	}
 
 	if result.Terminal {
-		d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
+		d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase, stepDisplayName(engine, result.NewStep))
 		d.state.MarkWorkItemTerminal(item.ID, result.TerminalOK)
 		return
 	}
 
 	// For task states with sync next actions, execute them inline
-	d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
+	d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase, stepDisplayName(engine, result.NewStep))
 
 	// If the next step is a sync task (like open_pr), execute it now
 	d.executeSyncChain(ctx, item.ID, engine)
@@ -300,7 +300,7 @@ func (d *Daemon) executeSyncChain(ctx context.Context, itemID string, engine *wo
 					d.logger.Error("before hook failed", "workItem", item.ID, "step", item.CurrentStep, "error", err)
 					state := engine.GetState(item.CurrentStep)
 					if state != nil && state.Error != "" {
-						d.state.AdvanceWorkItem(item.ID, state.Error, "idle")
+						d.state.AdvanceWorkItem(item.ID, state.Error, "idle", stepDisplayName(engine, state.Error))
 						continue // follow error edge
 					}
 					d.state.SetErrorMessage(item.ID, err.Error())
@@ -320,7 +320,7 @@ func (d *Daemon) executeSyncChain(ctx context.Context, itemID string, engine *wo
 		}
 
 		if result.Terminal {
-			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
+			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase, stepDisplayName(engine, result.NewStep))
 			d.state.MarkWorkItemTerminal(item.ID, result.TerminalOK)
 			if !result.TerminalOK {
 				errMsg := ""
@@ -372,7 +372,7 @@ func (d *Daemon) executeSyncChain(ctx context.Context, itemID string, engine *wo
 			}
 		}
 
-		d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
+		d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase, stepDisplayName(engine, result.NewStep))
 
 		// Stop if we hit an async pending state or a wait state
 		if result.NewPhase == "async_pending" {
@@ -484,7 +484,7 @@ func (d *Daemon) processWaitItems(ctx context.Context) {
 					maps.Copy(it.StepData, result.Data)
 				})
 			}
-			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
+			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase, stepDisplayName(engine, result.NewStep))
 			if result.Terminal {
 				d.state.MarkWorkItemTerminal(item.ID, result.TerminalOK)
 			} else {
@@ -540,7 +540,7 @@ func (d *Daemon) processCIItems(ctx context.Context) {
 					maps.Copy(it.StepData, result.Data)
 				})
 			}
-			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase)
+			d.state.AdvanceWorkItem(item.ID, result.NewStep, result.NewPhase, stepDisplayName(engine, result.NewStep))
 			if result.Terminal {
 				d.state.MarkWorkItemTerminal(item.ID, result.TerminalOK)
 			} else {
@@ -611,6 +611,17 @@ func (d *Daemon) processRetryItems(ctx context.Context) {
 		d.state.AdvanceWorkItem(item.ID, item.CurrentStep, "idle")
 		d.executeSyncChain(ctx, item.ID, engine)
 	}
+}
+
+// stepDisplayName returns the DisplayName for a state from the engine, or "" if not found.
+func stepDisplayName(engine *workflow.Engine, step string) string {
+	if engine == nil {
+		return ""
+	}
+	if s := engine.GetState(step); s != nil {
+		return s.DisplayName
+	}
+	return ""
 }
 
 // isDockerError returns true if the error indicates Docker/container runtime

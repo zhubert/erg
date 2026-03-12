@@ -11,6 +11,7 @@ import (
 	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/logger"
+	"github.com/zhubert/erg/internal/workflow"
 )
 
 // Snapshot is the full dashboard state sent to clients.
@@ -40,6 +41,8 @@ type WorkItemInfo struct {
 	State             string          `json:"state"`
 	CurrentStep       string          `json:"current_step"`
 	Phase             string          `json:"phase"`
+	StepDisplayName   string          `json:"step_display_name,omitempty"`
+	PhaseLabel        string          `json:"phase_label"`
 	SessionID         string          `json:"session_id"`
 	Branch            string          `json:"branch"`
 	PRURL             string          `json:"pr_url,omitempty"`
@@ -109,12 +112,20 @@ func CollectAll() (*Snapshot, error) {
 					itemRepo = rp
 				}
 			}
+			// Use explicit StepDisplayName from the work item, or fall back to
+			// a derived label from the step name.
+			stepDisplayName := item.StepDisplayName
+			if stepDisplayName == "" {
+				stepDisplayName = workflow.StepLabel(item.CurrentStep)
+			}
 			info.WorkItems = append(info.WorkItems, WorkItemInfo{
 				ID:                item.ID,
 				IssueRef:          item.IssueRef,
 				State:             string(item.State),
 				CurrentStep:       item.CurrentStep,
 				Phase:             item.Phase,
+				StepDisplayName:   stepDisplayName,
+				PhaseLabel:        workflow.PhaseLabel(item.Phase),
 				SessionID:         item.SessionID,
 				Branch:            item.Branch,
 				PRURL:             item.PRURL,

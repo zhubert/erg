@@ -547,3 +547,79 @@ func TestReadSessionLog_Tail(t *testing.T) {
 		t.Errorf("expected 'line3', got %q", lines[1].Text)
 	}
 }
+
+func TestCollectAll_WorkItemDisplayNames(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	paths.Reset()
+
+	repoKey := "display-names-test"
+	writeFakeLockAndState(t, tmpDir, repoKey, func(s *daemonstate.DaemonState) {
+		// Item with explicit StepDisplayName and a known phase.
+		// Use AddRebuiltWorkItem to bypass the forced-idle in AddWorkItem.
+		s.AddRebuiltWorkItem(&daemonstate.WorkItem{
+			ID:              "wi-1",
+			IssueRef:        config.IssueRef{Source: "github", ID: "1"},
+			State:           daemonstate.WorkItemActive,
+			CurrentStep:     "coding",
+			Phase:           "async_pending",
+			StepDisplayName: "Coding",
+		})
+		// Item without explicit StepDisplayName — should derive from step name.
+		s.AddRebuiltWorkItem(&daemonstate.WorkItem{
+			ID:          "wi-2",
+			IssueRef:    config.IssueRef{Source: "github", ID: "2"},
+			State:       daemonstate.WorkItemActive,
+			CurrentStep: "await_ci",
+			Phase:       "idle",
+		})
+		// Item with a template-expanded step name.
+		s.AddRebuiltWorkItem(&daemonstate.WorkItem{
+			ID:          "wi-3",
+			IssueRef:    config.IssueRef{Source: "github", ID: "3"},
+			State:       daemonstate.WorkItemActive,
+			CurrentStep: "_t_plan_planning",
+			Phase:       "async_pending",
+		})
+	})
+
+	snap, err := CollectAll()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(snap.Daemons) != 1 {
+		t.Fatalf("expected 1 daemon, got %d", len(snap.Daemons))
+	}
+
+	itemsByID := make(map[string]WorkItemInfo)
+	for _, item := range snap.Daemons[0].WorkItems {
+		itemsByID[item.ID] = item
+	}
+
+	// wi-1: explicit display name + known phase label
+	wi1 := itemsByID["wi-1"]
+	if wi1.StepDisplayName != "Coding" {
+		t.Errorf("wi-1 StepDisplayName = %q, want %q", wi1.StepDisplayName, "Coding")
+	}
+	if wi1.PhaseLabel != "In Progress" {
+		t.Errorf("wi-1 PhaseLabel = %q, want %q", wi1.PhaseLabel, "In Progress")
+	}
+
+	// wi-2: derived step label, idle phase
+	wi2 := itemsByID["wi-2"]
+	if wi2.StepDisplayName != "Await Ci" {
+		t.Errorf("wi-2 StepDisplayName = %q, want %q", wi2.StepDisplayName, "Await Ci")
+	}
+	if wi2.PhaseLabel != "Idle" {
+		t.Errorf("wi-2 PhaseLabel = %q, want %q", wi2.PhaseLabel, "Idle")
+	}
+
+	// wi-3: template-expanded step — namespace prefix stripped
+	wi3 := itemsByID["wi-3"]
+	if wi3.StepDisplayName != "Planning" {
+		t.Errorf("wi-3 StepDisplayName = %q, want %q", wi3.StepDisplayName, "Planning")
+	}
+	if wi3.PhaseLabel != "In Progress" {
+		t.Errorf("wi-3 PhaseLabel = %q, want %q", wi3.PhaseLabel, "In Progress")
+	}
+}

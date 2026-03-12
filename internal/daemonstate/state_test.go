@@ -134,6 +134,50 @@ func TestDaemonState_AdvanceWorkItem(t *testing.T) {
 	}
 }
 
+func TestDaemonState_AdvanceWorkItem_DisplayName(t *testing.T) {
+	state := NewDaemonState("/test/repo")
+	state.AddWorkItem(&WorkItem{
+		ID:       "item-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "1"},
+	})
+
+	// Advance with explicit display name.
+	if err := state.AdvanceWorkItem("item-1", "coding", "async_pending", "Coding"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	item, _ := state.GetWorkItem("item-1")
+	if item.StepDisplayName != "Coding" {
+		t.Errorf("expected StepDisplayName 'Coding', got %q", item.StepDisplayName)
+	}
+
+	// Phase-only reset (same step) — display name must be preserved.
+	if err := state.AdvanceWorkItem("item-1", "coding", "idle"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	item, _ = state.GetWorkItem("item-1")
+	if item.StepDisplayName != "Coding" {
+		t.Errorf("expected StepDisplayName preserved as 'Coding', got %q", item.StepDisplayName)
+	}
+
+	// Advance to a new step without a display name — display name must be cleared.
+	if err := state.AdvanceWorkItem("item-1", "open_pr", "idle"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	item, _ = state.GetWorkItem("item-1")
+	if item.StepDisplayName != "" {
+		t.Errorf("expected StepDisplayName cleared, got %q", item.StepDisplayName)
+	}
+
+	// Advance to a new step with an explicit display name.
+	if err := state.AdvanceWorkItem("item-1", "await_ci", "idle", "Awaiting CI"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	item, _ = state.GetWorkItem("item-1")
+	if item.StepDisplayName != "Awaiting CI" {
+		t.Errorf("expected StepDisplayName 'Awaiting CI', got %q", item.StepDisplayName)
+	}
+}
+
 func TestDaemonState_MarkWorkItemTerminal(t *testing.T) {
 	state := NewDaemonState("/test/repo")
 	state.AddWorkItem(&WorkItem{

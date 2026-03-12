@@ -141,6 +141,15 @@ func expandTemplatesWithVisited(cfg *Config, baseDir string, visiting map[string
 				}
 				return ref
 			})
+			// Derive a display name from the original (unprefixed) state name when
+			// the template state doesn't declare one explicitly. This ensures the
+			// dashboard and CLI always have a readable label without needing to parse
+			// the namespace prefix (which is ambiguous for template names with underscores).
+			// States from nested expansion already have DisplayName set, so the guard
+			// prevents overwriting them with a mangled prefix-derived label.
+			if cloned.DisplayName == "" {
+				cloned.DisplayName = toTitleCase(strings.ReplaceAll(tName, "_", " "))
+			}
 			cfg.States[prefixedName] = cloned
 		}
 

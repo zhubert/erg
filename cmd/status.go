@@ -189,10 +189,7 @@ func formatCellInfo(item *daemonstate.WorkItem) string {
 	if item.State == daemonstate.WorkItemFailed {
 		return "(failed)"
 	}
-	phase := item.Phase
-	if phase == "" {
-		phase = "idle"
-	}
+	phase := workflow.PhaseLabel(item.Phase)
 	age := formatAge(item.StepEnteredAt)
 	return fmt.Sprintf("%s %s", phase, age)
 }
@@ -204,10 +201,7 @@ func printTableView(w io.Writer, items []*daemonstate.WorkItem) {
 	for _, item := range items {
 		issue := formatIssue(item)
 		step := formatStep(item)
-		phase := item.Phase
-		if phase == "" {
-			phase = "idle"
-		}
+		phase := workflow.PhaseLabel(item.Phase)
 		age := formatAge(item.StepEnteredAt)
 		pr := item.PRURL
 		if pr == "" {
