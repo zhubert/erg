@@ -70,39 +70,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 // daemonize performs all setup visible to the user (prereqs, image build),
 // then re-execs itself with --_daemon to detach from the terminal.
 func daemonize(cmd *cobra.Command, args []string) error {
-	// Validate prerequisites
-	prereqs := cli.DefaultPrerequisites()
-	if err := cli.ValidateRequired(prereqs); err != nil {
-		return fmt.Errorf("%w\n\nInstall required tools and try again", err)
-	}
-
-	if !hasContainerRuntime() {
-		return fmt.Errorf("a container runtime is required for agent mode.\nInstall OrbStack: https://orbstack.dev\nInstall Docker:   https://docs.docker.com/get-docker/\nInstall Colima:   https://github.com/abiosoft/colima")
-	}
-
-	if err := checkDockerDaemon(); err != nil {
+	if err := validatePrereqs(); err != nil {
 		return err
 	}
-
-	// When auth comes from the macOS keychain, the OAuth access token may be
-	// stale. Running `claude -v` on the host forces the CLI to refresh it
-	// before we read it. We also show the version as useful context.
-	// Also refresh when the keychain entry exists but the token is expired —
-	// otherwise ContainerAuthSource() returns "" and we'd skip the refresh.
-	authSource := claude.ContainerAuthSource()
-	if strings.Contains(authSource, "keychain") || (authSource == "" && claude.KeychainNeedsRefresh()) {
-		if out, err := exec.Command("claude", "-v").Output(); err == nil {
-			fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
-		}
-		// Re-read after refresh — the token in the keychain should now be fresh.
-		authSource = claude.ContainerAuthSource()
-	}
-
-	if authSource != "" {
-		fmt.Printf("Auth: %s\n", authSource)
-	} else {
-		fmt.Println("Warning: no container auth credentials found")
-	}
+	refreshContainerAuth()
 
 	fmt.Println("Starting to erg...")
 
@@ -124,36 +95,12 @@ func daemonize(cmd *cobra.Command, args []string) error {
 		}
 		lockKey = m.DaemonID()
 
-		// Build container images for each repo
 		for _, entry := range m.Repos {
-			wfCfg, err := workflow.LoadAndMergeWithFile(entry.Path, entry.Workflow)
-			if err != nil {
-				return fmt.Errorf("error loading workflow config for %s: %w", entry.Path, err)
-			}
-			if wfCfg == nil {
-				return fmt.Errorf("no workflow config found for %s — run `erg workflow init` to create .erg/workflow.yaml", entry.Path)
-			}
-			if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-				detected := container.Detect(ctx, entry.Path)
-				buildLogger.Info("auto-detected languages", "languages", detected, "repo", entry.Path)
-				image, built, err := container.EnsureImage(ctx, detected, version, buildLogger)
-				if err != nil {
-					return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Path, err)
-				}
-				if built {
-					fmt.Printf("Container image built for %s.\n", entry.Path)
-				}
-				if wfCfg.Settings == nil {
-					wfCfg.Settings = &workflow.SettingsConfig{}
-				}
-				wfCfg.Settings.ContainerImage = image
-			}
-			if err := validateWorkflowConfig(wfCfg); err != nil {
-				return fmt.Errorf("repo %s: %w", entry.Path, err)
+			if _, err := ensureRepoImage(ctx, entry.Path, entry.Workflow, buildLogger); err != nil {
+				return err
 			}
 		}
 	} else {
-		// Single-repo mode
 		sessSvc := session.NewSessionService()
 		resolved, err := resolveAgentRepo(context.Background(), agentRepo, sessSvc)
 		if err != nil {
@@ -162,35 +109,7 @@ func daemonize(cmd *cobra.Command, args []string) error {
 		agentRepo = resolved
 		lockKey = agentRepo
 
-		// Load workflow config + build image
-		wfCfg, err := workflow.LoadAndMergeWithFile(agentRepo, agentWorkflowFile)
-		if err != nil {
-			return fmt.Errorf("error loading workflow config: %w", err)
-		}
-		if wfCfg == nil {
-			return fmt.Errorf("no workflow config found — run `erg workflow init` to create .erg/workflow.yaml")
-		}
-
-		if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-			detected := container.Detect(ctx, agentRepo)
-			buildLogger.Info("auto-detected languages", "languages", detected, "repo", agentRepo)
-
-			image, built, err := container.EnsureImage(ctx, detected, version, buildLogger)
-			if err != nil {
-				return fmt.Errorf("failed to auto-build container image: %w\n\n"+
-					"You can skip auto-detection by setting container_image in .erg/workflow.yaml", err)
-			}
-			if built {
-				fmt.Println("Container image built successfully.")
-			}
-			if wfCfg.Settings == nil {
-				wfCfg.Settings = &workflow.SettingsConfig{}
-			}
-			wfCfg.Settings.ContainerImage = image
-		}
-
-		// Validate after auto-detection so the config is fully populated.
-		if err := validateWorkflowConfig(wfCfg); err != nil {
+		if _, err := ensureRepoImage(ctx, agentRepo, agentWorkflowFile, buildLogger); err != nil {
 			return err
 		}
 	}
@@ -340,39 +259,10 @@ func runDaemonChild(_ *cobra.Command, _ []string) error {
 
 // runForeground runs the daemon in the current process with a live status display.
 func runForeground(_ *cobra.Command, _ []string) error {
-	// Validate prerequisites
-	prereqs := cli.DefaultPrerequisites()
-	if err := cli.ValidateRequired(prereqs); err != nil {
-		return fmt.Errorf("%w\n\nInstall required tools and try again", err)
-	}
-
-	if !hasContainerRuntime() {
-		return fmt.Errorf("a container runtime is required for agent mode.\nInstall OrbStack: https://orbstack.dev\nInstall Docker:   https://docs.docker.com/get-docker/\nInstall Colima:   https://github.com/abiosoft/colima")
-	}
-
-	if err := checkDockerDaemon(); err != nil {
+	if err := validatePrereqs(); err != nil {
 		return err
 	}
-
-	// When auth comes from the macOS keychain, the OAuth access token may be
-	// stale. Running `claude -v` on the host forces the CLI to refresh it
-	// before we read it. We also show the version as useful context.
-	// Also refresh when the keychain entry exists but the token is expired —
-	// otherwise ContainerAuthSource() returns "" and we'd skip the refresh.
-	authSource := claude.ContainerAuthSource()
-	if strings.Contains(authSource, "keychain") || (authSource == "" && claude.KeychainNeedsRefresh()) {
-		if out, err := exec.Command("claude", "-v").Output(); err == nil {
-			fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
-		}
-		// Re-read after refresh — the token in the keychain should now be fresh.
-		authSource = claude.ContainerAuthSource()
-	}
-
-	if authSource != "" {
-		fmt.Printf("Auth: %s\n", authSource)
-	} else {
-		fmt.Println("Warning: no container auth credentials found")
-	}
+	refreshContainerAuth()
 
 	// Enable debug logging
 	logger.SetDebug(true)
@@ -404,7 +294,6 @@ func runForeground(_ *cobra.Command, _ []string) error {
 	statusKey := agentRepo
 
 	if agentConfigFile != "" {
-		// Multi-repo mode: validate and build images for all repos
 		m, err := manifest.LoadFile(agentConfigFile)
 		if err != nil {
 			return fmt.Errorf("error loading manifest: %w", err)
@@ -412,31 +301,11 @@ func runForeground(_ *cobra.Command, _ []string) error {
 		statusKey = m.DaemonID()
 
 		for _, entry := range m.Repos {
-			wfCfg, err := workflow.LoadAndMergeWithFile(entry.Path, entry.Workflow)
-			if err != nil {
-				return fmt.Errorf("error loading workflow config for %s: %w", entry.Path, err)
-			}
-			if wfCfg == nil {
-				return fmt.Errorf("no workflow config found for %s — run `erg workflow init` to create .erg/workflow.yaml", entry.Path)
-			}
-			if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-				detected := container.Detect(ctx, entry.Path)
-				buildLogger.Info("auto-detected languages", "languages", detected, "repo", entry.Path)
-				image, _, err := container.EnsureImage(ctx, detected, version, buildLogger)
-				if err != nil {
-					return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Path, err)
-				}
-				if wfCfg.Settings == nil {
-					wfCfg.Settings = &workflow.SettingsConfig{}
-				}
-				wfCfg.Settings.ContainerImage = image
-			}
-			if err := validateWorkflowConfig(wfCfg); err != nil {
-				return fmt.Errorf("repo %s: %w", entry.Path, err)
+			if _, err := ensureRepoImage(ctx, entry.Path, entry.Workflow, buildLogger); err != nil {
+				return err
 			}
 		}
 	} else {
-		// Single-repo mode
 		sessSvc := session.NewSessionService()
 		resolved, err := resolveAgentRepo(context.Background(), agentRepo, sessSvc)
 		if err != nil {
@@ -448,33 +317,7 @@ func runForeground(_ *cobra.Command, _ []string) error {
 		agentRepo = resolved
 		statusKey = agentRepo
 
-		// Load workflow config + build image
-		wfCfg, err := workflow.LoadAndMergeWithFile(agentRepo, agentWorkflowFile)
-		if err != nil {
-			return fmt.Errorf("error loading workflow config: %w", err)
-		}
-		if wfCfg == nil {
-			return fmt.Errorf("no workflow config found — run `erg workflow init` to create .erg/workflow.yaml")
-		}
-
-		if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-			detected := container.Detect(ctx, agentRepo)
-			buildLogger.Info("auto-detected languages", "languages", detected, "repo", agentRepo)
-
-			image, _, err := container.EnsureImage(ctx, detected, version, buildLogger)
-			if err != nil {
-				return fmt.Errorf("failed to auto-build container image: %w\n\n"+
-					"You can skip auto-detection by setting container_image in .erg/workflow.yaml", err)
-			}
-
-			if wfCfg.Settings == nil {
-				wfCfg.Settings = &workflow.SettingsConfig{}
-			}
-			wfCfg.Settings.ContainerImage = image
-		}
-
-		// Validate after auto-detection so the config is fully populated.
-		if err := validateWorkflowConfig(wfCfg); err != nil {
+		if _, err := ensureRepoImage(ctx, agentRepo, agentWorkflowFile, buildLogger); err != nil {
 			return err
 		}
 	}
@@ -537,34 +380,13 @@ func runMultiRepoDaemon(ctx context.Context, daemonLogger *slog.Logger, preacqui
 	repoWorkflowFiles := make(map[string]string)
 	repoContainerImages := make(map[string]string)
 	for _, entry := range m.Repos {
-		wfFile := entry.Workflow
-		repoWorkflowFiles[entry.Path] = wfFile
+		repoWorkflowFiles[entry.Path] = entry.Workflow
 
-		// Load workflow config to check for container image
-		wfCfg, err := workflow.LoadAndMergeWithFile(entry.Path, wfFile)
+		wfCfg, err := ensureRepoImage(ctx, entry.Path, entry.Workflow, daemonLogger)
 		if err != nil {
-			return fmt.Errorf("error loading workflow config for %s: %w", entry.Path, err)
-		}
-		if wfCfg == nil {
-			return fmt.Errorf("no workflow config found for %s — run `erg workflow init` to create .erg/workflow.yaml", entry.Path)
-		}
-
-		if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-			detected := container.Detect(ctx, entry.Path)
-			image, _, err := container.EnsureImage(ctx, detected, version, daemonLogger)
-			if err != nil {
-				return fmt.Errorf("failed to auto-build container image for %s: %w", entry.Path, err)
-			}
-			if wfCfg.Settings == nil {
-				wfCfg.Settings = &workflow.SettingsConfig{}
-			}
-			wfCfg.Settings.ContainerImage = image
+			return err
 		}
 		repoContainerImages[entry.Path] = wfCfg.Settings.ContainerImage
-
-		if err := validateWorkflowConfig(wfCfg); err != nil {
-			return fmt.Errorf("repo %s: %w", entry.Path, err)
-		}
 	}
 
 	// Build AgentConfig with all repos
@@ -624,25 +446,9 @@ func runSingleRepoDaemon(ctx context.Context, daemonLogger *slog.Logger, preacqu
 	gitSvc := git.NewGitService()
 	sessSvc := session.NewSessionService()
 
-	wfCfg, err := workflow.LoadAndMergeWithFile(agentRepo, agentWorkflowFile)
+	wfCfg, err := ensureRepoImage(ctx, agentRepo, agentWorkflowFile, daemonLogger)
 	if err != nil {
-		return fmt.Errorf("error loading workflow config: %w", err)
-	}
-	if wfCfg == nil {
-		return fmt.Errorf("no workflow config found — run `erg workflow init` to create .erg/workflow.yaml")
-	}
-
-	// Auto-detect container image if not set (should be cached from parent)
-	if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
-		detected := container.Detect(ctx, agentRepo)
-		image, _, err := container.EnsureImage(ctx, detected, version, daemonLogger)
-		if err != nil {
-			return fmt.Errorf("failed to auto-build container image: %w", err)
-		}
-		if wfCfg.Settings == nil {
-			wfCfg.Settings = &workflow.SettingsConfig{}
-		}
-		wfCfg.Settings.ContainerImage = image
+		return err
 	}
 
 	// Build AgentConfig from workflow settings + defaults
@@ -710,6 +516,62 @@ func runSingleRepoDaemon(ctx context.Context, daemonLogger *slog.Logger, preacqu
 		return err
 	}
 	return nil
+}
+
+// validatePrereqs checks that all required tools and the container runtime are available.
+func validatePrereqs() error {
+	prereqs := cli.DefaultPrerequisites()
+	if err := cli.ValidateRequired(prereqs); err != nil {
+		return fmt.Errorf("%w\n\nInstall required tools and try again", err)
+	}
+	if !hasContainerRuntime() {
+		return fmt.Errorf("a container runtime is required for agent mode.\nInstall OrbStack: https://orbstack.dev\nInstall Docker:   https://docs.docker.com/get-docker/\nInstall Colima:   https://github.com/abiosoft/colima")
+	}
+	return checkDockerDaemon()
+}
+
+// refreshContainerAuth ensures the container auth token is fresh and prints status.
+func refreshContainerAuth() {
+	authSource := claude.ContainerAuthSource()
+	if strings.Contains(authSource, "keychain") || (authSource == "" && claude.KeychainNeedsRefresh()) {
+		if out, err := exec.Command("claude", "-v").Output(); err == nil {
+			fmt.Printf("Claude: %s\n", strings.TrimSpace(string(out)))
+		}
+		authSource = claude.ContainerAuthSource()
+	}
+	if authSource != "" {
+		fmt.Printf("Auth: %s\n", authSource)
+	} else {
+		fmt.Println("Warning: no container auth credentials found")
+	}
+}
+
+// ensureRepoImage loads the workflow config for a repo and auto-builds a container image
+// if none is configured. Returns the loaded workflow config.
+func ensureRepoImage(ctx context.Context, repoPath, workflowFile string, buildLogger *slog.Logger) (*workflow.Config, error) {
+	wfCfg, err := workflow.LoadAndMergeWithFile(repoPath, workflowFile)
+	if err != nil {
+		return nil, fmt.Errorf("error loading workflow config for %s: %w", repoPath, err)
+	}
+	if wfCfg == nil {
+		return nil, fmt.Errorf("no workflow config found for %s — run `erg workflow init` to create .erg/workflow.yaml", repoPath)
+	}
+	if wfCfg.Settings == nil || wfCfg.Settings.ContainerImage == "" {
+		detected := container.Detect(ctx, repoPath)
+		buildLogger.Info("auto-detected languages", "languages", detected, "repo", repoPath)
+		image, _, err := container.EnsureImage(ctx, detected, version, buildLogger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to auto-build container image for %s: %w", repoPath, err)
+		}
+		if wfCfg.Settings == nil {
+			wfCfg.Settings = &workflow.SettingsConfig{}
+		}
+		wfCfg.Settings.ContainerImage = image
+	}
+	if err := validateWorkflowConfig(wfCfg); err != nil {
+		return nil, fmt.Errorf("repo %s: %w", repoPath, err)
+	}
+	return wfCfg, nil
 }
 
 // validateWorkflowConfig returns an error if the workflow config has validation problems.
