@@ -63,13 +63,18 @@ func (d *Daemon) releaseLock() {
 	}
 }
 
+// configSaveFailureThreshold is the number of consecutive save failures before
+// new work is paused.
+const configSaveFailureThreshold = 5
+
 // saveConfig saves the config with failure tracking.
 // The context parameter describes where the save was triggered from for logging.
-// After 5 consecutive failures, new work is paused until a save succeeds.
+// After configSaveFailureThreshold consecutive failures, new work is paused
+// until a save succeeds.
 func (d *Daemon) saveConfig(where string) {
 	if err := d.config.Save(); err != nil {
 		d.configSaveFailures++
-		if d.configSaveFailures >= 5 {
+		if d.configSaveFailures >= configSaveFailureThreshold {
 			d.logger.Error("config save failed repeatedly, pausing new work to prevent state drift",
 				"where", where,
 				"consecutiveFailures", d.configSaveFailures,
@@ -92,6 +97,16 @@ func (d *Daemon) saveConfig(where string) {
 		}
 		d.configSaveFailures = 0
 	}
+}
+
+// retryConfigSave attempts to recover from a paused config save state.
+// Called on each poll cycle so the daemon can resume automatically once
+// the underlying issue (e.g. full disk) is resolved.
+func (d *Daemon) retryConfigSave() {
+	if !d.configSavePaused {
+		return
+	}
+	d.saveConfig("auto-retry")
 }
 
 // terminalWorkItemMaxAge is how long completed/failed work items are retained

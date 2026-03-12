@@ -1029,6 +1029,37 @@ func TestDaemon_StartQueuedItems_SkipsWhenPaused(t *testing.T) {
 	}
 }
 
+func TestDaemon_RetryConfigSave_RecoverFromPause(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	d.configSavePaused = true
+	d.configSaveFailures = configSaveFailureThreshold
+
+	// Point config at a valid temp file so Save() succeeds
+	cfg.SetFilePath(filepath.Join(t.TempDir(), "config.json"))
+
+	d.retryConfigSave()
+
+	if d.configSavePaused {
+		t.Error("expected configSavePaused=false after successful retry")
+	}
+	if d.configSaveFailures != 0 {
+		t.Errorf("expected configSaveFailures=0, got %d", d.configSaveFailures)
+	}
+}
+
+func TestDaemon_RetryConfigSave_NoopWhenNotPaused(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	// Should be a no-op when not paused
+	d.retryConfigSave()
+
+	if d.configSavePaused {
+		t.Error("should still be unpaused")
+	}
+}
+
 func TestDaemon_CollectCompletedWorkers_WorkerError(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)
