@@ -11,8 +11,10 @@ import (
 
 // ChannelPair groups a request and response channel for a single MCP operation.
 type ChannelPair[Req, Resp any] struct {
-	Req  chan Req
-	Resp chan Resp
+	Req       chan Req
+	Resp      chan Resp
+	closed    bool
+	closeOnce sync.Once
 }
 
 // NewChannelPair creates a new ChannelPair with the given buffer size.
@@ -23,24 +25,26 @@ func NewChannelPair[Req, Resp any](bufferSize int) *ChannelPair[Req, Resp] {
 	}
 }
 
-// Close closes both channels. Safe to call on nil ChannelPair.
+// Close closes both channels. Safe to call on nil ChannelPair and safe to call
+// concurrently or multiple times — the channels are closed exactly once.
 func (cp *ChannelPair[Req, Resp]) Close() {
 	if cp == nil {
 		return
 	}
-	if cp.Req != nil {
-		close(cp.Req)
-		cp.Req = nil
-	}
-	if cp.Resp != nil {
-		close(cp.Resp)
-		cp.Resp = nil
-	}
+	cp.closeOnce.Do(func() {
+		cp.closed = true
+		if cp.Req != nil {
+			close(cp.Req)
+		}
+		if cp.Resp != nil {
+			close(cp.Resp)
+		}
+	})
 }
 
-// IsInitialized returns true if both channels are non-nil.
+// IsInitialized returns true if the pair was created with channels and has not been closed.
 func (cp *ChannelPair[Req, Resp]) IsInitialized() bool {
-	return cp != nil && cp.Req != nil && cp.Resp != nil
+	return cp != nil && cp.Req != nil && cp.Resp != nil && !cp.closed
 }
 
 // handleChannelMessage is the generic handler for SocketServer channel-based messages.

@@ -48,11 +48,8 @@ func TestChannelPairClose(t *testing.T) {
 	// Close should work
 	cp.Close()
 
-	if cp.Req != nil {
-		t.Error("Req should be nil after Close")
-	}
-	if cp.Resp != nil {
-		t.Error("Resp should be nil after Close")
+	if cp.IsInitialized() {
+		t.Error("should not be initialized after Close")
 	}
 }
 
