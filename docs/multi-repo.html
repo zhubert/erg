@@ -1376,7 +1376,7 @@
         </div>
         <div class="code-block">
           <div class="code-header">
-            <span class="code-filename">GitHub claim comment (rendered)</span>
+            <span class="code-filename">GitHub claim comment (raw body)</span>
           </div>
           <pre><span class="cc">&lt;!-- erg-claim {"daemon":"my-daemon","host":"hostname","ts":"...","expires":"..."} --&gt;</span>
 <span class="cs">Claimed by erg daemon `my-daemon` on `hostname` at 2026-03-12T10:00:00Z.</span></pre>
@@ -1391,10 +1391,11 @@
 
         <h3>Claim expiry</h3>
         <p>
-          Claims automatically expire at <code>max_session_duration + 10 minutes</code>.
-          If a daemon crashes mid-work and never cleans up its claim, the claim
-          becomes stale and is automatically ignored once it expires &mdash; no
-          manual cleanup is needed.
+          Claims automatically expire at the daemon's effective max autonomous
+          duration (for example, <code>settings.max_duration</code>) plus a 10
+          minute buffer. If a daemon crashes mid-work and never cleans up its
+          claim, the claim becomes stale and is automatically ignored once it
+          expires &mdash; no manual cleanup is needed.
         </p>
 
         <h3>Error handling</h3>
