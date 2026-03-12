@@ -1210,11 +1210,13 @@
             <span class="action-title">pr.reviewed</span>
           </div>
           <p class="action-desc">
-            Fires when the pull request receives a formal approval, or when a
+            Fires when the pull request receives a formal approval, when a
             reviewer requests changes and <code>auto_address</code> is
-            <code>false</code>. While waiting, the orchestrator automatically
-            resumes Claude to address new review comments (configurable via
-            <code>auto_address</code>).
+            <code>false</code>, or when the pull request is merged externally
+            (in which case <code>pr_merged_externally</code> will be
+            <code>true</code> in the event output). While waiting, the
+            orchestrator automatically resumes Claude to address new review
+            comments (configurable via <code>auto_address</code>).
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
@@ -1387,9 +1389,11 @@
             <span class="action-title">ci.complete</span>
           </div>
           <p class="action-desc">
-            Fires when all CI checks on the PR pass. Configurable behaviour on
-            CI failure lets workflows route to <code>ai.fix_ci</code> or other
-            states.
+            Fires when all CI checks on the PR pass, or immediately when GitHub
+            reports merge conflicts (in which case <code>conflicting</code>
+            will be <code>true</code> in the event output). Configurable
+            behaviour on CI failure lets workflows route to
+            <code>ai.fix_ci</code> or other states.
           </p>
           <div class="param-section">
             <div class="param-section-title">Params</div>
