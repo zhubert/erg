@@ -1110,6 +1110,57 @@ func TestRebuild_AsanaPlanWorkflow_NewIssue_QueuesFromStart(t *testing.T) {
 	}
 }
 
+func TestRebuild_AsanaTemplateWorkflow_NewIssue_QueuesFromStart(t *testing.T) {
+	// Template-expanded workflows (like builtin:plan) produce pass states
+	// at the start. The fix must follow pass→task chain to detect that the
+	// effective start is a task state.
+	provider := &mockRebuildProvider{
+		src: issues.SourceAsana,
+		issues: []issues.Issue{
+			{ID: "1213636226479865", Title: "Fix campus filter", URL: "https://app.asana.com/0/1/1213636226479865", Source: issues.SourceAsana},
+		},
+		comments: nil,
+	}
+
+	// Build a template-based workflow like the real registrations repo uses.
+	wfCfg := &workflow.Config{
+		Workflow: "plan-then-code",
+		Start:    "plan_phase",
+		Source: workflow.SourceConfig{
+			Provider: "asana",
+			Filter:   workflow.FilterConfig{Label: "queued"},
+		},
+		States: map[string]*workflow.State{
+			"plan_phase": {
+				Type: workflow.StateTypeTemplate,
+				Use:  "builtin:plan",
+				Exits: map[string]string{
+					"success": "done",
+					"failure": "failed",
+				},
+			},
+			"done":   {Type: workflow.StateTypeSucceed},
+			"failed": {Type: workflow.StateTypeFail},
+		},
+	}
+	expanded, err := workflow.ExpandTemplates(wfCfg, "")
+	if err != nil {
+		t.Fatalf("failed to expand templates: %v", err)
+	}
+
+	d := setupAsanaRebuildDaemon(t, provider, expanded)
+	d.rebuildStateFromTracker(context.Background())
+
+	items := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(items) != 1 {
+		allItems := d.state.GetAllWorkItems()
+		for _, it := range allItems {
+			t.Logf("  item=%s state=%s step=%s", it.ID, it.State, it.CurrentStep)
+		}
+		t.Fatalf("expected 1 queued item, got %d", len(items))
+	}
+}
+
 func TestRebuild_GitHubOpenPR_StillPlacesAtWaitState(t *testing.T) {
 	// Verify that the hasProgressEvidence=true path (GitHub with open PR)
 	// still correctly places items at wait states, not queued from start.
@@ -1167,6 +1218,67 @@ func TestRebuild_GitHubOpenPR_StillPlacesAtWaitState(t *testing.T) {
 	// Should NOT be queued — the open PR proves work has been done.
 	if items[0].State == daemonstate.WorkItemQueued {
 		t.Error("GitHub item with open PR should not be queued from start")
+	}
+}
+
+func TestWorkflowStartsWithTask(t *testing.T) {
+	tests := []struct {
+		name   string
+		cfg    *workflow.Config
+		expect bool
+	}{
+		{
+			name:   "direct task start",
+			cfg:    workflow.DefaultPlanningWorkflowConfig(),
+			expect: true,
+		},
+		{
+			name: "direct wait start",
+			cfg: &workflow.Config{
+				Start: "gate",
+				States: map[string]*workflow.State{
+					"gate": {Type: workflow.StateTypeWait, Event: "gate.approved", Next: "done"},
+					"done": {Type: workflow.StateTypeSucceed},
+				},
+			},
+			expect: false,
+		},
+		{
+			name: "pass chain to task (template-expanded)",
+			cfg: func() *workflow.Config {
+				c := &workflow.Config{
+					Start: "plan_phase",
+					States: map[string]*workflow.State{
+						"plan_phase": {Type: workflow.StateTypePass, Next: "_t_plan_phase_planning"},
+						"_t_plan_phase_planning": {Type: workflow.StateTypeTask, Action: "ai.plan", Next: "done"},
+						"done": {Type: workflow.StateTypeSucceed},
+					},
+				}
+				return c
+			}(),
+			expect: true,
+		},
+		{
+			name: "pass chain to wait",
+			cfg: &workflow.Config{
+				Start: "entry",
+				States: map[string]*workflow.State{
+					"entry": {Type: workflow.StateTypePass, Next: "gate"},
+					"gate":  {Type: workflow.StateTypeWait, Event: "gate.approved", Next: "done"},
+					"done":  {Type: workflow.StateTypeSucceed},
+				},
+			},
+			expect: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine := workflow.NewEngine(tt.cfg, workflow.NewActionRegistry(), nil, discardLogger())
+			got := workflowStartsWithTask(engine)
+			if got != tt.expect {
+				t.Errorf("workflowStartsWithTask() = %v, want %v", got, tt.expect)
+			}
+		})
 	}
 }
 

@@ -341,8 +341,7 @@ func (d *Daemon) walkWorkflowForPosition(
 			// "the preceding task never ran." Queue from start so the
 			// initial task executes instead of skipping to a wait state.
 			if !hasProgressEvidence && lastSatisfiedIdx < 0 {
-				startState := engine.GetState(engine.GetStartState())
-				if startState != nil && startState.Type == workflow.StateTypeTask {
+				if workflowStartsWithTask(engine) {
 					log.Info("no progress evidence and workflow starts with task, queuing from start",
 						"firstUnsatisfied", ws.Name)
 					item.State = daemonstate.WorkItemQueued
@@ -387,6 +386,29 @@ func (d *Daemon) walkWorkflowForPosition(
 	item.CurrentStep = waitStates[0].Name
 	item.Phase = "idle"
 	return item
+}
+
+// workflowStartsWithTask follows the workflow's start state through any pass
+// states (produced by template expansion) and returns true if the effective
+// first real state is a task.
+func workflowStartsWithTask(engine *workflow.Engine) bool {
+	name := engine.GetStartState()
+	seen := map[string]bool{}
+	for {
+		if seen[name] {
+			return false // cycle
+		}
+		seen[name] = true
+		s := engine.GetState(name)
+		if s == nil {
+			return false
+		}
+		if s.Type == workflow.StateTypePass {
+			name = s.Next
+			continue
+		}
+		return s.Type == workflow.StateTypeTask
+	}
 }
 
 // reconstructSessions creates minimal config.Session objects for work items
