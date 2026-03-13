@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -1181,7 +1182,7 @@ func (s *GitService) getRequiredStatusChecks(ctx context.Context, repoPath strin
 
 	output, err := s.executor.Output(ctx, repoPath,
 		"gh", "api",
-		fmt.Sprintf("repos/{owner}/{repo}/branches/%s/protection/required_status_checks", base),
+		fmt.Sprintf("repos/{owner}/{repo}/branches/%s/protection/required_status_checks", url.PathEscape(base)),
 		"--jq", ".contexts[]",
 	)
 	if err != nil {
