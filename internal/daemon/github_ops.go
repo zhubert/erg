@@ -582,9 +582,10 @@ func (d *Daemon) closeIssue(ctx context.Context, item daemonstate.WorkItem) erro
 	return d.gitService.CloseIssue(closeCtx, repoPath, item.IssueRef.ID)
 }
 
-// unqueueIssue removes the label and leaves a comment explaining why the issue
-// is being dequeued, but does NOT close the issue. The label is removed so the
-// poller does not rediscover and re-comment on the issue after terminal work
+// unqueueIssue leaves a comment with an unqueued marker explaining why the
+// issue is being dequeued, but does NOT close the issue or remove the label.
+// The label stays as a permanent AI-assisted marker. The hidden marker in the
+// comment prevents the poller from rediscovering the issue after terminal work
 // items are pruned. All operations are best-effort — failures are logged but
 // do not block the workflow from advancing. Also cleans up any claim comments
 // posted by this daemon.
@@ -597,8 +598,6 @@ func (d *Daemon) unqueueIssue(ctx context.Context, item daemonstate.WorkItem, re
 		return
 	}
 
-	label := d.resolveQueueLabel(repoPath)
-
 	opCtx, cancel := context.WithTimeout(ctx, timeoutStandardOp)
 	defer cancel()
 
@@ -606,14 +605,12 @@ func (d *Daemon) unqueueIssue(ctx context.Context, item daemonstate.WorkItem, re
 	src := issues.Source(item.IssueRef.Source)
 	p := d.issueRegistry.GetProvider(src)
 	if pa, ok := p.(issues.ProviderActions); ok {
-		if err := pa.RemoveLabel(opCtx, repoPath, item.IssueRef.ID, label); err != nil {
-			log.Debug("failed to remove label during unqueue", "error", err, "label", label)
-		}
-		if err := pa.Comment(opCtx, repoPath, item.IssueRef.ID, reason); err != nil {
+		body := issues.FormatUnqueuedComment(src, reason)
+		if err := pa.Comment(opCtx, repoPath, item.IssueRef.ID, body); err != nil {
 			log.Debug("failed to comment during unqueue", "error", err)
 		}
 	} else {
-		log.Debug("provider does not support ProviderActions, skipping label removal and comment")
+		log.Debug("provider does not support ProviderActions, skipping comment")
 	}
 
 	// Clean up claim comments posted by this daemon.
@@ -742,6 +739,25 @@ func (d *Daemon) assignPR(ctx context.Context, item daemonstate.WorkItem, params
 	return nil
 }
 
+// isUnqueued checks whether an issue has a comment with the erg unqueued marker.
+// This is the durable guard that prevents re-polling after terminal work items
+// are pruned. Fails open (returns false) on errors so issues are not silently skipped.
+func (d *Daemon) isUnqueued(ctx context.Context, repoPath string, issue issues.Issue, provider issues.Source) bool {
+	p := d.issueRegistry.GetProvider(provider)
+	if p == nil {
+		return false
+	}
+	gc, ok := p.(issues.ProviderGateChecker)
+	if !ok {
+		return false
+	}
+	comments, err := gc.GetIssueComments(ctx, repoPath, issue.ID)
+	if err != nil {
+		return false
+	}
+	return issues.HasUnqueuedMarker(comments)
+}
+
 // resolveRepoPath resolves the repo path for a work item, preferring the session's path.
 func (d *Daemon) resolveRepoPath(ctx context.Context, item daemonstate.WorkItem) string {
 	if item.SessionID != "" {
@@ -756,16 +772,6 @@ func (d *Daemon) resolveRepoPath(ctx context.Context, item daemonstate.WorkItem)
 		return rp
 	}
 	return d.findRepoPath(ctx)
-}
-
-// resolveQueueLabel returns the configured filter label for the given repo,
-// falling back to the default label.
-func (d *Daemon) resolveQueueLabel(repoPath string) string {
-	wfCfg := d.getWorkflowConfig(repoPath)
-	if wfCfg != nil && wfCfg.Source.Filter.Label != "" {
-		return wfCfg.Source.Filter.Label
-	}
-	return autonomousFilterLabel
 }
 
 // issueFromWorkItem converts a WorkItem's issue ref to an issues.Issue.

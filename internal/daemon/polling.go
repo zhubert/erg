@@ -94,6 +94,13 @@ func (d *Daemon) pollForNewIssues(ctx context.Context) {
 				continue
 			}
 
+			// Check if this issue was previously unqueued by erg (comment marker).
+			// This survives terminal work item pruning so we don't re-comment.
+			if d.isUnqueued(pollCtx, repoPath, issue, provider) {
+				log.Debug("issue has unqueued marker, skipping", "issue", issue.ID)
+				continue
+			}
+
 			// Pre-flight: for GitHub issues, check if an open/merged PR already
 			// addresses this issue. If so, unqueue it without spawning a session.
 			if provider == issues.SourceGitHub {
