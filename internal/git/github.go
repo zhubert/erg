@@ -540,6 +540,7 @@ type IssueCommentWithID struct {
 	Author    string
 	Body      string
 	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // GetIssueCommentsWithIDs fetches all comments on a GitHub issue using the REST API,
@@ -559,6 +560,7 @@ func (s *GitService) GetIssueCommentsWithIDs(ctx context.Context, repoPath strin
 			Login string `json:"login"`
 		} `json:"user"`
 		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
 	}
 	if err := json.Unmarshal(output, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse issue comments: %w", err)
@@ -574,6 +576,7 @@ func (s *GitService) GetIssueCommentsWithIDs(ctx context.Context, repoPath strin
 			Author:    c.User.Login,
 			Body:      c.Body,
 			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
 		})
 	}
 	return comments, nil

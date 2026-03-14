@@ -4153,3 +4153,57 @@ func TestCheckGateApproved_UpsertedSystemCommentNoCutoffRegression(t *testing.T)
 		t.Error("expected fired=false: already-consumed approval must not re-trigger after upserted system comment")
 	}
 }
+
+// TestCheckPlanUserReplied_GitHubUpdatedAtParsed is a GitHub-path regression
+// test that verifies updatedAt is parsed from gh issue view JSON and used in
+// the cutoff calculation. This exercises the full path from JSON parsing
+// through to event checking.
+func TestCheckPlanUserReplied_GitHubUpdatedAtParsed(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Simulate a re-plan scenario with upserted system comment:
+	//   - Plan comment: createdAt = 10:00 (original), updatedAt = 10:10 (upserted)
+	//   - User feedback: createdAt = 10:05 (already consumed by first re-plan)
+	//   - StepEnteredAt = 10:11 (after re-plan completed)
+	//
+	// Without UpdatedAt: cutoff = 10:00 (stale CreatedAt) → feedback at 10:05 re-triggers (BUG)
+	// With UpdatedAt:    cutoff = 10:10 (fresh UpdatedAt) → feedback at 10:05 is filtered (FIXED)
+	commentsJSON := []byte(`{"comments":[
+		{"author":{"login":"erg-bot"},"body":"Revised plan.\n<!-- erg:plan -->","createdAt":"2020-01-01T10:00:00Z","updatedAt":"2020-01-01T10:10:00Z"},
+		{"author":{"login":"alice"},"body":"Please also update docs/","createdAt":"2020-01-01T10:05:00Z","updatedAt":"2020-01-01T10:05:00Z"}
+	]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "await_plan_feedback",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{
+		"approval_pattern": `(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)`,
+	})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 11, 0, 0, time.UTC)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false: GitHub updatedAt on upserted system comment must advance cutoff past consumed feedback")
+	}
+}
