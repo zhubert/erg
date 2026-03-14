@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -48,11 +49,11 @@ func (d *Daemon) tryClaim(ctx context.Context, repoPath string, issue issues.Iss
 	existingClaims, err := cm.GetClaims(ctx, repoPath, issue.ID)
 	if err != nil {
 		log.Warn("failed to read claims, skipping issue", "error", err)
-		return false, nil
+		return false, fmt.Errorf("GetClaims: %w", err)
 	}
 
 	now := time.Now()
-	daemonKey := d.stateKey()
+	daemonKey := d.claimIdentity()
 
 	for _, claim := range existingClaims {
 		if claim.DaemonID == daemonKey {
@@ -90,7 +91,7 @@ func (d *Daemon) tryClaim(ctx context.Context, repoPath string, issue issues.Iss
 	commentID, err := cm.PostClaim(ctx, repoPath, issue.ID, claim)
 	if err != nil {
 		log.Warn("failed to post claim, skipping issue", "error", err)
-		return false, nil
+		return false, fmt.Errorf("PostClaim: %w", err)
 	}
 
 	// 3. Wait for API consistency
@@ -112,7 +113,7 @@ func (d *Daemon) tryClaim(ctx context.Context, repoPath string, issue issues.Iss
 	if err != nil {
 		log.Warn("failed to verify claim, deleting and skipping", "error", err)
 		_ = cm.DeleteClaim(ctx, repoPath, issue.ID, commentID)
-		return false, nil
+		return false, fmt.Errorf("GetClaims (verify): %w", err)
 	}
 
 	// Find earliest non-expired claim. Prefer server-side timestamps
@@ -158,7 +159,7 @@ func (d *Daemon) isClaimedByOther(ctx context.Context, repoPath string, issue is
 	}
 
 	now := time.Now()
-	daemonKey := d.stateKey()
+	daemonKey := d.claimIdentity()
 
 	for _, claim := range claims {
 		if claim.DaemonID != daemonKey && now.Before(claim.Expires) {
@@ -182,7 +183,7 @@ func (d *Daemon) deleteClaimForIssue(ctx context.Context, repoPath string, issue
 		return
 	}
 
-	daemonKey := d.stateKey()
+	daemonKey := d.claimIdentity()
 	for _, claim := range claims {
 		if claim.DaemonID == daemonKey {
 			_ = cm.DeleteClaim(ctx, repoPath, issueID, claim.CommentID)

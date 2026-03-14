@@ -17,8 +17,8 @@ import (
 	"github.com/zhubert/erg/internal/workflow"
 )
 
-// testDaemonKey returns the stateKey that a test daemon with the given
-// daemonID would produce. Mirrors the hostname logic in Daemon.stateKey().
+// testDaemonKey returns the claimIdentity that a test daemon with the given
+// daemonID would produce. Mirrors the hostname logic in Daemon.claimIdentity().
 func testDaemonKey(daemonID string) string {
 	hostname, _ := os.Hostname()
 	if hostname == "" {
@@ -276,8 +276,8 @@ func TestTryClaim_GetClaimsError_FailsClosed(t *testing.T) {
 	issue := issues.Issue{ID: "42", Source: issues.SourceGitHub}
 	won, err := d.tryClaim(context.Background(), "/test/repo", issue, issues.SourceGitHub)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error when GetClaims fails")
 	}
 	if won {
 		t.Error("expected to skip (fail closed) when GetClaims errors")
@@ -293,8 +293,8 @@ func TestTryClaim_PostClaimError_FailsClosed(t *testing.T) {
 	issue := issues.Issue{ID: "42", Source: issues.SourceGitHub}
 	won, err := d.tryClaim(context.Background(), "/test/repo", issue, issues.SourceGitHub)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error when PostClaim fails")
 	}
 	if won {
 		t.Error("expected to skip (fail closed) when PostClaim errors")
@@ -303,7 +303,9 @@ func TestTryClaim_PostClaimError_FailsClosed(t *testing.T) {
 
 func TestTryClaim_VerifyClaimsError_FailsClosed(t *testing.T) {
 	// After posting our claim, if the verification GetClaims call fails,
-	// the daemon should delete its claim and return false (fail closed).
+	// the daemon should delete its claim and return false (fail closed)
+	// with a non-nil error so callers can distinguish API failure from
+	// losing the claim race.
 	mock := &mockClaimProvider{
 		nextCommentID: "our-claim-123",
 		// After posting, make the next GetClaims call fail.
@@ -316,8 +318,8 @@ func TestTryClaim_VerifyClaimsError_FailsClosed(t *testing.T) {
 	issue := issues.Issue{ID: "42", Source: issues.SourceGitHub}
 	won, err := d.tryClaim(context.Background(), "/test/repo", issue, issues.SourceGitHub)
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error when verification GetClaims fails")
 	}
 	if won {
 		t.Error("expected to lose (fail closed) when verification GetClaims errors")
@@ -645,41 +647,80 @@ func TestRebuildState_SkipsClaimedByOther(t *testing.T) {
 	}
 }
 
-func TestStateKey_IncludesHostname(t *testing.T) {
+func TestStateKey_StableWithoutHostname(t *testing.T) {
+	cfg := testConfig()
+
+	t.Run("single repo mode uses repoFilter without hostname", func(t *testing.T) {
+		d := testDaemon(cfg)
+		d.repoFilter = "/test/repo"
+		key := d.stateKey()
+		if key != "/test/repo" {
+			t.Errorf("expected stateKey to be '/test/repo', got %s", key)
+		}
+	})
+
+	t.Run("multi repo mode uses daemonID without hostname", func(t *testing.T) {
+		d := testDaemon(cfg)
+		d.daemonID = "multi-abc123"
+		key := d.stateKey()
+		if key != "multi-abc123" {
+			t.Errorf("expected stateKey to be 'multi-abc123', got %s", key)
+		}
+	})
+
+	t.Run("same repo produces same key", func(t *testing.T) {
+		d1 := testDaemon(cfg)
+		d1.repoFilter = "/test/repo"
+		d2 := testDaemon(cfg)
+		d2.repoFilter = "/test/repo"
+		if d1.stateKey() != d2.stateKey() {
+			t.Error("expected same stateKey for same repo")
+		}
+	})
+}
+
+func TestClaimIdentity_IncludesHostname(t *testing.T) {
 	cfg := testConfig()
 
 	t.Run("single repo mode includes hostname", func(t *testing.T) {
 		d := testDaemon(cfg)
 		d.repoFilter = "/test/repo"
-		key := d.stateKey()
+		key := d.claimIdentity()
 		if !strings.Contains(key, "@") {
-			t.Errorf("expected stateKey to contain '@' separator, got %s", key)
+			t.Errorf("expected claimIdentity to contain '@' separator, got %s", key)
 		}
 		if !strings.HasPrefix(key, "/test/repo@") {
-			t.Errorf("expected stateKey to start with '/test/repo@', got %s", key)
+			t.Errorf("expected claimIdentity to start with '/test/repo@', got %s", key)
 		}
 	})
 
 	t.Run("multi repo mode includes hostname", func(t *testing.T) {
 		d := testDaemon(cfg)
 		d.daemonID = "multi-abc123"
-		key := d.stateKey()
+		key := d.claimIdentity()
 		if !strings.Contains(key, "@") {
-			t.Errorf("expected stateKey to contain '@' separator, got %s", key)
+			t.Errorf("expected claimIdentity to contain '@' separator, got %s", key)
 		}
 		if !strings.HasPrefix(key, "multi-abc123@") {
-			t.Errorf("expected stateKey to start with 'multi-abc123@', got %s", key)
+			t.Errorf("expected claimIdentity to start with 'multi-abc123@', got %s", key)
 		}
 	})
 
-	t.Run("different daemons produce different keys", func(t *testing.T) {
+	t.Run("same repo same machine produces same identity", func(t *testing.T) {
 		d1 := testDaemon(cfg)
 		d1.repoFilter = "/test/repo"
 		d2 := testDaemon(cfg)
 		d2.repoFilter = "/test/repo"
-		// On the same machine they should be equal
-		if d1.stateKey() != d2.stateKey() {
-			t.Error("expected same stateKey on same machine")
+		if d1.claimIdentity() != d2.claimIdentity() {
+			t.Error("expected same claimIdentity on same machine")
+		}
+	})
+
+	t.Run("claimIdentity differs from stateKey", func(t *testing.T) {
+		d := testDaemon(cfg)
+		d.repoFilter = "/test/repo"
+		if d.stateKey() == d.claimIdentity() {
+			t.Error("expected claimIdentity to differ from stateKey (hostname suffix)")
 		}
 	})
 }

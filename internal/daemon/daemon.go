@@ -376,17 +376,24 @@ func (d *Daemon) getAutoAddressPRComments() bool {
 	return d.autoAddressPRComments || d.config.GetAutoAddressPRComments()
 }
 
-// stateKey returns the key used for claim identity in multi-daemon coordination.
-// In multi-repo mode this is the daemonID (manifest hash) plus hostname.
-// In single-repo mode this is the repoFilter plus hostname.
-// The hostname suffix ensures that two daemons on different machines targeting
-// the same repo produce distinct keys, preventing them from treating each
-// other's claims as their own.
+// stateKey returns the stable key used for daemon lock files and persisted state.
+// In multi-repo mode this is the daemonID (manifest hash).
+// In single-repo mode this is the repoFilter.
+// This key must NOT include hostname so that lock/state file identities remain
+// stable across upgrades and restarts on the same machine.
 func (d *Daemon) stateKey() string {
-	base := d.repoFilter
 	if d.daemonID != "" {
-		base = d.daemonID
+		return d.daemonID
 	}
+	return d.repoFilter
+}
+
+// claimIdentity returns the key used to identify this daemon in the comment-based
+// claim coordination protocol. It includes the hostname so that two daemons on
+// different machines targeting the same repo produce distinct identities,
+// preventing them from treating each other's claims as their own.
+func (d *Daemon) claimIdentity() string {
+	base := d.stateKey()
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
 		hostname = "unknown"

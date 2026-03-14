@@ -185,25 +185,21 @@ func TestWithDaemonID(t *testing.T) {
 
 func TestStateKey(t *testing.T) {
 	cfg := testConfig()
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "unknown"
-	}
 
-	t.Run("uses repoFilter with hostname when no daemonID", func(t *testing.T) {
+	t.Run("uses repoFilter without hostname when no daemonID", func(t *testing.T) {
 		d := testDaemon(cfg)
 		d.repoFilter = "/test/repo"
-		expected := "/test/repo@" + hostname
+		expected := "/test/repo"
 		if got := d.stateKey(); got != expected {
 			t.Errorf("expected %s, got %s", expected, got)
 		}
 	})
 
-	t.Run("uses daemonID with hostname when set", func(t *testing.T) {
+	t.Run("uses daemonID without hostname when set", func(t *testing.T) {
 		d := testDaemon(cfg)
 		d.repoFilter = "/test/repo"
 		d.daemonID = "multi-abc"
-		expected := "multi-abc@" + hostname
+		expected := "multi-abc"
 		if got := d.stateKey(); got != expected {
 			t.Errorf("expected %s, got %s", expected, got)
 		}
