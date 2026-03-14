@@ -121,6 +121,7 @@ type IssueComment struct {
 	Body      string    // Comment text (plain text)
 	HTMLBody  string    // HTML version of the comment (may contain hidden markers; empty if not available)
 	CreatedAt time.Time // When the comment was posted
+	UpdatedAt time.Time // When the comment was last edited (zero if never edited or not supported)
 }
 
 // ProviderCommentUpdater extends ProviderActions with the ability to update

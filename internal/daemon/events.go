@@ -465,14 +465,21 @@ func (c *eventChecker) checkGateApproved(ctx context.Context, params *workflow.P
 			return false, nil, nil
 		}
 
-		// Use the latest erg system comment as the cutoff (same rationale
-		// as checkPlanUserReplied — user may reply before StepEnteredAt).
-		// Find the max system comment timestamp regardless of slice order.
+		// Use the latest erg system comment effective time as the cutoff
+		// (same rationale as checkPlanUserReplied — user may reply before
+		// StepEnteredAt). Use max(CreatedAt, UpdatedAt) to handle upserted
+		// comments whose CreatedAt is stale.
 		cutoff := item.StepEnteredAt
 		var latestSystem time.Time
 		for _, comment := range comments {
-			if isErgSystemComment(comment) && comment.CreatedAt.After(latestSystem) {
-				latestSystem = comment.CreatedAt
+			if isErgSystemComment(comment) {
+				effective := comment.CreatedAt
+				if comment.UpdatedAt.After(effective) {
+					effective = comment.UpdatedAt
+				}
+				if effective.After(latestSystem) {
+					latestSystem = effective
+				}
 			}
 		}
 		if !latestSystem.IsZero() {
@@ -555,7 +562,7 @@ func (c *eventChecker) issueComments(ctx context.Context, repoPath, source, issu
 		}
 		result := make([]issues.IssueComment, len(gitComments))
 		for i, gc := range gitComments {
-			result[i] = issues.IssueComment{Author: gc.Author, Body: gc.Body, CreatedAt: gc.CreatedAt}
+			result[i] = issues.IssueComment{Author: gc.Author, Body: gc.Body, CreatedAt: gc.CreatedAt, UpdatedAt: gc.UpdatedAt}
 		}
 		return result, nil
 	}
@@ -628,16 +635,27 @@ func (c *eventChecker) checkPlanUserReplied(ctx context.Context, params *workflo
 	}
 
 	// Determine the cutoff time for filtering comments. Prefer the latest
-	// erg system comment timestamp over StepEnteredAt, because user replies
-	// may arrive after the plan is posted but before the workflow transitions
-	// to this wait state (which is when StepEnteredAt is set). Without this,
-	// an early approval would be silently skipped.
-	// Find the max system comment timestamp regardless of slice order.
+	// erg system comment effective timestamp over StepEnteredAt, because user
+	// replies may arrive after the plan is posted but before the workflow
+	// transitions to this wait state (which is when StepEnteredAt is set).
+	// Without this, an early approval would be silently skipped.
+	//
+	// We use the effective time (max of CreatedAt, UpdatedAt) for system
+	// comments because upserted comments retain their original CreatedAt
+	// but have an advancing UpdatedAt. Without this, re-planning loops
+	// would use the stale CreatedAt as cutoff, causing already-consumed
+	// user feedback to re-trigger indefinitely.
 	cutoff := item.StepEnteredAt
 	var latestSystem time.Time
 	for _, comment := range comments {
-		if isErgSystemComment(comment) && comment.CreatedAt.After(latestSystem) {
-			latestSystem = comment.CreatedAt
+		if isErgSystemComment(comment) {
+			effective := comment.CreatedAt
+			if comment.UpdatedAt.After(effective) {
+				effective = comment.UpdatedAt
+			}
+			if effective.After(latestSystem) {
+				latestSystem = effective
+			}
 		}
 	}
 	if !latestSystem.IsZero() {
