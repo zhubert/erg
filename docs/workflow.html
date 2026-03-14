@@ -6,7 +6,7 @@
     <title>Workflow configuration — erg</title>
     <meta
       name="description"
-      content="erg — workflow-driven autonomous coding orchestrator for Claude Code."
+      content="erg — workflow-driven agent orchestrator for Claude Code."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1277,7 +1277,7 @@
           <pre><span class="ck">source:</span>
   <span class="ck">provider:</span> <span class="cv">github</span>            <span class="cc"># github | asana | linear</span>
   <span class="ck">filter:</span>
-    <span class="ck">label:</span> <span class="cv">queued</span>              <span class="cc"># GitHub/Linear: issue label; Asana: tag name (optional when section is set)</span>
+    <span class="ck">label:</span> <span class="cv">ai-assisted</span>         <span class="cc"># required for all providers — GitHub/Linear: issue label; Asana: tag name</span>
     <span class="ck">section:</span> <span class="cv">Todo</span>             <span class="cc"># Asana only: poll tasks in this board section instead of by tag</span>
 
 <span class="ck">states:</span>
@@ -1415,9 +1415,8 @@
               <td><code>label</code></td>
               <td>GitHub, Asana, Linear</td>
               <td>
-                GitHub and Linear: issue label to poll. Asana: tag name to
-                filter by. Optional for Asana when <code>section</code> is set —
-                use it to narrow within a section if needed.
+                Required for all providers. GitHub and Linear: issue label to
+                poll. Asana: tag name to filter by.
               </td>
             </tr>
             <tr>
