@@ -675,25 +675,54 @@ func (d *Daemon) closeIssueGracefully(ctx context.Context, item daemonstate.Work
 	d.deleteClaimForIssue(opCtx, repoPath, src, item.IssueRef.ID)
 }
 
+// maxTerminalReasonLen caps the length of error details included in the
+// unqueued marker comment to avoid leaking noisy or sensitive operational
+// details (paths, command output, etc.) into public issue comments.
+const maxTerminalReasonLen = 200
+
 // postTerminalMarker posts an unqueued marker comment on the issue when a work
 // item reaches a terminal state (success or failure). This is the durable guard
 // that prevents re-polling after PruneTerminalItems cleans up old work items.
 //
-// The method is idempotent: if an unqueued marker was already posted (tracked
-// via the _unqueued_posted flag in StepData), it returns immediately. This
-// avoids double-posting when unqueueIssue or closeIssueGracefully was already
-// called earlier in the workflow.
+// The method is idempotent: an atomic check-and-set on the _unqueued_posted
+// flag in StepData ensures at most one comment is posted, even if multiple
+// callers race on the same work item. If the comment cannot be attempted
+// (e.g. repo path unresolvable), the flag is NOT set so a later retry can
+// succeed.
 //
 // All operations are best-effort — failures are logged but do not block the
 // workflow from advancing.
 func (d *Daemon) postTerminalMarker(ctx context.Context, itemID string, success bool) {
+	// Atomic check-and-set: claim the right to post under the state lock.
+	// If another caller already set the flag we return immediately.
+	alreadyPosted := false
+	d.state.UpdateWorkItem(itemID, func(it *daemonstate.WorkItem) {
+		if it.StepData == nil {
+			it.StepData = make(map[string]any)
+		}
+		if posted, _ := it.StepData["_unqueued_posted"].(bool); posted {
+			alreadyPosted = true
+			return
+		}
+		// Tentatively claim — cleared below if the comment can't be attempted.
+		it.StepData["_unqueued_posted"] = true
+	})
+	if alreadyPosted {
+		return
+	}
+
 	item, ok := d.state.GetWorkItem(itemID)
 	if !ok {
 		return
 	}
 
-	// Check guard: was a marker already posted by unqueueIssue or closeIssueGracefully?
-	if posted, _ := item.StepData["_unqueued_posted"].(bool); posted {
+	// Verify the comment can actually be attempted (repo path resolvable).
+	// If not, clear the flag so a future call can retry.
+	repoPath := d.resolveRepoPath(ctx, item)
+	if repoPath == "" {
+		d.state.UpdateWorkItem(itemID, func(it *daemonstate.WorkItem) {
+			delete(it.StepData, "_unqueued_posted")
+		})
 		return
 	}
 
@@ -705,18 +734,14 @@ func (d *Daemon) postTerminalMarker(ctx context.Context, itemID string, success 
 		reason = "Work completed successfully — PR merged."
 	}
 	if item.ErrorMessage != "" && !success {
-		reason = "Work item failed: " + item.ErrorMessage
+		errMsg := item.ErrorMessage
+		if len(errMsg) > maxTerminalReasonLen {
+			errMsg = errMsg[:maxTerminalReasonLen] + "..."
+		}
+		reason = "Work item failed: " + errMsg
 	}
 
 	d.unqueueIssueWithSuffix(ctx, item, reason, suffix)
-
-	// Set guard flag so subsequent calls are no-ops.
-	d.state.UpdateWorkItem(itemID, func(it *daemonstate.WorkItem) {
-		if it.StepData == nil {
-			it.StepData = make(map[string]any)
-		}
-		it.StepData["_unqueued_posted"] = true
-	})
 }
 
 // requestReview requests a review on the PR for a work item.

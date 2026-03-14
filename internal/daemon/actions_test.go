@@ -3905,6 +3905,52 @@ func TestPostTerminalMarker_Failed(t *testing.T) {
 	}
 }
 
+// TestPostTerminalMarker_TruncatesLongError verifies that very long error
+// messages are truncated in the public comment to avoid leaking noisy details.
+func TestPostTerminalMarker_TruncatesLongError(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	provider := &mockCommentProvider{src: issues.SourceGitHub}
+	registry := issues.NewProviderRegistry(provider)
+
+	mockExec := exec.NewMockExecutor(nil)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.issueRegistry = registry
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+
+	item := &daemonstate.WorkItem{
+		ID:        "item-gh-15",
+		IssueRef:  config.IssueRef{Source: "github", ID: "15"},
+		SessionID: "sess-1",
+	}
+	d.state.AddWorkItem(item)
+
+	// Set a very long error message (> 200 chars).
+	longErr := strings.Repeat("x", 300)
+	d.state.SetErrorMessage(item.ID, longErr)
+
+	d.postTerminalMarker(context.Background(), item.ID, false)
+
+	if len(provider.comments) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(provider.comments))
+	}
+	body := provider.comments[0].body
+	if strings.Contains(body, longErr) {
+		t.Error("full long error message should NOT appear in comment")
+	}
+	if !strings.Contains(body, "...") {
+		t.Error("truncated error should end with '...'")
+	}
+	// The reason should be "Work item failed: " (18 chars) + 200 chars + "..." = 221 chars max
+	if len(body) > 500 {
+		t.Errorf("comment body is too long: %d chars", len(body))
+	}
+}
+
 // TestPostTerminalMarker_SkipsWhenAlreadyPosted verifies that postTerminalMarker
 // is a no-op when the _unqueued_posted guard flag is already set.
 func TestPostTerminalMarker_SkipsWhenAlreadyPosted(t *testing.T) {
@@ -3939,7 +3985,8 @@ func TestPostTerminalMarker_SkipsWhenAlreadyPosted(t *testing.T) {
 }
 
 // TestPostTerminalMarker_NoRepoPath verifies that postTerminalMarker is a
-// no-op when the repo path cannot be resolved.
+// no-op when the repo path cannot be resolved, and that it does NOT set the
+// guard flag so a later retry can succeed.
 func TestPostTerminalMarker_NoRepoPath(t *testing.T) {
 	cfg := testConfig()
 
@@ -3962,6 +4009,13 @@ func TestPostTerminalMarker_NoRepoPath(t *testing.T) {
 	// Should not have posted any comment.
 	if len(provider.comments) != 0 {
 		t.Errorf("expected 0 comments (no repo path), got %d", len(provider.comments))
+	}
+
+	// Guard flag should NOT be set — the comment was never attempted, so a
+	// later call with a valid repo path should be able to post.
+	updated, _ := d.state.GetWorkItem(item.ID)
+	if posted, _ := updated.StepData["_unqueued_posted"].(bool); posted {
+		t.Error("expected _unqueued_posted to be false when repo path is unresolvable")
 	}
 }
 

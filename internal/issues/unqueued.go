@@ -2,8 +2,13 @@ package issues
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// validSuffix matches only lowercase alphanumeric characters and underscores.
+// Any suffix that doesn't match is dropped, producing the legacy marker format.
+var validSuffix = regexp.MustCompile(`^[a-z0-9_]+$`)
 
 // unqueuedMarkerPrefixGitHub is the prefix of the HTML-comment marker embedded
 // in unqueue comments on GitHub. Detection uses prefix matching so that both
@@ -26,8 +31,12 @@ func FormatUnqueuedComment(source Source, reason string) string {
 // FormatUnqueuedCommentWithSuffix formats an unqueue comment with a
 // machine-readable suffix embedded in the marker. The suffix indicates why the
 // issue was unqueued (e.g. "success", "failed", "no_changes",
-// "closed_externally"). An empty suffix produces the legacy marker format.
+// "closed_externally"). An empty or invalid suffix produces the legacy marker
+// format. Valid suffixes match [a-z0-9_]+.
 func FormatUnqueuedCommentWithSuffix(source Source, reason, suffix string) string {
+	if !validSuffix.MatchString(suffix) {
+		suffix = ""
+	}
 	switch source {
 	case SourceGitHub:
 		marker := formatGitHubMarker(suffix)

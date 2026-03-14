@@ -33,6 +33,9 @@ func TestFormatUnqueuedCommentWithSuffix_GitHub(t *testing.T) {
 		{"failed", "CI unfixable.", "<!-- erg:unqueued:failed -->\nCI unfixable."},
 		{"no_changes", "No changes needed.", "<!-- erg:unqueued:no_changes -->\nNo changes needed."},
 		{"", "Legacy format.", "<!-- erg:unqueued -->\nLegacy format."},
+		{"bad-->chars", "Invalid suffix.", "<!-- erg:unqueued -->\nInvalid suffix."},
+		{"UPPER", "Uppercase dropped.", "<!-- erg:unqueued -->\nUppercase dropped."},
+		{"has space", "Space dropped.", "<!-- erg:unqueued -->\nSpace dropped."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.suffix, func(t *testing.T) {
