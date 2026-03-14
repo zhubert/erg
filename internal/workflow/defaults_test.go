@@ -370,10 +370,10 @@ func TestMerge(t *testing.T) {
 		}
 	})
 
-	t.Run("asana config without label does not inherit github queued label", func(t *testing.T) {
-		// Regression: Merge used to blindly copy the default label ("queued") into
+	t.Run("asana config without label does not inherit github ai-assisted label", func(t *testing.T) {
+		// Regression: Merge used to blindly copy the default label ("ai-assisted") into
 		// non-GitHub configs that had no label set. This caused the Asana provider
-		// to filter by the tag "queued", silently dropping tasks without that tag.
+		// to filter by the tag "ai-assisted", silently dropping tasks without that tag.
 		partial := &Config{
 			Source: SourceConfig{
 				Provider: "asana",
