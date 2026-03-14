@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
 	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/exec"
@@ -746,12 +747,12 @@ func TestEngine_GetOrderedWaitStates_CustomWorkflow(t *testing.T) {
 	cfg := &workflow.Config{
 		Start: "code",
 		States: map[string]*workflow.State{
-			"code":       {Type: workflow.StateTypeTask, Action: "ai.code", Next: "pr"},
-			"pr":         {Type: workflow.StateTypeTask, Action: "github.create_pr", Next: "check_ci"},
-			"check_ci":   {Type: workflow.StateTypeWait, Event: "ci.complete", Next: "approval"},
-			"approval":   {Type: workflow.StateTypeWait, Event: "pr.reviewed", Next: "merge"},
-			"merge":      {Type: workflow.StateTypeTask, Action: "github.merge", Next: "done"},
-			"done":       {Type: workflow.StateTypeSucceed},
+			"code":     {Type: workflow.StateTypeTask, Action: "ai.code", Next: "pr"},
+			"pr":       {Type: workflow.StateTypeTask, Action: "github.create_pr", Next: "check_ci"},
+			"check_ci": {Type: workflow.StateTypeWait, Event: "ci.complete", Next: "approval"},
+			"approval": {Type: workflow.StateTypeWait, Event: "pr.reviewed", Next: "merge"},
+			"merge":    {Type: workflow.StateTypeTask, Action: "github.merge", Next: "done"},
+			"done":     {Type: workflow.StateTypeSucceed},
 		},
 	}
 	engine := workflow.NewEngine(cfg, workflow.NewActionRegistry(), nil, discardLogger())
@@ -1242,9 +1243,9 @@ func TestWorkflowStartsWithTask(t *testing.T) {
 				c := &workflow.Config{
 					Start: "plan_phase",
 					States: map[string]*workflow.State{
-						"plan_phase": {Type: workflow.StateTypePass, Next: "_t_plan_phase_planning"},
+						"plan_phase":             {Type: workflow.StateTypePass, Next: "_t_plan_phase_planning"},
 						"_t_plan_phase_planning": {Type: workflow.StateTypeTask, Action: "ai.plan", Next: "done"},
-						"done": {Type: workflow.StateTypeSucceed},
+						"done":                   {Type: workflow.StateTypeSucceed},
 					},
 				}
 				return c
