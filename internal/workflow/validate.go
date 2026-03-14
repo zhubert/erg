@@ -465,15 +465,17 @@ func validateSource(cfg *Config) []ValidationError {
 		})
 	}
 
+	// Label is required for all providers — it serves as the permanent
+	// AI-assisted marker so humans can distinguish erg-managed issues.
+	if cfg.Source.Filter.Label == "" {
+		errs = append(errs, ValidationError{
+			Field:   "source.filter.label",
+			Message: "label is required (identifies AI-assisted issues)",
+		})
+	}
+
 	// Provider-specific filter requirements
 	switch cfg.Source.Provider {
-	case "github":
-		if cfg.Source.Filter.Label == "" {
-			errs = append(errs, ValidationError{
-				Field:   "source.filter.label",
-				Message: "label is required for github provider",
-			})
-		}
 	case "asana":
 		if cfg.Source.Filter.Project == "" {
 			errs = append(errs, ValidationError{

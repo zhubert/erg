@@ -17,7 +17,7 @@ func TestDefaultWorkflowConfig(t *testing.T) {
 	if cfg.Source.Provider != "github" {
 		t.Errorf("default provider: got %q", cfg.Source.Provider)
 	}
-	if cfg.Source.Filter.Label != "queued" {
+	if cfg.Source.Filter.Label != "ai-assisted" {
 		t.Errorf("default label: got %q", cfg.Source.Filter.Label)
 	}
 
@@ -383,7 +383,7 @@ func TestMerge(t *testing.T) {
 				},
 			},
 		}
-		defaults := DefaultWorkflowConfig() // provider=github, label=queued
+		defaults := DefaultWorkflowConfig() // provider=github, label=ai-assisted
 		result := Merge(partial, defaults)
 
 		if result.Source.Filter.Label != "" {

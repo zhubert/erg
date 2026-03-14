@@ -9,8 +9,8 @@ import (
 
 	"github.com/zhubert/erg/internal/agentconfig"
 	"github.com/zhubert/erg/internal/claude"
-	"github.com/zhubert/erg/internal/dashboard"
 	"github.com/zhubert/erg/internal/daemonstate"
+	"github.com/zhubert/erg/internal/dashboard"
 	"github.com/zhubert/erg/internal/git"
 	"github.com/zhubert/erg/internal/issues"
 	"github.com/zhubert/erg/internal/manager"
@@ -23,7 +23,7 @@ const (
 	defaultPollInterval       = 30 * time.Second
 	defaultReviewPollInterval = 60 * time.Second
 	defaultReconcileInterval  = 2 * time.Minute
-	autonomousFilterLabel     = "queued"
+	autonomousFilterLabel     = "ai-assisted"
 )
 
 // Daemon is the persistent orchestrator that manages the full lifecycle of work items.
