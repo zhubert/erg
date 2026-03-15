@@ -1784,6 +1784,40 @@
           </div>
         </div>
 
+        <div id="tmpl-document" class="action-ref">
+          <div class="action-header">
+            <span class="action-title">builtin:document</span>
+          </div>
+          <p class="action-desc">
+            AI documentation session with preset turn and duration limits. Runs
+            containerized by default. Claude is instructed to only modify
+            documentation files and never touch source code.
+          </p>
+          <div class="param-section">
+            <div class="param-section-title">Exits</div>
+            <table class="param-table">
+              <thead>
+                <tr><th>Port</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>success</td><td>Documentation session completed successfully.</td></tr>
+                <tr><td>failure</td><td>Session error or unrecoverable failure.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <div class="param-section-title">Params</div>
+            <table class="param-table">
+              <thead>
+                <tr><th>Name</th><th>Type</th><th>Default</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>containerized</td><td>bool</td><td>true</td><td>Run the documentation session inside a container.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div id="tmpl-pr" class="action-ref">
           <div class="action-header">
             <span class="action-title">builtin:pr</span>

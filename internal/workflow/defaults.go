@@ -355,6 +355,43 @@ func CodeTemplateConfig() *TemplateConfig {
 	}
 }
 
+// DocumentTemplateConfig returns a template for the AI documentation phase.
+func DocumentTemplateConfig() *TemplateConfig {
+	return &TemplateConfig{
+		Template: "document",
+		Entry:    "documenting",
+		Exits: map[string]string{
+			"success": "document_done",
+			"failure": "document_failed",
+		},
+		Params: []TemplateParam{
+			{Name: "containerized", Default: true},
+		},
+		States: map[string]*State{
+			"documenting": {
+				Type:        StateTypeTask,
+				Action:      "ai.document",
+				DisplayName: "Documenting",
+				Params: map[string]any{
+					"max_turns":     50,
+					"max_duration":  "30m",
+					"containerized": "{{containerized}}",
+				},
+				Next:  "document_done",
+				Error: "document_failed",
+			},
+			"document_done": {
+				Type:        StateTypeSucceed,
+				DisplayName: "Done",
+			},
+			"document_failed": {
+				Type:        StateTypeFail,
+				DisplayName: "Failed",
+			},
+		},
+	}
+}
+
 // PRTemplateConfig returns a template for creating a pull request.
 func PRTemplateConfig() *TemplateConfig {
 	return &TemplateConfig{

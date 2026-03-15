@@ -220,6 +220,8 @@ func builtinTemplate(name string) (*TemplateConfig, error) {
 		return PlanTemplateConfig(), nil
 	case "code":
 		return CodeTemplateConfig(), nil
+	case "document":
+		return DocumentTemplateConfig(), nil
 	case "pr":
 		return PRTemplateConfig(), nil
 	case "ci":
@@ -237,7 +239,7 @@ func builtinTemplate(name string) (*TemplateConfig, error) {
 	case "linear_await_state":
 		return LinearAwaitStateTemplateConfig(), nil
 	default:
-		return nil, fmt.Errorf("unknown built-in template %q (available: plan, code, pr, ci, review, merge, asana_move_section, linear_move_state, asana_await_section, linear_await_state)", name)
+		return nil, fmt.Errorf("unknown built-in template %q (available: plan, code, document, pr, ci, review, merge, asana_move_section, linear_move_state, asana_await_section, linear_await_state)", name)
 	}
 }
 

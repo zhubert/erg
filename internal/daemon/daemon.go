@@ -455,6 +455,7 @@ func (d *Daemon) buildActionRegistry() *workflow.ActionRegistry {
 	registry.Register("github.close_issue", &closeIssueAction{daemon: d})
 	registry.Register("github.request_review", &requestReviewAction{daemon: d})
 	registry.Register("github.assign_pr", &assignPRAction{daemon: d})
+	registry.Register("ai.document", &documentingAction{daemon: d})
 	registry.Register("ai.fix_ci", &fixCIAction{daemon: d})
 	registry.Register("ai.address_review", &addressReviewAction{daemon: d})
 	registry.Register("ai.write_pr_description", &writePRDescriptionAction{daemon: d})
