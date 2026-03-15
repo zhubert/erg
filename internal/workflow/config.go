@@ -39,6 +39,7 @@ type SettingsConfig struct {
 	MaxDuration    int    `yaml:"max_duration,omitempty"` // minutes
 	AutoMerge      *bool  `yaml:"auto_merge,omitempty"`
 	MergeMethod    string `yaml:"merge_method,omitempty"`
+	Model          string `yaml:"model,omitempty"` // default model for all AI states (alias or full ID)
 }
 
 // State represents a single node in the workflow graph.
@@ -58,6 +59,9 @@ type State struct {
 	Data        map[string]any `yaml:"data,omitempty"`
 	Before      []HookConfig   `yaml:"before,omitempty"`
 	After       []HookConfig   `yaml:"after,omitempty"`
+	// Model is the model to use for this state (alias like "haiku" or full ID like
+	// "claude-haiku-4-5-20251001"). Overrides the settings-level model for this state only.
+	Model string `yaml:"model,omitempty"`
 	// DisplayName is a human-readable label for this state, shown in the dashboard
 	// and CLI. If empty, a label is derived from the state name at display time.
 	DisplayName string `yaml:"display_name,omitempty"`

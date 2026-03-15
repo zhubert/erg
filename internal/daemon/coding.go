@@ -168,6 +168,7 @@ func (d *Daemon) startPlanning(ctx context.Context, item daemonstate.WorkItem) e
 	// not handled by configureRunner.
 	runner := d.sessionMgr.GetOrCreateRunner(sess)
 	runner.SetDisallowedTools(claude.ToolSetPlanningDeny)
+	runner.SetModel(d.resolveStateModel(wfCfg, "planning"))
 	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, planningPrompt, planningTools)
 	w.SetPlanningMode(true)
 	maxTurns := params.Int("max_turns", 0)
@@ -361,6 +362,10 @@ func (d *Daemon) startCoding(ctx context.Context, item daemonstate.WorkItem) err
 	// Append simplify directive if requested
 	initialMsg = maybeAppendSimplify(initialMsg, params.Bool("simplify", false))
 
+	// Apply per-state model before creating the worker
+	codingRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	codingRunner.SetModel(d.resolveStateModel(wfCfg, "coding"))
+
 	// Start worker, applying any per-session limits from workflow params
 	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, codingPrompt)
 	maxTurns := params.Int("max_turns", 0)
@@ -541,6 +546,10 @@ func (d *Daemon) startDocumenting(ctx context.Context, item daemonstate.WorkItem
 	// Append simplify directive if requested
 	initialMsg = maybeAppendSimplify(initialMsg, params.Bool("simplify", false))
 
+	// Apply per-state model before creating the worker
+	documentingRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	documentingRunner.SetModel(d.resolveStateModel(wfCfg, "documenting"))
+
 	// Start worker, applying any per-session limits from workflow params
 	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, documentingPrompt)
 	maxTurns := params.Int("max_turns", 0)
@@ -646,6 +655,10 @@ func (d *Daemon) addressFeedback(ctx context.Context, item daemonstate.WorkItem,
 	if formatCommand != "" {
 		reviewPrompt = reviewPrompt + "\n\nFORMATTING: Before committing any changes, run the following formatter command:\n  " + formatCommand + "\nStage and include all formatting changes in your commit."
 	}
+
+	// Apply per-state model before starting the worker
+	reviewRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	reviewRunner.SetModel(d.resolveStateModel(wfCfg, "await_review"))
 
 	// Resume the existing session with the review system prompt
 	d.startWorkerWithPrompt(ctx, item, sess, prompt, reviewPrompt)
@@ -772,6 +785,21 @@ func (d *Daemon) configureRunner(runner claude.RunnerConfig, sess *config.Sessio
 	if customPrompt != "" {
 		runner.SetSystemPrompt(customPrompt)
 	}
+}
+
+// resolveStateModel returns the resolved canonical model ID for the given state,
+// falling back to the settings-level model and then to "" (CLI default).
+// It consults the state's Model field first, then settings.Model.
+// The returned value is already passed through claude.ResolveModel so aliases
+// like "haiku" are expanded to their canonical IDs.
+func (d *Daemon) resolveStateModel(wfCfg *workflow.Config, stateName string) string {
+	if state, ok := wfCfg.States[stateName]; ok && state != nil && state.Model != "" {
+		return claude.ResolveModel(state.Model)
+	}
+	if wfCfg.Settings != nil && wfCfg.Settings.Model != "" {
+		return claude.ResolveModel(wfCfg.Settings.Model)
+	}
+	return ""
 }
 
 // containerImageForRepo returns the container image for a given repo path.
@@ -1070,6 +1098,10 @@ func (d *Daemon) startFixCI(ctx context.Context, item daemonstate.WorkItem, sess
 		resolvedPrompt = resolvedPrompt + "\n\nFORMATTING: Before committing any changes, run the following formatter command:\n  " + formatCommand + "\nStage and include all formatting changes in your commit."
 	}
 
+	// Apply per-state model before starting the worker
+	fixRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	fixRunner.SetModel(d.resolveStateModel(wfCfg, "fix_ci"))
+
 	d.startWorkerWithPrompt(ctx, item, sess, prompt, resolvedPrompt)
 	d.logger.Info("started CI fix session", "workItem", item.ID, "round", round)
 	return nil
@@ -1183,6 +1215,10 @@ func (d *Daemon) startResolveConflicts(ctx context.Context, item *daemonstate.Wo
 		resolvedPrompt = DefaultCodingSystemPrompt
 	}
 
+	// Apply per-state model before starting the worker
+	conflictRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	conflictRunner.SetModel(d.resolveStateModel(wfCfg, "resolve_conflicts"))
+
 	d.startWorkerWithPrompt(ctx, *item, sess, prompt, resolvedPrompt)
 	d.logger.Info("started conflict resolution session", "workItem", item.ID, "round", round, "conflictedFiles", len(conflictedFiles))
 	return nil
@@ -1277,6 +1313,10 @@ func (d *Daemon) startAddressReview(ctx context.Context, item daemonstate.WorkIt
 	if formatCommand != "" {
 		resolvedPrompt = resolvedPrompt + "\n\nFORMATTING: Before committing any changes, run the following formatter command:\n  " + formatCommand + "\nStage and include all formatting changes in your commit."
 	}
+
+	// Apply per-state model before starting the worker
+	addressRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	addressRunner.SetModel(d.resolveStateModel(wfCfg, "address_review"))
 
 	d.startWorkerWithPrompt(ctx, item, sess, prompt, resolvedPrompt)
 	d.logger.Info("started address review session", "workItem", item.ID, "round", round, "commentCount", len(comments))
@@ -1434,6 +1474,10 @@ func (d *Daemon) startAIReview(ctx context.Context, item daemonstate.WorkItem, s
 	if resolvedPrompt == "" {
 		resolvedPrompt = DefaultReviewSystemPrompt
 	}
+
+	// Apply per-state model before starting the worker
+	aiReviewRunner := d.sessionMgr.GetOrCreateRunner(sess)
+	aiReviewRunner.SetModel(d.resolveStateModel(wfCfg, item.CurrentStep))
 
 	d.startWorkerWithPrompt(ctx, item, sess, prompt, resolvedPrompt)
 	d.logger.Info("started AI review session", "workItem", item.ID, "round", round)

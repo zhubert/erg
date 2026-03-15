@@ -200,6 +200,9 @@ type Runner struct {
 	// System prompt: passed to Claude CLI via --append-system-prompt
 	systemPrompt string
 
+	// Model: when non-empty, passed to Claude CLI via --model (resolved canonical ID)
+	model string
+
 	// Container ready callback: invoked when containerized session receives init message
 	onContainerReady func()
 
@@ -326,6 +329,15 @@ func (r *Runner) SetSystemPrompt(prompt string) {
 	r.systemPrompt = prompt
 }
 
+// SetModel sets the model for this runner. The value should already be resolved
+// (via ResolveModel) before calling — aliases like "haiku" should be expanded to
+// their canonical IDs. An empty string means "use the Claude CLI default".
+func (r *Runner) SetModel(model string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.model = model
+}
+
 // SetHostTools enables or disables host tools mode for this runner.
 // When enabled, host tool channels are initialized and the MCP config
 // will include the --host-tools flag.
@@ -441,6 +453,7 @@ func (r *Runner) ensureProcessRunning() error {
 		ContainerImage:    r.containerImage,
 		ContainerMCPPort:  containerMCPPort,
 		SystemPrompt:      r.systemPrompt,
+		Model:             r.model,
 	}
 	copy(config.AllowedTools, r.allowedTools)
 	copy(config.DisallowedTools, r.disallowedTools)

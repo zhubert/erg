@@ -568,15 +568,38 @@ func ensureRepoImage(ctx context.Context, repoPath, workflowFile string, buildLo
 		}
 		wfCfg.Settings.ContainerImage = image
 	}
-	if err := validateWorkflowConfig(wfCfg); err != nil {
+	if err := validateWorkflowConfig(wfCfg, func(m string) bool { return claude.KnownModels[m] }); err != nil {
 		return nil, fmt.Errorf("repo %s: %w", repoPath, err)
 	}
 	return wfCfg, nil
 }
 
 // validateWorkflowConfig returns an error if the workflow config has validation problems.
-func validateWorkflowConfig(cfg *workflow.Config) error {
+// isValidModel is called for each non-empty model string; pass claude.KnownModels lookup
+// in production and a custom func in tests.
+func validateWorkflowConfig(cfg *workflow.Config, isValidModel func(string) bool) error {
 	errs := workflow.Validate(cfg)
+
+	// Validate settings-level model
+	if cfg.Settings != nil && cfg.Settings.Model != "" {
+		if !isValidModel(cfg.Settings.Model) {
+			errs = append(errs, workflow.ValidationError{
+				Field:   "settings.model",
+				Message: fmt.Sprintf("unknown model %q (use an alias like \"sonnet\" or a full model ID)", cfg.Settings.Model),
+			})
+		}
+	}
+
+	// Validate per-state model
+	for name, state := range cfg.States {
+		if state.Model != "" && !isValidModel(state.Model) {
+			errs = append(errs, workflow.ValidationError{
+				Field:   fmt.Sprintf("states.%s.model", name),
+				Message: fmt.Sprintf("unknown model %q (use an alias like \"sonnet\" or a full model ID)", state.Model),
+			})
+		}
+	}
+
 	if len(errs) == 0 {
 		return nil
 	}
