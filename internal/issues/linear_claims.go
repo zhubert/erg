@@ -61,7 +61,7 @@ func (p *LinearProvider) PostClaim(ctx context.Context, repoPath string, issueID
 		return "", fmt.Errorf("failed to create claim comment: %w", err)
 	}
 	if !createResp.Data.CommentCreate.Success {
-		return "", fmt.Errorf("Linear API returned success=false for claim comment on issue %q", issueID)
+		return "", fmt.Errorf("linear API returned success=false for claim comment on issue %q", issueID)
 	}
 
 	return createResp.Data.CommentCreate.Comment.ID, nil
@@ -94,7 +94,7 @@ func (p *LinearProvider) DeleteClaim(ctx context.Context, repoPath string, issue
 		return fmt.Errorf("failed to delete claim comment: %w", err)
 	}
 	if !deleteResp.Data.CommentDelete.Success {
-		return fmt.Errorf("Linear API returned success=false for comment delete %q", commentID)
+		return fmt.Errorf("linear API returned success=false for comment delete %q", commentID)
 	}
 	return nil
 }

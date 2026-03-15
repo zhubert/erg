@@ -1065,7 +1065,7 @@ func (pm *ProcessManager) containerStartupWatchdog() {
 				"remaining", remaining,
 			)
 		case <-timeout:
-			break // fall through to the timeout handling below
+			// fall through to the timeout handling below
 		case <-ready:
 			pm.log.Debug("container startup watchdog exiting - session started successfully")
 			return

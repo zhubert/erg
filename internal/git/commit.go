@@ -161,7 +161,7 @@ Diff:
 
 	commitMsg := strings.TrimSpace(string(output))
 	if commitMsg == "" {
-		return "", fmt.Errorf("Claude returned empty commit message")
+		return "", fmt.Errorf("claude returned empty commit message")
 	}
 
 	log.Info("generated commit message", "title", strings.Split(commitMsg, "\n")[0])
@@ -205,7 +205,7 @@ func (s *GitService) EnsureCommitted(ctx context.Context, ch chan<- Result, work
 	}
 
 	// Commit the changes
-	ch <- Result{Output: fmt.Sprintf("Committing changes in worktree...\n")}
+	ch <- Result{Output: "Committing changes in worktree...\n"}
 	if err := s.CommitAll(ctx, worktreePath, commitMsg); err != nil {
 		ch <- Result{Error: fmt.Errorf("failed to commit changes: %w", err), Done: true}
 		return false

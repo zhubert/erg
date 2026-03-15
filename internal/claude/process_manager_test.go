@@ -1036,11 +1036,8 @@ func TestProcessManager_GoroutineExitOnContextCancel(t *testing.T) {
 	exitedCh := make(chan bool, 1)
 	pm.wg.Go(func() {
 		// Simulate readOutput's context check
-		select {
-		case <-pm.ctx.Done():
-			exitedCh <- true
-			return
-		}
+		<-pm.ctx.Done()
+		exitedCh <- true
 	})
 
 	// Cancel context

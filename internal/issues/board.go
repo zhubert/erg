@@ -83,7 +83,7 @@ func ListLinearWorkflowStates(ctx context.Context, teamID string) ([]BoardSectio
 	nodes := statesResp.Data.Team.States.Nodes
 	states := make([]BoardSection, len(nodes))
 	for i, s := range nodes {
-		states[i] = BoardSection{ID: s.ID, Name: s.Name}
+		states[i] = BoardSection(s)
 	}
 	return states, nil
 }
@@ -120,7 +120,7 @@ func CreateLinearWorkflowState(ctx context.Context, teamID, name, stateType, col
 	}
 
 	if !resp.Data.WorkflowStateCreate.Success {
-		return fmt.Errorf("Linear API returned success=false creating state %q", name)
+		return fmt.Errorf("linear API returned success=false creating state %q", name)
 	}
 
 	return nil

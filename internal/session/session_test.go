@@ -550,7 +550,7 @@ func TestDelete_AlreadyDeletedBranch(t *testing.T) {
 	cmd.Run()
 
 	// Delete should handle this gracefully (branch deletion is best-effort)
-	err = svc.Delete(ctx, session)
+	_ = svc.Delete(ctx, session)
 	// Error is expected since worktree is already gone
 	// But it shouldn't panic
 }

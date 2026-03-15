@@ -115,7 +115,7 @@ type linearTeamsResponse struct {
 func (p *LinearProvider) FetchIssues(ctx context.Context, repoPath string, filter FilterConfig) ([]Issue, error) {
 	projectID := filter.Team
 	if projectID == "" {
-		return nil, fmt.Errorf("Linear team ID not configured for this repository")
+		return nil, fmt.Errorf("linear team ID not configured for this repository")
 	}
 
 	var query string
@@ -207,7 +207,7 @@ func (p *LinearProvider) GetIssue(ctx context.Context, repoPath string, id strin
 
 	issue := resp.Data.Issue
 	if issue.Identifier == "" {
-		return nil, fmt.Errorf("Linear issue %q not found", id)
+		return nil, fmt.Errorf("linear issue %q not found", id)
 	}
 
 	return &Issue{
@@ -439,7 +439,7 @@ func (p *LinearProvider) RemoveLabel(ctx context.Context, repoPath string, issue
 		return fmt.Errorf("failed to update issue labels: %w", err)
 	}
 	if !updateResp.Data.IssueUpdate.Success {
-		return fmt.Errorf("Linear API returned success=false for label update on issue %q", issueID)
+		return fmt.Errorf("linear API returned success=false for label update on issue %q", issueID)
 	}
 
 	return nil
@@ -480,7 +480,7 @@ func (p *LinearProvider) Comment(ctx context.Context, repoPath string, issueID s
 		return fmt.Errorf("failed to create comment: %w", err)
 	}
 	if !commentResp.Data.CommentCreate.Success {
-		return fmt.Errorf("Linear API returned success=false for comment on issue %q", issueID)
+		return fmt.Errorf("linear API returned success=false for comment on issue %q", issueID)
 	}
 
 	return nil
@@ -503,7 +503,7 @@ func (p *LinearProvider) UpdateComment(ctx context.Context, repoPath string, iss
 		return fmt.Errorf("failed to update comment: %w", err)
 	}
 	if !updateResp.Data.CommentUpdate.Success {
-		return fmt.Errorf("Linear API returned success=false for comment update %q", commentID)
+		return fmt.Errorf("linear API returned success=false for comment update %q", commentID)
 	}
 	return nil
 }
@@ -585,7 +585,7 @@ func (p *LinearProvider) IsInSection(ctx context.Context, repoPath string, issue
 func (p *LinearProvider) MoveToSection(ctx context.Context, repoPath string, issueID string, section string) error {
 	teamID := p.config.GetLinearTeam(repoPath)
 	if teamID == "" {
-		return fmt.Errorf("Linear team ID not configured for this repository")
+		return fmt.Errorf("linear team ID not configured for this repository")
 	}
 
 	// Fetch the team's workflow states.
@@ -638,7 +638,7 @@ func (p *LinearProvider) MoveToSection(ctx context.Context, repoPath string, iss
 		return fmt.Errorf("failed to update issue state: %w", err)
 	}
 	if !updateResp.Data.IssueUpdate.Success {
-		return fmt.Errorf("Linear API returned success=false for state update on issue %q", issueID)
+		return fmt.Errorf("linear API returned success=false for state update on issue %q", issueID)
 	}
 
 	return nil
@@ -654,10 +654,7 @@ func (p *LinearProvider) FetchTeams(ctx context.Context) ([]LinearTeam, error) {
 	nodes := gqlResp.Data.Teams.Nodes
 	teams := make([]LinearTeam, len(nodes))
 	for i, team := range nodes {
-		teams[i] = LinearTeam{
-			ID:   team.ID,
-			Name: team.Name,
-		}
+		teams[i] = LinearTeam(team)
 	}
 
 	return teams, nil

@@ -15,7 +15,6 @@ var (
 	levelVar = new(slog.LevelVar)
 	logFile  *os.File
 	mu       sync.Mutex
-	logPath  string
 	initDone bool
 )
 
@@ -76,7 +75,6 @@ func Init(path string) error {
 		return fmt.Errorf("failed to set log directory permissions %s: %w", dir, err)
 	}
 
-	logPath = path
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open log file %s: %w", path, err)
@@ -119,7 +117,6 @@ func ensureInit() {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set log directory permissions %s: %v\n", dir, err)
 	}
 
-	logPath = defaultPath
 	f, err := os.OpenFile(defaultPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to open log file %s: %v\n", defaultPath, err)
@@ -214,7 +211,6 @@ func Reset() {
 		logFile = nil
 	}
 	initDone = false
-	logPath = ""
 	root = nil
 	levelVar = new(slog.LevelVar)
 }

@@ -1040,7 +1040,7 @@ func (d *Daemon) sendSlackNotification(ctx context.Context, item daemonstate.Wor
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Slack webhook returned non-200 status: %d", resp.StatusCode)
+		return fmt.Errorf("slack webhook returned non-200 status: %d", resp.StatusCode)
 	}
 
 	d.logger.Info("slack notification sent", "workItem", item.ID, "channel", payload.Channel)

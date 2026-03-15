@@ -6043,10 +6043,6 @@ func TestFormatAddressReviewPrompt(t *testing.T) {
 
 // --- startAddressReview format_command tests ---
 
-// testAddressReviewJSON is a minimal CHANGES_REQUESTED review that passes
-// FilterTranscriptComments so startAddressReview reaches the format_command logic.
-const testAddressReviewJSON = `{"number":42,"reviews":[{"author":{"login":"reviewer1"},"body":"Please fix the issue","state":"CHANGES_REQUESTED"}],"comments":[]}`
-
 // TestStartAddressReview_FormatCommandStoredInStepData verifies that when the
 // address_review workflow state has a format_command param, it is stored in
 // item.StepData.

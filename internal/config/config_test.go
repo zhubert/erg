@@ -191,7 +191,7 @@ func TestConfig_GetSession(t *testing.T) {
 	// Test getting existing session
 	sess := cfg.GetSession("session-1")
 	if sess == nil {
-		t.Error("GetSession should return session for existing ID")
+		t.Fatal("GetSession should return session for existing ID")
 	}
 	if sess.RepoPath != "/path1" {
 		t.Errorf("Expected repo path '/path1', got '%s'", sess.RepoPath)

@@ -101,7 +101,7 @@ func (p *AsanaProvider) FetchIssues(ctx context.Context, repoPath string, filter
 
 	projectID := filter.Project
 	if projectID == "" {
-		return nil, fmt.Errorf("Asana project GID not configured for this repository")
+		return nil, fmt.Errorf("asana project GID not configured for this repository")
 	}
 
 	var tasks []asanaTask
@@ -196,7 +196,7 @@ func (p *AsanaProvider) GetIssue(ctx context.Context, repoPath string, id string
 
 	task := resp.Data
 	if task.GID == "" {
-		return nil, fmt.Errorf("Asana task %q not found", id)
+		return nil, fmt.Errorf("asana task %q not found", id)
 	}
 
 	return &Issue{
@@ -378,20 +378,10 @@ func (p *AsanaProvider) GetPRLinkText(issue Issue) string {
 	return ""
 }
 
-// asanaTagsResponse represents the Asana API response for task tags.
-type asanaTagsResponse struct {
-	Data []asanaTag `json:"data"`
-}
-
 // asanaTagWithGID is a tag with both name and GID.
 type asanaTagWithGID struct {
 	GID  string `json:"gid"`
 	Name string `json:"name"`
-}
-
-// asanaTagsWithGIDResponse is the response for fetching tags with GIDs.
-type asanaTagsWithGIDResponse struct {
-	Data []asanaTagWithGID `json:"data"`
 }
 
 // RemoveLabel removes a tag from an Asana task by name.
@@ -558,7 +548,7 @@ func (p *AsanaProvider) IsInSection(ctx context.Context, repoPath string, issueI
 
 	projectGID := p.config.GetAsanaProject(repoPath)
 	if projectGID == "" {
-		return false, fmt.Errorf("Asana project GID not configured for this repository")
+		return false, fmt.Errorf("asana project GID not configured for this repository")
 	}
 
 	url := fmt.Sprintf("%s/tasks/%s?opt_fields=memberships.project.gid,memberships.section.name", p.apiBase, issueID)
@@ -611,7 +601,7 @@ func (p *AsanaProvider) MoveToSection(ctx context.Context, repoPath string, issu
 
 	projectGID := p.config.GetAsanaProject(repoPath)
 	if projectGID == "" {
-		return fmt.Errorf("Asana project GID not configured for this repository")
+		return fmt.Errorf("asana project GID not configured for this repository")
 	}
 
 	sections, err := p.fetchSections(ctx, pat, projectGID)

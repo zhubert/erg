@@ -374,10 +374,8 @@ func (d *Daemon) walkWorkflowForPosition(
 		}
 
 		// Event fired — merge data and continue checking subsequent states
-		if data != nil {
-			for k, v := range data {
-				item.StepData[k] = v
-			}
+		for k, v := range data {
+			item.StepData[k] = v
 		}
 		lastSatisfiedIdx = i
 	}

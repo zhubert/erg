@@ -1418,7 +1418,7 @@ Diff:
 	}
 
 	if title == "" {
-		return "", "", fmt.Errorf("Claude returned empty PR title")
+		return "", "", fmt.Errorf("claude returned empty PR title")
 	}
 
 	// Add issue reference to the body based on source
@@ -1598,7 +1598,7 @@ Diff:
 
 	body := strings.TrimSpace(string(output))
 	if body == "" {
-		return "", fmt.Errorf("Claude returned empty PR description")
+		return "", fmt.Errorf("claude returned empty PR description")
 	}
 
 	// Append issue link if applicable.

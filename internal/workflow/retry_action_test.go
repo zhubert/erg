@@ -452,11 +452,7 @@ func TestValidate_RetryActionParams(t *testing.T) {
 			}
 			if len(tt.wantFields) == 0 {
 				// Filter out unrelated validation errors (e.g. retry[0] checks)
-				var retryErrs []ValidationError
-				for _, e := range errs {
-					// Only surface errors from our state "step"
-					retryErrs = append(retryErrs, e)
-				}
+				retryErrs := append([]ValidationError{}, errs...)
 				if len(retryErrs) > 0 {
 					t.Errorf("expected no errors, got: %v", retryErrs)
 				}
