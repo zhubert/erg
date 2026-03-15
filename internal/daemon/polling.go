@@ -526,6 +526,56 @@ func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
 	}
 }
 
+// injectScheduledIssue creates a synthetic work item for a cron-triggered action
+// and enqueues it, subject to the concurrency limit. If the daemon is at the
+// concurrency limit the tick is silently skipped — the next cron firing will retry.
+//
+// Synthetic issues use a stable ID of the form "scheduled-<action>-<unix-day>"
+// so the same trigger does not double-enqueue within a single calendar day.
+func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trigger workflow.TriggerConfig) {
+	log := d.logger.With("component", "scheduler", "repo", repoPath, "action", trigger.Action)
+
+	maxConcurrent := d.getMaxConcurrent()
+	activeSlots := d.activeSlotCount()
+	queuedCount := len(d.state.GetWorkItemsByState(daemonstate.WorkItemQueued))
+
+	if activeSlots+queuedCount >= maxConcurrent {
+		log.Debug("at concurrency limit, skipping scheduled trigger",
+			"active", activeSlots, "queued", queuedCount, "max", maxConcurrent)
+		return
+	}
+
+	// Stable ID: one-per-day per action so the same schedule doesn't double-enqueue.
+	day := time.Now().UTC().Unix() / 86400
+	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.Action, day)
+
+	wfCfg := d.getWorkflowConfig(repoPath)
+	provider := issues.Source(wfCfg.Source.Provider)
+
+	if d.state.HasWorkItemForIssue(string(provider), issueID) {
+		log.Debug("scheduled issue already enqueued for today, skipping", "issueID", issueID)
+		return
+	}
+
+	title := fmt.Sprintf("Scheduled: %s", trigger.Action)
+	item := &daemonstate.WorkItem{
+		ID: fmt.Sprintf("%s-%s", repoPath, issueID),
+		IssueRef: config.IssueRef{
+			Source: string(provider),
+			ID:     issueID,
+			Title:  title,
+		},
+		StepData: map[string]any{
+			"_repo_path":         repoPath,
+			"_scheduled_action":  trigger.Action,
+			"_scheduled_trigger": trigger.Schedule,
+		},
+	}
+
+	d.state.AddWorkItem(item)
+	log.Info("enqueued scheduled work item", "issueID", issueID, "title", title, "workItemID", item.ID)
+}
+
 // isIssueClosed checks whether the issue backing a work item is closed.
 // Uses the IssueStateChecker interface when a provider is registered,
 // falling back to GitService.GetIssueState for GitHub if no provider is available.

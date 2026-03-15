@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/robfig/cron/v3"
 )
 
 // ValidationError describes a single validation problem.
@@ -53,6 +55,9 @@ func Validate(cfg *Config) []ValidationError {
 
 	// Settings validation
 	errs = append(errs, validateSettings(cfg.Settings)...)
+
+	// Trigger validation
+	errs = append(errs, validateTriggers(cfg.Triggers)...)
 
 	return errs
 }
@@ -756,6 +761,38 @@ func optionalBoolParam(prefix string, params map[string]any, key string) []Valid
 		}}
 	}
 	return nil
+}
+
+// validateTriggers validates cron-based trigger configurations.
+func validateTriggers(triggers []TriggerConfig) []ValidationError {
+	var errs []ValidationError
+	p := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	for i, t := range triggers {
+		prefix := fmt.Sprintf("triggers[%d]", i)
+		if t.Schedule == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".schedule",
+				Message: "schedule is required",
+			})
+		} else if _, err := p.Parse(t.Schedule); err != nil {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".schedule",
+				Message: fmt.Sprintf("invalid cron expression %q: %v", t.Schedule, err),
+			})
+		}
+		if t.Action == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".action",
+				Message: "action is required",
+			})
+		} else if !ValidActions[t.Action] {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".action",
+				Message: fmt.Sprintf("unknown action %q", t.Action),
+			})
+		}
+	}
+	return errs
 }
 
 // validatePromptPath checks that a file: path doesn't escape the repo root.

@@ -9960,6 +9960,28 @@ func TestDocumentingAction_Execute_WorkItemNotFound(t *testing.T) {
 	}
 }
 
+// --- summarizeAction tests ---
+
+func TestSummarizeAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &summarizeAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
 func TestDocumentingAction_Execute_NoRepo(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{}
@@ -9985,6 +10007,42 @@ func TestDocumentingAction_Execute_NoRepo(t *testing.T) {
 	}
 	if result.Error == nil {
 		t.Error("expected error when no repo is found")
+	}
+}
+
+func TestSummarizeAction_Execute_MissingSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "nonexistent-session",
+		StepData:  map[string]any{},
+	})
+
+	action := &summarizeAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing session")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing session")
+	}
+}
+
+func TestSummarizeAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("ai.summarize") == nil {
+		t.Error("ai.summarize not registered in action registry")
 	}
 }
 
@@ -10290,5 +10348,161 @@ func TestStartDocumenting_UsesCustomSystemPrompt(t *testing.T) {
 	}
 	if capturedRunner.systemPrompt != customPrompt {
 		t.Errorf("expected custom prompt %q, got %q", customPrompt, capturedRunner.systemPrompt)
+	}
+}
+
+func TestStartSummarize_CreatesWorker(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+	// Mock the git diff call that startSummarize makes.
+	mockExec.AddPrefixMatch("git", []string{"diff"}, exec.MockResponse{
+		Stdout: []byte("diff --git a/foo.go b/foo.go\n+added line\n"),
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	sess.RepoPath = "/test/repo"
+	sess.WorkTree = "/test/worktree-sess-1"
+	sess.BaseBranch = "main"
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "work-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42", Title: "Fix bug"},
+		SessionID:   "sess-1",
+		Branch:      "feature-42",
+		CurrentStep: "summarize",
+		StepData:    map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	item, _ := d.state.GetWorkItem("work-1")
+
+	err := d.startSummarize(t.Context(), item)
+	if err != nil {
+		t.Fatalf("startSummarize failed unexpectedly: %v", err)
+	}
+
+	// A worker should have been registered.
+	d.mu.Lock()
+	_, workerExists := d.workers["work-1"]
+	d.mu.Unlock()
+	if !workerExists {
+		t.Error("expected a worker to be registered for the work item")
+	}
+}
+
+// --- injectScheduledIssue tests ---
+
+func TestInjectScheduledIssue_EnqueuesWorkItem(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", Action: "ai.code"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) == 0 {
+		t.Fatal("expected a work item to be queued")
+	}
+	item := queued[0]
+	if item.IssueRef.Source != "github" {
+		t.Errorf("expected source=github, got %q", item.IssueRef.Source)
+	}
+	if item.StepData["_scheduled_action"] != "ai.code" {
+		t.Errorf("expected _scheduled_action=ai.code, got %v", item.StepData["_scheduled_action"])
+	}
+}
+
+func TestInjectScheduledIssue_RespectsMaxConcurrent(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 1
+
+	// Fill the concurrency slot with a queued item (queuedCount >= maxConcurrent).
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "existing-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "1"},
+		State:    daemonstate.WorkItemQueued,
+		StepData: map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", Action: "ai.code"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	// The existing queued item should still be there, but no new item should have been injected.
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected exactly 1 queued item (the existing one), got %d", len(queued))
+	}
+	if queued[0].ID != "existing-1" {
+		t.Errorf("expected existing-1 to be the queued item, got %q", queued[0].ID)
+	}
+}
+
+func TestInjectScheduledIssue_IdempotentWithinDay(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", Action: "ai.code"}
+
+	// Inject twice — should only create one work item.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected exactly 1 queued item after 2 injections, got %d", len(queued))
+	}
+}
+
+func TestStartScheduler_SkippedInOnceMode(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	d.once = true
+
+	d.startScheduler(context.Background())
+
+	if d.scheduler != nil {
+		t.Error("expected scheduler to be nil in --once mode")
+	}
+}
+
+func TestStartScheduler_RegistersTriggers(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+
+	// Add triggers to the workflow config.
+	wfCfg := d.workflowConfigs["/test/repo"]
+	wfCfg.Triggers = []workflow.TriggerConfig{
+		{Schedule: "0 2 * * *", Action: "ai.code"},
+	}
+
+	d.startScheduler(context.Background())
+	defer d.stopScheduler()
+
+	if d.scheduler == nil {
+		t.Fatal("expected scheduler to be non-nil")
+	}
+	// Verify entries were registered (cron.Cron.Entries() returns them).
+	entries := d.scheduler.Entries()
+	if len(entries) == 0 {
+		t.Error("expected at least one cron entry to be registered")
 	}
 }

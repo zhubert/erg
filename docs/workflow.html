@@ -1396,6 +1396,65 @@
   <span class="ck">merge_method:</span> <span class="cv">squash</span>       <span class="cc"># rebase | squash | merge</span></pre>
         </div>
 
+        <h3 id="triggers">triggers block</h3>
+        <p>
+          The optional top-level <code>triggers</code> list registers cron-based
+          schedules that fire workflows automatically without a human-filed issue.
+          Each entry creates a synthetic work item that flows through the normal
+          workflow state machine, so scheduled runs appear in the dashboard and
+          <code>erg stats</code> like any other session.
+        </p>
+        <p>
+          Triggers use standard 5-field cron syntax
+          (<code>minute hour day-of-month month day-of-week</code>). Schedules are
+          ignored when the daemon runs in <code>--once</code> mode
+          (<code>erg run</code>). If the concurrency limit is reached when a
+          trigger fires, that tick is silently skipped and retried at the next
+          scheduled time.
+        </p>
+        <table class="cli-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>schedule</code></td>
+              <td>string</td>
+              <td>yes</td>
+              <td>
+                Standard 5-field cron expression, e.g.
+                <code>"0 2 * * *"</code> (nightly at 2 AM UTC).
+              </td>
+            </tr>
+            <tr>
+              <td><code>action</code></td>
+              <td>string</td>
+              <td>yes</td>
+              <td>
+                Workflow action to associate with the synthetic issue, e.g.
+                <code>ai.code</code> or <code>ai.summarize</code>. Must be a
+                recognised action name.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="code-block">
+          <span class="code-filename">triggers example</span>
+          <pre><span class="ck">triggers:</span>
+  <span class="cc"># Nightly dependency update</span>
+  - <span class="ck">schedule:</span> <span class="cv">"0 2 * * *"</span>
+    <span class="ck">action:</span>   <span class="cv">ai.code</span>
+
+  <span class="cc"># Weekly security review every Monday at 9 AM</span>
+  - <span class="ck">schedule:</span> <span class="cv">"0 9 * * 1"</span>
+    <span class="ck">action:</span>   <span class="cv">ai.summarize</span></pre>
+        </div>
+
         <h3 id="source-filter">source.filter keys</h3>
         <p>
           The <code>filter</code> block under <code>source</code> controls which

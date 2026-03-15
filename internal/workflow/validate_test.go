@@ -1338,3 +1338,128 @@ func TestOptionalPositiveNum(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTriggers(t *testing.T) {
+	tests := []struct {
+		name       string
+		triggers   []TriggerConfig
+		wantFields []string
+	}{
+		{
+			name:       "nil triggers",
+			triggers:   nil,
+			wantFields: nil,
+		},
+		{
+			name:       "empty triggers",
+			triggers:   []TriggerConfig{},
+			wantFields: nil,
+		},
+		{
+			name:       "valid trigger",
+			triggers:   []TriggerConfig{{Schedule: "0 2 * * *", Action: "ai.code"}},
+			wantFields: nil,
+		},
+		{
+			name:       "valid trigger with ai.summarize",
+			triggers:   []TriggerConfig{{Schedule: "0 9 * * 1", Action: "ai.summarize"}},
+			wantFields: nil,
+		},
+		{
+			name:       "missing schedule",
+			triggers:   []TriggerConfig{{Action: "ai.code"}},
+			wantFields: []string{"triggers[0].schedule"},
+		},
+		{
+			name:       "invalid cron expression",
+			triggers:   []TriggerConfig{{Schedule: "not-a-cron", Action: "ai.code"}},
+			wantFields: []string{"triggers[0].schedule"},
+		},
+		{
+			name:       "missing action",
+			triggers:   []TriggerConfig{{Schedule: "0 2 * * *"}},
+			wantFields: []string{"triggers[0].action"},
+		},
+		{
+			name:       "unknown action",
+			triggers:   []TriggerConfig{{Schedule: "0 2 * * *", Action: "ai.nonexistent"}},
+			wantFields: []string{"triggers[0].action"},
+		},
+		{
+			name: "multiple triggers with one invalid",
+			triggers: []TriggerConfig{
+				{Schedule: "0 2 * * *", Action: "ai.code"},
+				{Schedule: "bad cron", Action: "ai.plan"},
+			},
+			wantFields: []string{"triggers[1].schedule"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := validateTriggers(tt.triggers)
+			fieldSet := make(map[string]bool)
+			for _, e := range errs {
+				fieldSet[e.Field] = true
+			}
+			for _, wf := range tt.wantFields {
+				if !fieldSet[wf] {
+					t.Errorf("expected error on field %q, got errors: %v", wf, errs)
+				}
+			}
+			if len(tt.wantFields) == 0 && len(errs) > 0 {
+				t.Errorf("expected no errors, got: %v", errs)
+			}
+		})
+	}
+}
+
+func TestValidate_WithValidTrigger(t *testing.T) {
+	cfg := &Config{
+		Start: "coding",
+		Source: SourceConfig{
+			Provider: "github",
+			Filter:   FilterConfig{Label: "ai-assisted"},
+		},
+		States: map[string]*State{
+			"coding": {Type: StateTypeTask, Action: "ai.code", Next: "done"},
+			"done":   {Type: StateTypeSucceed},
+		},
+		Triggers: []TriggerConfig{
+			{Schedule: "0 2 * * *", Action: "ai.code"},
+		},
+	}
+
+	if errs := Validate(cfg); len(errs) > 0 {
+		t.Errorf("expected no validation errors, got: %v", errs)
+	}
+}
+
+func TestValidate_WithInvalidTrigger(t *testing.T) {
+	cfg := &Config{
+		Start: "coding",
+		Source: SourceConfig{
+			Provider: "github",
+			Filter:   FilterConfig{Label: "ai-assisted"},
+		},
+		States: map[string]*State{
+			"coding": {Type: StateTypeTask, Action: "ai.code", Next: "done"},
+			"done":   {Type: StateTypeSucceed},
+		},
+		Triggers: []TriggerConfig{
+			{Schedule: "not-valid", Action: "ai.code"},
+		},
+	}
+
+	errs := Validate(cfg)
+	found := false
+	for _, e := range errs {
+		if e.Field == "triggers[0].schedule" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected error on triggers[0].schedule, got: %v", errs)
+	}
+}
