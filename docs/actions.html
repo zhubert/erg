@@ -1326,9 +1326,9 @@
           </div>
           <p class="action-desc">
             Starts an autonomous Claude Code session that reads the issue,
-            analyzes recent code changes, and generates or updates documentation
-            files (READMEs, inline doc comments, API docs). Claude is instructed
-            to only modify documentation files (<code>.md</code>,
+            analyzes recent code changes, and generates or updates external
+            documentation files (READMEs, guides, API reference pages). Claude
+            is instructed to only modify documentation files (<code>.md</code>,
             <code>.rst</code>, files under <code>docs/</code>) and never modify
             source code. The orchestrator waits for the session to complete
             before advancing.
@@ -1348,16 +1348,16 @@
                 <tr>
                   <td>max_turns</td>
                   <td>int</td>
-                  <td>50</td>
+                  <td><em>unbounded</em> (50 in <code>builtin:document</code>)</td>
                   <td>Maximum number of Claude turns per session.</td>
                 </tr>
                 <tr>
                   <td>max_duration</td>
                   <td>duration</td>
-                  <td>30m</td>
+                  <td><em>unbounded</em> (30m in <code>builtin:document</code>)</td>
                   <td>
                     Hard time limit for the session, e.g. <code>20m</code>,
-                    <code>2h</code>.
+                    <code>2h</code>. Omit to run without a time cap.
                   </td>
                 </tr>
                 <tr>
@@ -1418,8 +1418,9 @@
             >
               <li>
                 If the branch already has an open PR, documenting is skipped and
-                the workflow advances to <code>github.create_pr</code>, which
-                detects the existing PR.
+                the workflow advances to the state's configured
+                <code>next</code> step (commonly <code>github.create_pr</code>
+                in the default issue-to-merge workflow).
               </li>
               <li>
                 If the branch was already merged, the issue is closed and the
