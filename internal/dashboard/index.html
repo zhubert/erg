@@ -902,7 +902,7 @@ var Idiomorph=function(){"use strict";let o=new Set;let n={morphStyle:"outerHTML
 
     const issueUrl = item.issue_ref && item.issue_ref.url;
     if (issueUrl && /^https?:\/\//i.test(issueUrl)) {
-      extraHtml += `<div class="item-pr"><a class="ctrl-btn issue" href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener">Open Issue</a></div>`;
+      extraHtml += `<div class="item-pr"><a class="ctrl-btn issue" href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener">View Issue</a></div>`;
     }
 
     if (item.error_message) {
