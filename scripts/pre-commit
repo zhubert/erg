@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+# --- goimports: auto-format staged Go files ---
+staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.go')
+if [ -n "$staged" ]; then
+  goimports -w $staged
+  git add $staged
+fi
+
+# --- go vet: catch common mistakes ---
+go vet ./...

@@ -54,7 +54,6 @@ type Daemon struct {
 	maxTurns              int
 	maxDuration           int
 	autoAddressPRComments bool
-	autoBroadcastPR       bool
 	autoMerge             bool
 	mergeMethod           string
 	pollInterval          time.Duration

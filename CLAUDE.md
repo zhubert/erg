@@ -20,6 +20,22 @@ go build -o erg .
 go test -p=1 -count=1 ./...
 ```
 
+## Code Quality
+
+Run these checks before considering any task complete:
+
+```bash
+goimports -w .              # Auto-format all Go files
+go vet ./...                # Catch common mistakes
+staticcheck ./...           # Code quality, simplification, dead code patterns
+deadcode -test ./...        # Find unreachable exported/unexported functions
+gosec ./...                 # Security analysis (SQL injection, hardcoded creds, etc.)
+```
+
+- Fix all issues found by these tools — do not leave warnings
+- `goimports` and `go vet` also run as a pre-commit hook (`scripts/pre-commit`)
+- If adding a new tool dependency, ensure it is installed: `go install <pkg>@latest`
+
 ## Debug Logs
 
 ```bash
@@ -64,7 +80,7 @@ internal/
   manifest/           Multi-repo manifest config: Manifest, RepoEntry, LoadFile (leaf)
   testutil/           Shared test helpers: DiscardLogger, TestConfig (leaf)
   worker/             SessionWorker — manages a single session's lifecycle
-  workflow/           Workflow engine, config, validation, and visualization
+  workflow/           Workflow engine, config, and validation
   daemon/             Persistent orchestrator: polling, actions, events, recovery
   dashboard/          Live web dashboard server with SSE support
   sanitize/           Prompt injection defense: strips hidden/invisible content, wraps untrusted data
