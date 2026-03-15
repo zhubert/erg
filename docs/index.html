@@ -1057,7 +1057,6 @@
         }
       }
     </style>
-    <script src="./mermaid.min.js"></script>
   </head>
   <body>
     <div class="mobile-header">
@@ -1081,7 +1080,7 @@
         <section id="overview">
           <span class="hero-badge">agent orchestrator</span>
           <p class="hero-tagline">
-            erg is <span class="hero-tagline-accent" id="rotating-tagline">workflow-driven.</span>
+            erg <span class="hero-tagline-accent" id="rotating-tagline">follows your workflow.</span>
           </p>
           <p>
             Autonomous orchestrator for Claude Code. Polls GitHub, Asana, or
@@ -1300,8 +1299,6 @@
     </div>
 
     <script>
-      mermaid.initialize({ startOnLoad: false, theme: "dark" });
-
       function switchTab(btn, tab) {
         var tabs = btn.closest(".example-tabs");
         tabs.querySelectorAll(".tab-btn").forEach(function (b) {
@@ -1313,11 +1310,6 @@
         });
         var panel = tabs.querySelector('[data-panel="' + tab + '"]');
         if (panel) panel.style.display = "";
-        if (tab === "diagram" && !tabs.dataset.rendered) {
-          tabs.dataset.rendered = "1";
-          var el = tabs.querySelector(".mermaid");
-          if (el) mermaid.run({ nodes: [el] });
-        }
       }
 
       function copyCmd(btn, cmd) {
@@ -1349,12 +1341,10 @@
     <script>
       (function () {
         var taglines = [
-          "workflow-driven.",
-          "autonomously shipped.",
-          "issue to PR, automated.",
-          "relentlessly shipping.",
-          "your AI coworker.",
-          "always reviewing.",
+          "follows your workflow.",
+          "automates from issue to PR.",
+          "is your AI coworker.",
+          "collaborates from plan to review."
         ];
         var el = document.getElementById("rotating-tagline");
         if (!el) return;
@@ -1366,7 +1356,7 @@
             el.textContent = taglines[idx];
             el.style.opacity = "1";
           }, 600);
-        }, 3000);
+        }, 8000);
       })();
     </script>
   </body>

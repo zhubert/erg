@@ -1174,7 +1174,6 @@
         }
       }
     </style>
-    <script src="./mermaid.min.js"></script>
   </head>
   <body>
     <div class="mobile-header">
@@ -3070,8 +3069,6 @@ https://github.com/your-org/your-repo/pull/99</pre
     </div>
 
     <script>
-      mermaid.initialize({ startOnLoad: false, theme: "dark" });
-
       function switchTab(btn, tab) {
         var tabs = btn.closest(".example-tabs");
         tabs.querySelectorAll(".tab-btn").forEach(function (b) {
@@ -3083,11 +3080,6 @@ https://github.com/your-org/your-repo/pull/99</pre
         });
         var panel = tabs.querySelector('[data-panel="' + tab + '"]');
         if (panel) panel.style.display = "";
-        if (tab === "diagram" && !tabs.dataset.rendered) {
-          tabs.dataset.rendered = "1";
-          var el = tabs.querySelector(".mermaid");
-          if (el) mermaid.run({ nodes: [el] });
-        }
       }
 
       function copyCmd(btn, cmd) {
