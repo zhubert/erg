@@ -143,7 +143,7 @@ func (d *Daemon) pollForNewIssues(ctx context.Context) {
 			queuedCount++
 			remaining--
 
-			log.Info("queued new issue", "event", "session.created", "issue", issue.ID, "title", issue.Title, "provider", provider, "workItem", item.ID)
+			log.Info("queued new issue", "event", "session.created", "issue", issue.ID, "title", issue.Title, "provider", provider, "workItem", item.ID, "repo", repoPath)
 		}
 	}
 }

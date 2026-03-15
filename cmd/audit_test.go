@@ -140,11 +140,18 @@ func TestAuditJSON_Output(t *testing.T) {
 	auditEvent = "pr.merged"
 	defer resetAuditFlags()
 
-	err := streamAuditJSON(makeReader(sampleLines), time.Time{})
+	var buf bytes.Buffer
+	err := streamAuditJSON(&buf, makeReader(sampleLines), time.Time{})
 	if err != nil {
 		t.Fatalf("streamAuditJSON returned error: %v", err)
 	}
-	// If it runs without error, the JSON filter worked.
+	out := buf.String()
+	if !strings.Contains(out, "pr.merged") {
+		t.Error("output should contain pr.merged event")
+	}
+	if strings.Contains(out, "session.created") {
+		t.Error("output should not contain session.created events when filtering for pr.merged")
+	}
 }
 
 func TestParseDuration(t *testing.T) {
@@ -157,6 +164,8 @@ func TestParseDuration(t *testing.T) {
 		{"7d", false, 7 * 24 * time.Hour},
 		{"1d", false, 24 * time.Hour},
 		{"30m", false, 30 * time.Minute},
+		{"0d", true, 0},
+		{"-1d", true, 0},
 		{"bad", true, 0},
 	}
 

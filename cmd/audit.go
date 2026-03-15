@@ -6,12 +6,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zhubert/erg/internal/logger"
 )
+
+// maxScannerBufSize is the maximum buffer size for scanning log lines.
+// erg.log can contain very long JSON lines, so we use 1 MiB instead of
+// bufio's default 64 KiB.
+const maxScannerBufSize = 1024 * 1024
 
 var (
 	auditEvent    string
@@ -75,7 +81,7 @@ func runAudit(cmd *cobra.Command, args []string) error {
 	}
 
 	if auditJSON {
-		return streamAuditJSON(f, since)
+		return streamAuditJSON(cmd.OutOrStdout(), f, since)
 	}
 	return streamAuditTable(cmd.OutOrStdout(), f, since)
 }
@@ -83,12 +89,10 @@ func runAudit(cmd *cobra.Command, args []string) error {
 // parseDuration extends time.ParseDuration to support "d" (days) suffix.
 func parseDuration(s string) (time.Duration, error) {
 	if len(s) > 1 && s[len(s)-1] == 'd' {
-		days, err := fmt.Sscanf(s[:len(s)-1], "%f", new(float64))
-		if err != nil || days == 0 {
+		d, err := strconv.ParseFloat(s[:len(s)-1], 64)
+		if err != nil || d <= 0 {
 			return 0, fmt.Errorf("invalid days value: %s", s)
 		}
-		var d float64
-		fmt.Sscanf(s[:len(s)-1], "%f", &d) //nolint:errcheck
 		return time.Duration(d * float64(24*time.Hour)), nil
 	}
 	return time.ParseDuration(s)
@@ -134,8 +138,9 @@ func matchesFilters(entry map[string]any, since time.Time) bool {
 	return true
 }
 
-func streamAuditJSON(r io.Reader, since time.Time) error {
+func streamAuditJSON(w io.Writer, r io.Reader, since time.Time) error {
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), maxScannerBufSize)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		var entry map[string]any
@@ -145,7 +150,7 @@ func streamAuditJSON(r io.Reader, since time.Time) error {
 		if !matchesFilters(entry, since) {
 			continue
 		}
-		fmt.Println(string(line))
+		fmt.Fprintln(w, string(line))
 	}
 	return scanner.Err()
 }
@@ -155,6 +160,7 @@ func streamAuditTable(w io.Writer, r io.Reader, since time.Time) error {
 	fmt.Fprintln(tw, "TIME\tLEVEL\tEVENT\tMESSAGE\tWORK ITEM")
 
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), maxScannerBufSize)
 	found := 0
 	for scanner.Scan() {
 		var entry map[string]any
