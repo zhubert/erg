@@ -10407,7 +10407,7 @@ func TestInjectScheduledIssue_EnqueuesWorkItem(t *testing.T) {
 	d.repoFilter = "/test/repo"
 	d.maxConcurrent = 5
 
-	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", Action: "ai.code"}
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
 	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
 
 	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
@@ -10418,8 +10418,11 @@ func TestInjectScheduledIssue_EnqueuesWorkItem(t *testing.T) {
 	if item.IssueRef.Source != "github" {
 		t.Errorf("expected source=github, got %q", item.IssueRef.Source)
 	}
-	if item.StepData["_scheduled_action"] != "ai.code" {
-		t.Errorf("expected _scheduled_action=ai.code, got %v", item.StepData["_scheduled_action"])
+	if item.CurrentStep != "coding" {
+		t.Errorf("expected CurrentStep=coding, got %q", item.CurrentStep)
+	}
+	if item.StepData["_synthetic"] != "true" {
+		t.Errorf("expected _synthetic=true, got %v", item.StepData["_synthetic"])
 	}
 }
 
@@ -10438,7 +10441,7 @@ func TestInjectScheduledIssue_RespectsMaxConcurrent(t *testing.T) {
 		StepData: map[string]any{"_repo_path": "/test/repo"},
 	})
 
-	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", Action: "ai.code"}
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
 	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
 
 	// The existing queued item should still be there, but no new item should have been injected.
@@ -10458,7 +10461,7 @@ func TestInjectScheduledIssue_IdempotentWithinDay(t *testing.T) {
 	d.repoFilter = "/test/repo"
 	d.maxConcurrent = 5
 
-	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", Action: "ai.code"}
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
 
 	// Inject twice — should only create one work item.
 	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
@@ -10467,6 +10470,63 @@ func TestInjectScheduledIssue_IdempotentWithinDay(t *testing.T) {
 	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
 	if len(queued) != 1 {
 		t.Errorf("expected exactly 1 queued item after 2 injections, got %d", len(queued))
+	}
+}
+
+func TestInjectScheduledIssue_SkippedWhenConfigSavePaused(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+	d.configSavePaused = true
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 0 {
+		t.Errorf("expected 0 queued items when configSavePaused, got %d", len(queued))
+	}
+}
+
+func TestFetchIssueComments_SkipsSyntheticItems(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+
+	item := daemonstate.WorkItem{
+		ID:       "synthetic-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "scheduled-coding-12345"},
+		StepData: map[string]any{"_synthetic": "true"},
+	}
+
+	comments, err := d.fetchIssueComments(context.Background(), "/test/repo", item)
+	if err != nil {
+		t.Fatalf("expected nil error for synthetic item, got: %v", err)
+	}
+	if comments != nil {
+		t.Errorf("expected nil comments for synthetic item, got %d", len(comments))
+	}
+}
+
+func TestIsIssueClosed_ReturnsFalseForSyntheticItems(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+
+	item := daemonstate.WorkItem{
+		ID:       "synthetic-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "scheduled-coding-12345"},
+		StepData: map[string]any{"_synthetic": "true"},
+	}
+
+	closed, err := d.isIssueClosed(context.Background(), "/test/repo", item)
+	if err != nil {
+		t.Fatalf("expected nil error for synthetic item, got: %v", err)
+	}
+	if closed {
+		t.Error("expected false for synthetic item, got true")
 	}
 }
 
@@ -10491,7 +10551,7 @@ func TestStartScheduler_RegistersTriggers(t *testing.T) {
 	// Add triggers to the workflow config.
 	wfCfg := d.workflowConfigs["/test/repo"]
 	wfCfg.Triggers = []workflow.TriggerConfig{
-		{Schedule: "0 2 * * *", Action: "ai.code"},
+		{Schedule: "0 2 * * *", State: "coding"},
 	}
 
 	d.startScheduler(context.Background())

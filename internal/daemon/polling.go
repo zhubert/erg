@@ -533,7 +533,12 @@ func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
 // Synthetic issues use a stable ID of the form "scheduled-<action>-<unix-day>"
 // so the same trigger does not double-enqueue within a single calendar day.
 func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trigger workflow.TriggerConfig) {
-	log := d.logger.With("component", "scheduler", "repo", repoPath, "action", trigger.Action)
+	log := d.logger.With("component", "scheduler", "repo", repoPath, "state", trigger.State)
+
+	if d.configSavePaused {
+		log.Warn("config save failures exceed threshold, skipping scheduled trigger")
+		return
+	}
 
 	maxConcurrent := d.getMaxConcurrent()
 	activeSlots := d.activeSlotCount()
@@ -545,9 +550,9 @@ func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trig
 		return
 	}
 
-	// Stable ID: one-per-day per action so the same schedule doesn't double-enqueue.
+	// Stable ID: one-per-day per state so the same schedule doesn't double-enqueue.
 	day := time.Now().UTC().Unix() / 86400
-	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.Action, day)
+	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.State, day)
 
 	wfCfg := d.getWorkflowConfig(repoPath)
 	provider := issues.Source(wfCfg.Source.Provider)
@@ -557,7 +562,7 @@ func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trig
 		return
 	}
 
-	title := fmt.Sprintf("Scheduled: %s", trigger.Action)
+	title := fmt.Sprintf("Scheduled: %s", trigger.State)
 	item := &daemonstate.WorkItem{
 		ID: fmt.Sprintf("%s-%s", repoPath, issueID),
 		IssueRef: config.IssueRef{
@@ -565,9 +570,10 @@ func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trig
 			ID:     issueID,
 			Title:  title,
 		},
+		CurrentStep: trigger.State,
 		StepData: map[string]any{
 			"_repo_path":         repoPath,
-			"_scheduled_action":  trigger.Action,
+			"_synthetic":         "true",
 			"_scheduled_trigger": trigger.Schedule,
 		},
 	}
@@ -579,7 +585,12 @@ func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trig
 // isIssueClosed checks whether the issue backing a work item is closed.
 // Uses the IssueStateChecker interface when a provider is registered,
 // falling back to GitService.GetIssueState for GitHub if no provider is available.
+// Synthetic work items (scheduled triggers) are never considered closed.
 func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemonstate.WorkItem) (bool, error) {
+	if item.StepData["_synthetic"] == "true" {
+		return false, nil
+	}
+
 	checkCtx, cancel := context.WithTimeout(ctx, timeoutQuickAPI)
 	defer cancel()
 

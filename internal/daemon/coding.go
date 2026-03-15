@@ -37,7 +37,11 @@ func maybeAppendSimplify(msg string, simplify bool) string {
 }
 
 // fetchIssueComments retrieves comments for a work item's issue from the appropriate provider.
+// Synthetic work items (scheduled triggers) are skipped since they have no real issue.
 func (d *Daemon) fetchIssueComments(ctx context.Context, repoPath string, item daemonstate.WorkItem) ([]issues.IssueComment, error) {
+	if item.StepData["_synthetic"] == "true" {
+		return nil, nil
+	}
 	source := item.IssueRef.Source
 
 	if source == "github" {
@@ -1453,7 +1457,7 @@ func (d *Daemon) startSummarize(ctx context.Context, item daemonstate.WorkItem) 
 		initialMsg += fmt.Sprintf("\n\nPR: %s", item.PRURL)
 	}
 	if diff != "" {
-		initialMsg += "\n\n---\nPR diff:\n```diff\n" + diff + "\n```"
+		initialMsg += "\n\n---\nPR diff:\n" + sanitize.UntrustedContent("pr_diff", diff)
 	} else {
 		initialMsg += "\n\n(No diff available — summarize based on the issue description above.)"
 	}

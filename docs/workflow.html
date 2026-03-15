@@ -1432,13 +1432,13 @@
               </td>
             </tr>
             <tr>
-              <td><code>action</code></td>
+              <td><code>state</code></td>
               <td>string</td>
               <td>yes</td>
               <td>
-                Workflow action to associate with the synthetic issue, e.g.
-                <code>ai.code</code> or <code>ai.summarize</code>. Must be a
-                recognised action name.
+                Workflow state name to start from when the trigger fires, e.g.
+                <code>coding</code> or <code>summarize</code>. Must be a state
+                defined in the workflow's <code>states</code> map.
               </td>
             </tr>
           </tbody>
@@ -1448,11 +1448,11 @@
           <pre><span class="ck">triggers:</span>
   <span class="cc"># Nightly dependency update</span>
   - <span class="ck">schedule:</span> <span class="cv">"0 2 * * *"</span>
-    <span class="ck">action:</span>   <span class="cv">ai.code</span>
+    <span class="ck">state:</span>    <span class="cv">coding</span>
 
-  <span class="cc"># Weekly security review every Monday at 9 AM</span>
+  <span class="cc"># Weekly security review every Monday at 9 AM UTC</span>
   - <span class="ck">schedule:</span> <span class="cv">"0 9 * * 1"</span>
-    <span class="ck">action:</span>   <span class="cv">ai.summarize</span></pre>
+    <span class="ck">state:</span>    <span class="cv">summarize</span></pre>
         </div>
 
         <h3 id="source-filter">source.filter keys</h3>

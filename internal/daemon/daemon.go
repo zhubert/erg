@@ -494,7 +494,7 @@ func (d *Daemon) startScheduler(ctx context.Context) {
 		return
 	}
 
-	d.scheduler = cron.New()
+	d.scheduler = cron.New(cron.WithLocation(time.UTC))
 
 	for repoPath, wfCfg := range d.workflowConfigs {
 		for _, trigger := range wfCfg.Triggers {
@@ -505,11 +505,11 @@ func (d *Daemon) startScheduler(ctx context.Context) {
 			})
 			if err != nil {
 				d.logger.Warn("failed to register schedule trigger",
-					"repo", repoPath, "schedule", trigger.Schedule, "action", trigger.Action, "error", err)
+					"repo", repoPath, "schedule", trigger.Schedule, "state", trigger.State, "error", err)
 				continue
 			}
 			d.logger.Info("registered schedule trigger",
-				"repo", repoPath, "schedule", trigger.Schedule, "action", trigger.Action)
+				"repo", repoPath, "schedule", trigger.Schedule, "state", trigger.State)
 		}
 	}
 

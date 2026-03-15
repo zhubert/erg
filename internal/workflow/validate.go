@@ -57,7 +57,7 @@ func Validate(cfg *Config) []ValidationError {
 	errs = append(errs, validateSettings(cfg.Settings)...)
 
 	// Trigger validation
-	errs = append(errs, validateTriggers(cfg.Triggers)...)
+	errs = append(errs, validateTriggers(cfg.Triggers, cfg.States)...)
 
 	return errs
 }
@@ -764,7 +764,7 @@ func optionalBoolParam(prefix string, params map[string]any, key string) []Valid
 }
 
 // validateTriggers validates cron-based trigger configurations.
-func validateTriggers(triggers []TriggerConfig) []ValidationError {
+func validateTriggers(triggers []TriggerConfig, states map[string]*State) []ValidationError {
 	var errs []ValidationError
 	p := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	for i, t := range triggers {
@@ -780,15 +780,15 @@ func validateTriggers(triggers []TriggerConfig) []ValidationError {
 				Message: fmt.Sprintf("invalid cron expression %q: %v", t.Schedule, err),
 			})
 		}
-		if t.Action == "" {
+		if t.State == "" {
 			errs = append(errs, ValidationError{
-				Field:   prefix + ".action",
-				Message: "action is required",
+				Field:   prefix + ".state",
+				Message: "state is required",
 			})
-		} else if !ValidActions[t.Action] {
+		} else if states[t.State] == nil {
 			errs = append(errs, ValidationError{
-				Field:   prefix + ".action",
-				Message: fmt.Sprintf("unknown action %q", t.Action),
+				Field:   prefix + ".state",
+				Message: fmt.Sprintf("unknown state %q", t.State),
 			})
 		}
 	}

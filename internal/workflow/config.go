@@ -205,7 +205,7 @@ func (d Duration) MarshalYAML() (any, error) {
 // TriggerConfig defines a cron-based trigger that fires workflows on a schedule.
 type TriggerConfig struct {
 	Schedule string `yaml:"schedule"` // cron expression (standard 5-field format)
-	Action   string `yaml:"action"`   // workflow action to run
+	State    string `yaml:"state"`    // workflow state name to start from
 }
 
 // ValidActions is the set of recognized action names for task states.

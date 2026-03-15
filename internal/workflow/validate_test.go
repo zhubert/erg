@@ -1340,6 +1340,12 @@ func TestOptionalPositiveNum(t *testing.T) {
 }
 
 func TestValidateTriggers(t *testing.T) {
+	states := map[string]*State{
+		"coding":    {Type: StateTypeTask, Action: "ai.code", Next: "done"},
+		"summarize": {Type: StateTypeTask, Action: "ai.summarize", Next: "done"},
+		"plan":      {Type: StateTypeTask, Action: "ai.plan", Next: "done"},
+		"done":      {Type: StateTypeSucceed},
+	}
 	tests := []struct {
 		name       string
 		triggers   []TriggerConfig
@@ -1357,39 +1363,39 @@ func TestValidateTriggers(t *testing.T) {
 		},
 		{
 			name:       "valid trigger",
-			triggers:   []TriggerConfig{{Schedule: "0 2 * * *", Action: "ai.code"}},
+			triggers:   []TriggerConfig{{Schedule: "0 2 * * *", State: "coding"}},
 			wantFields: nil,
 		},
 		{
-			name:       "valid trigger with ai.summarize",
-			triggers:   []TriggerConfig{{Schedule: "0 9 * * 1", Action: "ai.summarize"}},
+			name:       "valid trigger with summarize state",
+			triggers:   []TriggerConfig{{Schedule: "0 9 * * 1", State: "summarize"}},
 			wantFields: nil,
 		},
 		{
 			name:       "missing schedule",
-			triggers:   []TriggerConfig{{Action: "ai.code"}},
+			triggers:   []TriggerConfig{{State: "coding"}},
 			wantFields: []string{"triggers[0].schedule"},
 		},
 		{
 			name:       "invalid cron expression",
-			triggers:   []TriggerConfig{{Schedule: "not-a-cron", Action: "ai.code"}},
+			triggers:   []TriggerConfig{{Schedule: "not-a-cron", State: "coding"}},
 			wantFields: []string{"triggers[0].schedule"},
 		},
 		{
-			name:       "missing action",
+			name:       "missing state",
 			triggers:   []TriggerConfig{{Schedule: "0 2 * * *"}},
-			wantFields: []string{"triggers[0].action"},
+			wantFields: []string{"triggers[0].state"},
 		},
 		{
-			name:       "unknown action",
-			triggers:   []TriggerConfig{{Schedule: "0 2 * * *", Action: "ai.nonexistent"}},
-			wantFields: []string{"triggers[0].action"},
+			name:       "unknown state",
+			triggers:   []TriggerConfig{{Schedule: "0 2 * * *", State: "nonexistent"}},
+			wantFields: []string{"triggers[0].state"},
 		},
 		{
 			name: "multiple triggers with one invalid",
 			triggers: []TriggerConfig{
-				{Schedule: "0 2 * * *", Action: "ai.code"},
-				{Schedule: "bad cron", Action: "ai.plan"},
+				{Schedule: "0 2 * * *", State: "coding"},
+				{Schedule: "bad cron", State: "plan"},
 			},
 			wantFields: []string{"triggers[1].schedule"},
 		},
@@ -1397,7 +1403,7 @@ func TestValidateTriggers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := validateTriggers(tt.triggers)
+			errs := validateTriggers(tt.triggers, states)
 			fieldSet := make(map[string]bool)
 			for _, e := range errs {
 				fieldSet[e.Field] = true
@@ -1426,7 +1432,7 @@ func TestValidate_WithValidTrigger(t *testing.T) {
 			"done":   {Type: StateTypeSucceed},
 		},
 		Triggers: []TriggerConfig{
-			{Schedule: "0 2 * * *", Action: "ai.code"},
+			{Schedule: "0 2 * * *", State: "coding"},
 		},
 	}
 
@@ -1447,7 +1453,7 @@ func TestValidate_WithInvalidTrigger(t *testing.T) {
 			"done":   {Type: StateTypeSucceed},
 		},
 		Triggers: []TriggerConfig{
-			{Schedule: "not-valid", Action: "ai.code"},
+			{Schedule: "not-valid", State: "coding"},
 		},
 	}
 
