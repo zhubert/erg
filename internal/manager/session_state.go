@@ -94,10 +94,10 @@ func (t *ToolUseRollupState) Copy() *ToolUseRollupState {
 
 // ToolUseItemState represents a single tool use
 type ToolUseItemState struct {
-	ToolName   string
-	ToolInput  string
-	ToolUseID  string
-	Complete   bool
+	ToolName  string
+	ToolInput string
+	ToolUseID string
+	Complete  bool
 }
 
 // Copy creates a deep copy of the ToolUseItemState.

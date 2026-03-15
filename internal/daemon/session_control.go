@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zhubert/erg/internal/dashboard"
 	"github.com/zhubert/erg/internal/daemonstate"
+	"github.com/zhubert/erg/internal/dashboard"
 )
 
 // Compile-time assertion that Daemon implements dashboard.SessionController.

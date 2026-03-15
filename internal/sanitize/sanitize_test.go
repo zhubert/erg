@@ -317,7 +317,7 @@ The app is 30% slower since the last release.`,
 			},
 		},
 		{
-			name: "invisible Unicode encoding of instructions",
+			name:  "invisible Unicode encoding of instructions",
 			input: "Fix this bug\u200B\u200C\u200D\u200B\u200C\u200B\u200D\u200C in the parser",
 			check: func(t *testing.T, result string) {
 				if strings.Contains(result, "\u200B") || strings.Contains(result, "\u200C") || strings.Contains(result, "\u200D") {
@@ -357,7 +357,7 @@ Steps to reproduce:
 			},
 		},
 		{
-			name: "RTL override to visually hide text direction",
+			name:  "RTL override to visually hide text direction",
 			input: "Fix the \u202Ecommand injection\u202C vulnerability",
 			check: func(t *testing.T, result string) {
 				if strings.Contains(result, "\u202E") || strings.Contains(result, "\u202C") {

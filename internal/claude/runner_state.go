@@ -59,12 +59,12 @@ func (m *MCPChannels) Close() {
 // StreamingState tracks state during response streaming.
 // All fields are protected by the Runner's mutex.
 type StreamingState struct {
-	Active    bool               // Whether currently streaming
-	Ctx       context.Context    // Context for current operation
-	Cancel    context.CancelFunc // Cancel function for interruption
-	StartTime time.Time          // When streaming started
-	Complete  bool               // Whether result message was received
-	FirstChunk bool             // Track if this is first chunk
+	Active     bool               // Whether currently streaming
+	Ctx        context.Context    // Context for current operation
+	Cancel     context.CancelFunc // Cancel function for interruption
+	StartTime  time.Time          // When streaming started
+	Complete   bool               // Whether result message was received
+	FirstChunk bool               // Track if this is first chunk
 
 	// Response accumulates the assistant's response text for message history.
 	Response strings.Builder

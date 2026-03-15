@@ -13,7 +13,6 @@ import (
 	"github.com/zhubert/erg/internal/mcp"
 )
 
-
 func TestNew(t *testing.T) {
 	tests := []struct {
 		name            string

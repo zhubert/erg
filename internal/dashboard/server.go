@@ -51,9 +51,9 @@ func WithAuthExecutor(e iexec.CommandExecutor) ServerOption {
 	return func(s *Server) { s.authExec = e }
 }
 
-const authCacheTTL     = 5 * time.Minute
+const authCacheTTL = 5 * time.Minute
 const authFetchTimeout = 10 * time.Second
-const maxTailLines     = 10_000 // upper bound on ?tail= to cap log response size
+const maxTailLines = 10_000 // upper bound on ?tail= to cap log response size
 
 // Server is the dashboard HTTP server with SSE support.
 type Server struct {

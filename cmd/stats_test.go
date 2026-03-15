@@ -148,13 +148,13 @@ func TestFormatStats_AllCompleted(t *testing.T) {
 	completedAt := now.Add(-30 * time.Minute)
 	items := []daemonstate.WorkItem{
 		{
-			State:       daemonstate.WorkItemCompleted,
-			CreatedAt:   now.Add(-90 * time.Minute),
-			CompletedAt: &completedAt,
-			CostUSD:     0.42,
-			InputTokens: 20000,
+			State:        daemonstate.WorkItemCompleted,
+			CreatedAt:    now.Add(-90 * time.Minute),
+			CompletedAt:  &completedAt,
+			CostUSD:      0.42,
+			InputTokens:  20000,
 			OutputTokens: 5000,
-			IssueRef:    config.IssueRef{Source: "github", ID: "10", Title: "Fix bug"},
+			IssueRef:     config.IssueRef{Source: "github", ID: "10", Title: "Fix bug"},
 		},
 	}
 	var buf bytes.Buffer
