@@ -47,9 +47,9 @@ func (d *Daemon) collectCompletedWorkers(ctx context.Context) {
 		}
 
 		if cw.exitErr != nil {
-			d.logger.Warn("worker completed with error", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase, "error", cw.exitErr)
+			d.logger.Warn("worker completed with error", "event", "session.failed", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase, "error", cw.exitErr)
 		} else {
-			d.logger.Info("worker completed", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase)
+			d.logger.Info("worker completed", "event", "session.completed", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase)
 		}
 
 		switch item.Phase {

@@ -85,7 +85,7 @@ func Init(path string) error {
 		return fmt.Errorf("failed to set log file permissions %s: %w", path, err)
 	}
 	logFile = f
-	handler := slog.NewTextHandler(f, &slog.HandlerOptions{Level: levelVar})
+	handler := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: levelVar})
 	root = slog.New(handler)
 	initDone = true
 
@@ -127,7 +127,7 @@ func ensureInit() {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set log file permissions %s: %v\n", defaultPath, err)
 	}
 	logFile = f
-	handler := slog.NewTextHandler(f, &slog.HandlerOptions{Level: levelVar})
+	handler := slog.NewJSONHandler(f, &slog.HandlerOptions{Level: levelVar})
 	root = slog.New(handler)
 	initDone = true
 

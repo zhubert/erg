@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,11 +60,13 @@ func TestGet_StructuredLogging(t *testing.T) {
 	if !strings.Contains(contentStr, "user action") {
 		t.Error("Should contain message")
 	}
-	if !strings.Contains(contentStr, "action=login") {
-		t.Error("Should contain action=login")
+	// JSON format: "action":"login"
+	if !strings.Contains(contentStr, `"action":"login"`) {
+		t.Error("Should contain action:login in JSON format")
 	}
-	if !strings.Contains(contentStr, "userID=123") {
-		t.Error("Should contain userID=123")
+	// JSON format: "userID":123
+	if !strings.Contains(contentStr, `"userID":123`) {
+		t.Error("Should contain userID:123 in JSON format")
 	}
 }
 
@@ -111,8 +114,8 @@ func TestLog_Timestamp(t *testing.T) {
 	lines := strings.SplitSeq(string(content), "\n")
 	for line := range lines {
 		if strings.Contains(line, uniqueMsg) {
-			// slog TextHandler format includes time=
-			if !strings.Contains(line, "time=") {
+			// slog JSONHandler format includes "time":
+			if !strings.Contains(line, `"time":`) {
 				t.Error("Log line should contain timestamp")
 			}
 			return
@@ -227,18 +230,18 @@ func TestLogLevels(t *testing.T) {
 		t.Error("Should contain error message")
 	}
 
-	// Verify level strings appear in output (slog uses level=DEBUG format)
-	if !strings.Contains(contentStr, "level=DEBUG") {
-		t.Error("Should contain level=DEBUG marker")
+	// Verify level strings appear in output (slog JSONHandler uses "level":"DEBUG" format)
+	if !strings.Contains(contentStr, `"level":"DEBUG"`) {
+		t.Error("Should contain level:DEBUG marker")
 	}
-	if !strings.Contains(contentStr, "level=INFO") {
-		t.Error("Should contain level=INFO marker")
+	if !strings.Contains(contentStr, `"level":"INFO"`) {
+		t.Error("Should contain level:INFO marker")
 	}
-	if !strings.Contains(contentStr, "level=WARN") {
-		t.Error("Should contain level=WARN marker")
+	if !strings.Contains(contentStr, `"level":"WARN"`) {
+		t.Error("Should contain level:WARN marker")
 	}
-	if !strings.Contains(contentStr, "level=ERROR") {
-		t.Error("Should contain level=ERROR marker")
+	if !strings.Contains(contentStr, `"level":"ERROR"`) {
+		t.Error("Should contain level:ERROR marker")
 	}
 }
 
@@ -293,14 +296,14 @@ func TestWithComponent(t *testing.T) {
 		t.Error("Should contain 'Runner created' message")
 	}
 
-	// Should contain the component attribute
-	if !strings.Contains(contentStr, "component=Claude") {
-		t.Error("Should contain 'component=Claude' attribute")
+	// Should contain the component attribute (JSON format)
+	if !strings.Contains(contentStr, `"component":"Claude"`) {
+		t.Error("Should contain 'component:Claude' attribute")
 	}
 
-	// Should contain the sessionID attribute
-	if !strings.Contains(contentStr, "sessionID=abc123") {
-		t.Error("Should contain 'sessionID=abc123' attribute")
+	// Should contain the sessionID attribute (JSON format)
+	if !strings.Contains(contentStr, `"sessionID":"abc123"`) {
+		t.Error("Should contain 'sessionID:abc123' attribute")
 	}
 }
 
@@ -326,9 +329,9 @@ func TestWithSession(t *testing.T) {
 		t.Error("Should contain 'Operation started' message")
 	}
 
-	// Should contain the sessionID attribute
-	if !strings.Contains(contentStr, "sessionID=session-xyz") {
-		t.Error("Should contain 'sessionID=session-xyz' attribute")
+	// Should contain the sessionID attribute (JSON format)
+	if !strings.Contains(contentStr, `"sessionID":"session-xyz"`) {
+		t.Error("Should contain 'sessionID:session-xyz' attribute")
 	}
 }
 
@@ -348,14 +351,14 @@ func TestWithSession_AdditionalAttrs(t *testing.T) {
 
 	contentStr := string(content)
 
-	// Should contain all attributes
-	if !strings.Contains(contentStr, "sessionID=sess-123") {
+	// Should contain all attributes (JSON format)
+	if !strings.Contains(contentStr, `"sessionID":"sess-123"`) {
 		t.Error("Should contain sessionID")
 	}
-	if !strings.Contains(contentStr, "component=runner") {
+	if !strings.Contains(contentStr, `"component":"runner"`) {
 		t.Error("Should contain component")
 	}
-	if !strings.Contains(contentStr, "pid=12345") {
+	if !strings.Contains(contentStr, `"pid":12345`) {
 		t.Error("Should contain pid")
 	}
 }
@@ -376,12 +379,12 @@ func TestLoggerWithAttrs(t *testing.T) {
 
 	contentStr := string(content)
 
-	// Should contain all pre-attached attributes
-	if !strings.Contains(contentStr, "requestID=req-123") {
-		t.Error("Should contain 'requestID=req-123' attribute")
+	// Should contain all pre-attached attributes (JSON format)
+	if !strings.Contains(contentStr, `"requestID":"req-123"`) {
+		t.Error("Should contain 'requestID:req-123' attribute")
 	}
-	if !strings.Contains(contentStr, "userID=user-456") {
-		t.Error("Should contain 'userID=user-456' attribute")
+	if !strings.Contains(contentStr, `"userID":"user-456"`) {
+		t.Error("Should contain 'userID:user-456' attribute")
 	}
 }
 
@@ -539,6 +542,44 @@ func TestEnsureInit_LogFilePermissions(t *testing.T) {
 	if perm := fileInfo.Mode().Perm(); perm != 0600 {
 		t.Errorf("log file permissions = %04o, want 0600", perm)
 	}
+}
+
+func TestJSONOutput_Parseable(t *testing.T) {
+	logPath, cleanup := setupTestLogger(t)
+	defer cleanup()
+
+	log := Get()
+	log.Info("audit test", "event", "session.created", "workItem", "repo-123")
+
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Every non-empty line must be valid JSON.
+	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Errorf("Log line is not valid JSON: %s\nError: %v", line, err)
+		}
+	}
+
+	// Verify the event and workItem fields are present.
+	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {
+		if strings.Contains(line, "audit test") {
+			if !strings.Contains(line, `"event":"session.created"`) {
+				t.Error("Should contain event field in JSON format")
+			}
+			if !strings.Contains(line, `"workItem":"repo-123"`) {
+				t.Error("Should contain workItem field in JSON format")
+			}
+			return
+		}
+	}
+	t.Error("Could not find test message in log")
 }
 
 func TestMCPLogPath(t *testing.T) {

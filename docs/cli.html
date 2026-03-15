@@ -1288,6 +1288,14 @@
               <td>Show stats for a specific repo</td>
             </tr>
             <tr>
+              <td><code>erg audit</code></td>
+              <td>Query the structured audit log for lifecycle events (session created, PR merged, failures, human interventions)</td>
+            </tr>
+            <tr>
+              <td><code>erg audit --event pr.merged --since 24h</code></td>
+              <td>Show PR merge events from the last 24 hours</td>
+            </tr>
+            <tr>
               <td><code>erg dashboard</code></td>
               <td>Open a <a href="dashboard.html#dashboard">live web dashboard</a> for monitoring agents (default port 21122)</td>
             </tr>
@@ -1358,6 +1366,98 @@
             </tr>
           </tbody>
         </table>
+
+        <h3 id="cli-audit">erg audit</h3>
+        <p>
+          Reads and filters the JSON-structured <code>~/.erg/logs/erg.log</code>
+          file to show significant lifecycle events: session creation, PR
+          creation, PR merges, failures, and human interventions.
+        </p>
+        <p>
+          Because <code>erg.log</code> is written in JSON format by
+          <code>slog.JSONHandler</code>, entries are also queryable with
+          standard tools like <code>jq</code> or any log aggregator.
+        </p>
+        <h4>Event types</h4>
+        <table class="cli-table">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>session.created</code></td>
+              <td>A new work item was queued for an issue</td>
+            </tr>
+            <tr>
+              <td><code>session.completed</code></td>
+              <td>A coding session finished successfully</td>
+            </tr>
+            <tr>
+              <td><code>session.failed</code></td>
+              <td>A coding session finished with an error</td>
+            </tr>
+            <tr>
+              <td><code>pr.created</code></td>
+              <td>A pull request was created</td>
+            </tr>
+            <tr>
+              <td><code>pr.merged</code></td>
+              <td>A pull request was merged</td>
+            </tr>
+            <tr>
+              <td><code>human.retry</code></td>
+              <td>A human retried a failed work item via the dashboard</td>
+            </tr>
+            <tr>
+              <td><code>human.stop</code></td>
+              <td>A human stopped a running session via the dashboard</td>
+            </tr>
+            <tr>
+              <td><code>human.message</code></td>
+              <td>A human sent a message to an active session</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4>Flags</h4>
+        <table class="cli-table">
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>--event &lt;type&gt;</code></td>
+              <td>Filter by event type (e.g. <code>session.created</code>, <code>pr.merged</code>)</td>
+            </tr>
+            <tr>
+              <td><code>--workitem &lt;id&gt;</code></td>
+              <td>Filter by work item ID</td>
+            </tr>
+            <tr>
+              <td><code>--repo &lt;repo&gt;</code></td>
+              <td>Filter by repo field (e.g. <code>owner/repo</code>)</td>
+            </tr>
+            <tr>
+              <td><code>--since &lt;duration&gt;</code></td>
+              <td>Show entries from the last duration (e.g. <code>24h</code>, <code>7d</code>)</td>
+            </tr>
+            <tr>
+              <td><code>--json</code></td>
+              <td>Output raw JSON lines instead of a formatted table</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4>Examples</h4>
+        <pre><code>erg audit                             # all audit entries
+erg audit --event pr.merged           # PR merge events only
+erg audit --workitem owner/repo-123   # filter by work item
+erg audit --since 24h                 # last 24 hours
+erg audit --json | jq .               # pretty-print with jq</code></pre>
 
         <h3 id="file-layout">File layout</h3>
         <p>

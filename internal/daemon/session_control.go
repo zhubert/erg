@@ -31,6 +31,7 @@ func (d *Daemon) StopSession(itemID string) error {
 		return nil
 	}
 	w.Cancel()
+	d.logger.Info("session stopped by human", "event", "human.stop", "workItem", itemID)
 	return nil
 }
 
@@ -71,6 +72,7 @@ func (d *Daemon) RetryWorkItem(itemID string) error {
 		it.OutputTokens = 0
 	})
 	d.saveState()
+	d.logger.Info("work item retried by human", "event", "human.retry", "workItem", itemID)
 	return nil
 }
 
@@ -94,5 +96,6 @@ func (d *Daemon) SendMessage(itemID, message string) error {
 	}
 
 	d.SetPendingMessage(item.SessionID, message)
+	d.logger.Info("message sent to session", "event", "human.message", "workItem", itemID)
 	return nil
 }
