@@ -9937,3 +9937,358 @@ func TestStartCoding_UsesWorkItemRepoPath(t *testing.T) {
 		t.Errorf("expected session RepoPath=/repo/plural, got %q", sess.RepoPath)
 	}
 }
+
+// --- documentingAction tests ---
+
+func TestDocumentingAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &documentingAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestDocumentingAction_Execute_NoRepo(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{}
+	d := testDaemon(cfg)
+	d.repoFilter = ""
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42"},
+		StepData: map[string]any{},
+	})
+
+	action := &documentingAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure when no repo is found")
+	}
+	if result.Error == nil {
+		t.Error("expected error when no repo is found")
+	}
+}
+
+func TestDocumentingAction_Execute_ExistingPR_AdvancesToOpenPR(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+
+	// GetPRState returns OPEN PR
+	prViewJSON, _ := json.Marshal(struct {
+		State string `json:"state"`
+	}{State: "OPEN"})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
+		Stdout: prViewJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "54", Title: "Update docs"},
+		StepData: map[string]any{},
+	})
+
+	action := &documentingAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "work-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if !result.Success {
+		t.Errorf("expected success on existing PR, got error: %v", result.Error)
+	}
+	if result.Async {
+		t.Error("expected synchronous result (not async) on existing PR")
+	}
+	if result.OverrideNext != "" {
+		t.Errorf("expected no OverrideNext for open PR, got %q", result.OverrideNext)
+	}
+}
+
+func TestDocumentingAction_Execute_MergedPR_SkipsToDone(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+
+	// GetPRState returns MERGED PR
+	prViewJSON, _ := json.Marshal(struct {
+		State string `json:"state"`
+	}{State: "MERGED"})
+	mockExec.AddPrefixMatch("gh", []string{"pr", "view"}, exec.MockResponse{
+		Stdout: prViewJSON,
+	})
+	// close issue call
+	mockExec.AddPrefixMatch("gh", []string{"issue", "close"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "54", Title: "Update docs"},
+		StepData: map[string]any{},
+	})
+
+	action := &documentingAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "work-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if !result.Success {
+		t.Errorf("expected success on merged PR, got error: %v", result.Error)
+	}
+	if result.OverrideNext != "done" {
+		t.Errorf("expected OverrideNext=done for merged PR, got %q", result.OverrideNext)
+	}
+}
+
+func TestDocumentingAction_Execute_ReturnsAsync(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	// Make BranchExists return false so the happy path runs
+	mockExec.AddPrefixMatch("git", []string{"rev-parse", "--verify", "issue-42"}, exec.MockResponse{
+		Err: fmt.Errorf("unknown revision or path not in the working tree"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Update docs"},
+		StepData: map[string]any{},
+	})
+
+	action := &documentingAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "work-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(t.Context(), ac)
+
+	if !result.Success {
+		t.Errorf("expected success, got error: %v", result.Error)
+	}
+	if !result.Async {
+		t.Error("expected Async=true for documentingAction")
+	}
+}
+
+func TestDocumentingAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("ai.document") == nil {
+		t.Error("ai.document not registered in action registry")
+	}
+}
+
+func TestDefaultDocumentingSystemPrompt_NotEmpty(t *testing.T) {
+	if DefaultDocumentingSystemPrompt == "" {
+		t.Fatal("DefaultDocumentingSystemPrompt should not be empty")
+	}
+}
+
+func TestDefaultDocumentingSystemPrompt_FocusesOnDocs(t *testing.T) {
+	if !strings.Contains(DefaultDocumentingSystemPrompt, "documentation agent") {
+		t.Error("DefaultDocumentingSystemPrompt should identify as a documentation agent")
+	}
+	if !strings.Contains(DefaultDocumentingSystemPrompt, "documentation files") {
+		t.Error("DefaultDocumentingSystemPrompt should mention documentation files")
+	}
+}
+
+func TestDefaultDocumentingSystemPrompt_ForbidsSourceCodeChanges(t *testing.T) {
+	if !strings.Contains(DefaultDocumentingSystemPrompt, "NEVER modify source code") {
+		t.Error("DefaultDocumentingSystemPrompt should explicitly forbid modifying source code files")
+	}
+}
+
+func TestDefaultDocumentingSystemPrompt_ContainerEnvironment(t *testing.T) {
+	if !strings.Contains(DefaultDocumentingSystemPrompt, "CONTAINER ENVIRONMENT") {
+		t.Error("DefaultDocumentingSystemPrompt should contain CONTAINER ENVIRONMENT section")
+	}
+}
+
+func TestDefaultDocumentingSystemPrompt_PromptInjectionAwareness(t *testing.T) {
+	if !strings.Contains(DefaultDocumentingSystemPrompt, "PROMPT INJECTION AWARENESS") {
+		t.Error("DefaultDocumentingSystemPrompt should contain PROMPT INJECTION AWARENESS section")
+	}
+}
+
+// setupDocumentingTest creates a daemon configured for documenting tests with
+// standard git mock responses. Returns the daemon and work item.
+func setupDocumentingTest(t *testing.T) (*Daemon, *daemonstate.WorkItem) {
+	t.Helper()
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	// Make BranchExists return false so the happy path runs (no stale branch handling)
+	mockExec.AddPrefixMatch("git", []string{"rev-parse", "--verify", "issue-42"}, exec.MockResponse{
+		Err: fmt.Errorf("unknown revision or path not in the working tree"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"remote", "get-url", "origin"}, exec.MockResponse{
+		Stdout: []byte("https://github.com/owner/repo.git\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"fetch", "origin"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"rev-parse", "--verify", "origin/main"}, exec.MockResponse{})
+	mockExec.AddPrefixMatch("git", []string{"worktree", "add"}, exec.MockResponse{})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	sessSvc := session.NewSessionServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.sessionService = sessSvc
+	d.repoFilter = "/test/repo"
+
+	item := &daemonstate.WorkItem{
+		ID:       "work-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "Update docs"},
+		StepData: map[string]any{},
+	}
+	d.state.AddWorkItem(item)
+
+	return d, item
+}
+
+func TestStartDocumenting_CreatesSession(t *testing.T) {
+	d, item := setupDocumentingTest(t)
+
+	err := d.startDocumenting(t.Context(), *item)
+	if err != nil {
+		t.Fatalf("startDocumenting failed: %v", err)
+	}
+
+	updatedItem, ok := d.state.GetWorkItem(item.ID)
+	if !ok {
+		t.Fatal("work item should exist in state")
+	}
+	if updatedItem.SessionID == "" {
+		t.Error("SessionID must be set after startDocumenting")
+	}
+	if updatedItem.State != daemonstate.WorkItemActive {
+		t.Errorf("item.State must be WorkItemActive, got %q", updatedItem.State)
+	}
+
+	sessions := d.config.GetSessions()
+	if len(sessions) == 0 {
+		t.Fatal("expected a session to be recorded in config")
+	}
+	sess := sessions[0]
+	if !sess.DaemonManaged {
+		t.Error("session should be DaemonManaged")
+	}
+	if !sess.Autonomous {
+		t.Error("session should be Autonomous")
+	}
+	if sess.ID != updatedItem.SessionID {
+		t.Errorf("config session ID %q does not match item.SessionID %q", sess.ID, updatedItem.SessionID)
+	}
+}
+
+func TestStartDocumenting_UsesDefaultPrompt(t *testing.T) {
+	d, item := setupDocumentingTest(t)
+
+	var capturedRunner *trackingRunner
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		r := newTrackingRunner(sessionID)
+		capturedRunner = r
+		return r
+	})
+
+	err := d.startDocumenting(t.Context(), *item)
+	if err != nil {
+		t.Fatalf("startDocumenting failed: %v", err)
+	}
+
+	if capturedRunner == nil {
+		t.Fatal("expected runner factory to be called")
+	}
+	if capturedRunner.systemPrompt != DefaultDocumentingSystemPrompt {
+		t.Errorf("expected DefaultDocumentingSystemPrompt, got %q", capturedRunner.systemPrompt)
+	}
+}
+
+func TestStartDocumenting_UsesCustomSystemPrompt(t *testing.T) {
+	d, item := setupDocumentingTest(t)
+
+	customPrompt := "My custom documenting instructions"
+	wfCfg := workflow.DefaultWorkflowConfig()
+	wfCfg.States["documenting"] = &workflow.State{
+		Type:   workflow.StateTypeTask,
+		Action: "ai.document",
+		Next:   "done",
+		Params: map[string]any{"system_prompt": customPrompt},
+	}
+	d.workflowConfigs = map[string]*workflow.Config{"/test/repo": wfCfg}
+
+	var capturedRunner *trackingRunner
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		r := newTrackingRunner(sessionID)
+		capturedRunner = r
+		return r
+	})
+
+	err := d.startDocumenting(t.Context(), *item)
+	if err != nil {
+		t.Fatalf("startDocumenting failed: %v", err)
+	}
+
+	if capturedRunner == nil {
+		t.Fatal("expected runner factory to be called")
+	}
+	if capturedRunner.systemPrompt != customPrompt {
+		t.Errorf("expected custom prompt %q, got %q", customPrompt, capturedRunner.systemPrompt)
+	}
+}

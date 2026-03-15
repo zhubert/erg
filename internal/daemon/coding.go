@@ -374,6 +374,186 @@ func (d *Daemon) startCoding(ctx context.Context, item daemonstate.WorkItem) err
 	return nil
 }
 
+// startDocumenting creates a session and starts a Claude worker for a documentation work item.
+// It mirrors startCoding but reads workflow params from the "documenting" state and uses
+// DefaultDocumentingSystemPrompt as the default system prompt.
+func (d *Daemon) startDocumenting(ctx context.Context, item daemonstate.WorkItem) error {
+	log := d.logger.With("workItem", item.ID, "issue", item.IssueRef.ID)
+
+	// Find the matching repo path
+	repoPath := d.repoPathForItem(ctx, item)
+	if repoPath == "" {
+		return fmt.Errorf("no matching repo found")
+	}
+
+	branchPrefix := d.config.GetDefaultBranchPrefix()
+
+	// Generate branch name
+	var branchName string
+	if d.issueRegistry != nil {
+		issue := issueFromWorkItem(item)
+		provider := d.issueRegistry.GetProvider(issue.Source)
+		if provider != nil {
+			branchName = provider.GenerateBranchName(issue)
+		}
+	}
+	if branchName == "" {
+		branchName = fmt.Sprintf("issue-%s", item.IssueRef.ID)
+	}
+
+	fullBranchName := branchPrefix + branchName
+
+	// Check if branch already exists (stale from a previous crashed session)
+	var sess *config.Session
+	if d.sessionService.BranchExists(ctx, repoPath, fullBranchName) {
+		// Before cleaning up, check if there's a live PR on this branch.
+		prCtx, prCancel := context.WithTimeout(ctx, timeoutQuickAPI)
+		prState, prErr := d.gitService.GetPRState(prCtx, repoPath, fullBranchName)
+		prCancel()
+		if prErr == nil && (prState == git.PRStateOpen || prState == git.PRStateMerged) {
+			log.Warn("branch has existing PR, creating tracking session", "branch", fullBranchName, "prState", prState)
+
+			trackingSess := &config.Session{
+				ID:            uuid.New().String(),
+				RepoPath:      repoPath,
+				Branch:        fullBranchName,
+				BaseBranch:    d.sessionService.GetDefaultBranch(ctx, repoPath),
+				DaemonManaged: true,
+				Autonomous:    true,
+				Containerized: true,
+			}
+			d.config.AddSession(*trackingSess)
+
+			d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+				it.SessionID = trackingSess.ID
+				it.Branch = fullBranchName
+				it.UpdatedAt = time.Now()
+			})
+
+			d.saveConfig("startDocumenting:existingPR")
+			d.saveState()
+
+			if prState == git.PRStateMerged {
+				return fmt.Errorf("branch %s has an existing %s PR: %w", fullBranchName, prState, errMergedPR)
+			}
+			return fmt.Errorf("branch %s has an existing %s PR: %w", fullBranchName, prState, errExistingPR)
+		}
+
+		// Check if the branch has commits ahead of the base branch.
+		baseBranch := d.sessionService.GetDefaultBranch(ctx, repoPath)
+		divCtx, divCancel := context.WithTimeout(ctx, timeoutQuickAPI)
+		divergence, divErr := d.gitService.GetBranchDivergence(divCtx, repoPath, baseBranch, fullBranchName)
+		divCancel()
+		if divErr == nil && divergence.Ahead > 0 {
+			log.Info("branch has commits ahead of base, resuming instead of cleaning up",
+				"branch", fullBranchName, "commitsAhead", divergence.Ahead)
+			resumeSess, resumeErr := d.sessionService.CreateOnExistingBranch(ctx, repoPath, fullBranchName, baseBranch)
+			if resumeErr != nil {
+				return fmt.Errorf("failed to resume existing branch %s: %w", fullBranchName, resumeErr)
+			}
+			sess = resumeSess
+		} else {
+			log.Warn("stale branch from previous attempt, cleaning up", "branch", fullBranchName)
+			d.cleanupStaleBranch(ctx, repoPath, fullBranchName)
+			if d.sessionService.BranchExists(ctx, repoPath, fullBranchName) {
+				return fmt.Errorf("branch %s exists and could not be cleaned up", fullBranchName)
+			}
+		}
+	}
+
+	if sess == nil {
+		// Create new session on a fresh branch
+		newSess, err := d.sessionService.Create(ctx, repoPath, branchName, branchPrefix, session.BasePointOrigin)
+		if err != nil {
+			return fmt.Errorf("session creation failed: %w", err)
+		}
+		sess = newSess
+	}
+
+	// Configure session from workflow config params — read from "documenting" state
+	wfCfg := d.getWorkflowConfig(repoPath)
+	documentingState := wfCfg.States["documenting"]
+	params := workflow.NewParamHelper(nil)
+	if documentingState != nil {
+		params = workflow.NewParamHelper(documentingState.Params)
+	}
+
+	sess.Autonomous = true
+	sess.Containerized = params.Bool("containerized", true)
+	sess.DaemonManaged = true
+	sess.IssueRef = &config.IssueRef{
+		Source: item.IssueRef.Source,
+		ID:     item.IssueRef.ID,
+		Title:  item.IssueRef.Title,
+		URL:    item.IssueRef.URL,
+	}
+
+	d.config.AddSession(*sess)
+
+	d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+		it.SessionID = sess.ID
+		it.Branch = sess.Branch
+		it.State = daemonstate.WorkItemActive
+		it.UpdatedAt = time.Now()
+	})
+
+	d.saveConfig("startDocumenting")
+	d.saveState()
+
+	// Build initial message using provider-aware formatting
+	issueBody, _ := item.StepData["issue_body"].(string)
+	initialMsg := worker.FormatInitialMessage(item.IssueRef, issueBody)
+
+	// If a planning phase produced an approved plan, include it
+	planCtx, planCancel := context.WithTimeout(ctx, timeoutQuickAPI)
+	comments, planErr := d.fetchIssueComments(planCtx, repoPath, item)
+	planCancel()
+	if planErr != nil {
+		log.Debug("could not fetch issue comments for plan context", "error", planErr)
+	} else if plan := worker.FindPlanComment(comments); plan != "" {
+		initialMsg += "\n\n---\nApproved implementation plan:\n" + sanitize.UntrustedContent("approved_plan", plan)
+	}
+
+	// Resolve documenting system prompt from workflow config
+	systemPrompt := params.String("system_prompt", "")
+	documentingPrompt, err := workflow.ResolveSystemPrompt(systemPrompt, repoPath)
+	if err != nil {
+		log.Warn("failed to resolve documenting system prompt", "error", err)
+	}
+
+	if documentingPrompt == "" {
+		documentingPrompt = DefaultDocumentingSystemPrompt
+	}
+
+	// If a format_command is configured, inject it into the system prompt
+	formatCommand := params.String("format_command", "")
+	if formatCommand != "" {
+		formatMessage := params.String("format_message", "Apply auto-formatting")
+		d.state.UpdateWorkItem(item.ID, func(it *daemonstate.WorkItem) {
+			it.StepData["_format_command"] = formatCommand
+			it.StepData["_format_message"] = formatMessage
+		})
+		d.saveState()
+
+		documentingPrompt = documentingPrompt + "\n\nFORMATTING: Before committing any changes, run the following formatter command:\n  " + formatCommand + "\nStage and include all formatting changes in your commit."
+	}
+
+	// Append simplify directive if requested
+	initialMsg = maybeAppendSimplify(initialMsg, params.Bool("simplify", false))
+
+	// Start worker, applying any per-session limits from workflow params
+	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, documentingPrompt)
+	maxTurns := params.Int("max_turns", 0)
+	maxDuration := params.Duration("max_duration", 0)
+	if maxTurns > 0 || maxDuration > 0 {
+		w.SetLimits(maxTurns, maxDuration)
+	}
+	w.Start(ctx)
+
+	log.Info("started documenting", "sessionID", sess.ID, "branch", sess.Branch)
+	return nil
+}
+
 // addressFeedback resumes the Claude session to address review comments.
 // batchCommentCount is the CommentCount from GetBatchPRStatesWithComments,
 // which must be used to update CommentsAddressed so the two stay in sync.
