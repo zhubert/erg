@@ -13,6 +13,34 @@ import (
 	"github.com/zhubert/erg/internal/workflow"
 )
 
+// systemCommentCutoff computes the cutoff time to use when filtering issue
+// comments for new user replies. It prefers the latest erg system comment's
+// effective time (max of CreatedAt, UpdatedAt) over StepEnteredAt, because
+// users may reply after the plan/guidance is posted but before the workflow
+// transitions to the wait state (setting StepEnteredAt). Using UpdatedAt
+// handles upserted comments whose CreatedAt is stale — without this,
+// re-planning loops would use the frozen CreatedAt as cutoff, causing
+// already-consumed feedback to re-trigger indefinitely.
+func systemCommentCutoff(stepEnteredAt time.Time, comments []issues.IssueComment) time.Time {
+	cutoff := stepEnteredAt
+	var latestSystem time.Time
+	for _, comment := range comments {
+		if isErgSystemComment(comment) {
+			effective := comment.CreatedAt
+			if comment.UpdatedAt.After(effective) {
+				effective = comment.UpdatedAt
+			}
+			if effective.After(latestSystem) {
+				latestSystem = effective
+			}
+		}
+	}
+	if !latestSystem.IsZero() {
+		cutoff = latestSystem
+	}
+	return cutoff
+}
+
 // isErgSystemComment reports whether a comment was posted by the erg daemon
 // itself (e.g. guidance, idempotency-marked actions). Such comments must be
 // excluded from human-reply checks so they never accidentally trigger approvals.
@@ -465,19 +493,7 @@ func (c *eventChecker) checkGateApproved(ctx context.Context, params *workflow.P
 			return false, nil, nil
 		}
 
-		// Use the latest erg system comment as the cutoff (same rationale
-		// as checkPlanUserReplied — user may reply before StepEnteredAt).
-		// Find the max system comment timestamp regardless of slice order.
-		cutoff := item.StepEnteredAt
-		var latestSystem time.Time
-		for _, comment := range comments {
-			if isErgSystemComment(comment) && comment.CreatedAt.After(latestSystem) {
-				latestSystem = comment.CreatedAt
-			}
-		}
-		if !latestSystem.IsZero() {
-			cutoff = latestSystem
-		}
+		cutoff := systemCommentCutoff(item.StepEnteredAt, comments)
 
 		log.Debug("checking for matching comment", "pattern", pattern, "issueID", issueID, "since", cutoff)
 
@@ -555,7 +571,7 @@ func (c *eventChecker) issueComments(ctx context.Context, repoPath, source, issu
 		}
 		result := make([]issues.IssueComment, len(gitComments))
 		for i, gc := range gitComments {
-			result[i] = issues.IssueComment{Author: gc.Author, Body: gc.Body, CreatedAt: gc.CreatedAt}
+			result[i] = issues.IssueComment{Author: gc.Author, Body: gc.Body, CreatedAt: gc.CreatedAt, UpdatedAt: gc.UpdatedAt}
 		}
 		return result, nil
 	}
@@ -627,22 +643,7 @@ func (c *eventChecker) checkPlanUserReplied(ctx context.Context, params *workflo
 		}
 	}
 
-	// Determine the cutoff time for filtering comments. Prefer the latest
-	// erg system comment timestamp over StepEnteredAt, because user replies
-	// may arrive after the plan is posted but before the workflow transitions
-	// to this wait state (which is when StepEnteredAt is set). Without this,
-	// an early approval would be silently skipped.
-	// Find the max system comment timestamp regardless of slice order.
-	cutoff := item.StepEnteredAt
-	var latestSystem time.Time
-	for _, comment := range comments {
-		if isErgSystemComment(comment) && comment.CreatedAt.After(latestSystem) {
-			latestSystem = comment.CreatedAt
-		}
-	}
-	if !latestSystem.IsZero() {
-		cutoff = latestSystem
-	}
+	cutoff := systemCommentCutoff(item.StepEnteredAt, comments)
 
 	for _, comment := range comments {
 		// Skip comments posted by the erg daemon itself (e.g. guidance, markers).

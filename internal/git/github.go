@@ -450,6 +450,7 @@ type IssueComment struct {
 	Author    string    // GitHub username
 	Body      string    // Comment text
 	CreatedAt time.Time // When the comment was posted
+	UpdatedAt time.Time // When the comment was last edited (zero if never edited)
 }
 
 // CheckIssueHasLabel reports whether the given issue currently has the specified label.
@@ -510,6 +511,7 @@ func (s *GitService) GetIssueComments(ctx context.Context, repoPath string, issu
 			} `json:"author"`
 			Body      string    `json:"body"`
 			CreatedAt time.Time `json:"createdAt"`
+			UpdatedAt time.Time `json:"updatedAt"`
 		} `json:"comments"`
 	}
 	if err := json.Unmarshal(output, &result); err != nil {
@@ -525,6 +527,7 @@ func (s *GitService) GetIssueComments(ctx context.Context, repoPath string, issu
 			Author:    c.Author.Login,
 			Body:      c.Body,
 			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
 		})
 	}
 	return comments, nil
@@ -537,6 +540,7 @@ type IssueCommentWithID struct {
 	Author    string
 	Body      string
 	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // GetIssueCommentsWithIDs fetches all comments on a GitHub issue using the REST API,
@@ -556,6 +560,7 @@ func (s *GitService) GetIssueCommentsWithIDs(ctx context.Context, repoPath strin
 			Login string `json:"login"`
 		} `json:"user"`
 		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
 	}
 	if err := json.Unmarshal(output, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse issue comments: %w", err)
@@ -571,6 +576,7 @@ func (s *GitService) GetIssueCommentsWithIDs(ctx context.Context, repoPath strin
 			Author:    c.User.Login,
 			Body:      c.Body,
 			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
 		})
 	}
 	return comments, nil

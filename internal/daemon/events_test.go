@@ -4037,3 +4037,173 @@ func TestCheckGateApproved_CommentBeforeStepEnteredAt(t *testing.T) {
 		t.Errorf("expected gate_approved=true, got %v", data["gate_approved"])
 	}
 }
+
+// TestCheckPlanUserReplied_UpsertedSystemCommentNoCutoffRegression is a
+// regression test for the infinite re-planning loop. When system comments are
+// upserted (updated in place), their CreatedAt stays at the original time.
+// After re-planning, StepEnteredAt advances but the stale system comment
+// CreatedAt must not drag the cutoff backwards, or the same user feedback
+// will keep triggering re-plans indefinitely.
+func TestCheckPlanUserReplied_UpsertedSystemCommentNoCutoffRegression(t *testing.T) {
+	cfg := testConfig()
+	now := time.Now()
+
+	// Timeline (simulating after a re-plan cycle):
+	//   T-5m: original plan comment posted (CreatedAt stays here after upsert)
+	//   T-3m: user posted feedback (consumed by first re-plan cycle)
+	//   T-1s: plan comment upserted with revised plan (UpdatedAt advances)
+	//   T-0 : re-planning completed, StepEnteredAt updated to now
+	//
+	// The upserted plan comment has stale CreatedAt = T-5m but fresh
+	// UpdatedAt = T-1s. The old user feedback at T-3m must NOT trigger again.
+	provider := &mockGateProvider{
+		src: issues.SourceAsana,
+		comments: []issues.IssueComment{
+			{
+				Author:    "erg-bot",
+				Body:      "Here is the revised plan.\n<!-- erg:plan -->",
+				CreatedAt: now.Add(-5 * time.Minute), // stale CreatedAt from upsert
+				UpdatedAt: now.Add(-1 * time.Second), // fresh UpdatedAt from upsert
+			},
+			{
+				Author:    "alice",
+				Body:      "Please also update the docs/ pages",
+				CreatedAt: now.Add(-3 * time.Minute), // already-consumed feedback
+			},
+		},
+	}
+	d := testDaemonWithGateProvider(cfg, provider)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "asana", ID: "task-gid-402"},
+		SessionID:   "sess-1",
+		CurrentStep: "await_plan_feedback",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{
+		"approval_pattern": `(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)`,
+	})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	// StepEnteredAt is AFTER the user's old feedback (simulating re-plan completion)
+	view.StepEnteredAt = now
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false: already-consumed feedback must not re-trigger after re-plan (stale system comment CreatedAt must not drag cutoff backwards)")
+	}
+}
+
+// TestCheckGateApproved_UpsertedSystemCommentNoCutoffRegression is the same
+// regression test for gate.approved comment_match trigger.
+func TestCheckGateApproved_UpsertedSystemCommentNoCutoffRegression(t *testing.T) {
+	cfg := testConfig()
+	now := time.Now()
+
+	provider := &mockGateProvider{
+		src: issues.SourceAsana,
+		comments: []issues.IssueComment{
+			{
+				Author:    "erg-bot",
+				Body:      "Reply with LGTM to proceed.\n<!-- erg:step=await_gate -->",
+				CreatedAt: now.Add(-5 * time.Minute), // stale CreatedAt from upsert
+				UpdatedAt: now.Add(-1 * time.Second), // fresh UpdatedAt from upsert
+			},
+			{
+				Author:    "bob",
+				Body:      "LGTM",
+				CreatedAt: now.Add(-3 * time.Minute), // already-consumed approval
+			},
+		},
+	}
+	d := testDaemonWithGateProvider(cfg, provider)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "asana", ID: "task-gid-403"},
+		SessionID:   "sess-1",
+		CurrentStep: "await_gate",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{
+		"trigger":         "comment_match",
+		"comment_pattern": `(?i)LGTM`,
+	})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = now
+
+	fired, _, err := checker.checkGateApproved(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false: already-consumed approval must not re-trigger after upserted system comment")
+	}
+}
+
+// TestCheckPlanUserReplied_GitHubUpdatedAtParsed is a GitHub-path regression
+// test that verifies updatedAt is parsed from gh issue view JSON and used in
+// the cutoff calculation. This exercises the full path from JSON parsing
+// through to event checking.
+func TestCheckPlanUserReplied_GitHubUpdatedAtParsed(t *testing.T) {
+	cfg := testConfig()
+	mockExec := exec.NewMockExecutor(nil)
+
+	// Simulate a re-plan scenario with upserted system comment:
+	//   - Plan comment: createdAt = 10:00 (original), updatedAt = 10:10 (upserted)
+	//   - User feedback: createdAt = 10:05 (already consumed by first re-plan)
+	//   - StepEnteredAt = 10:11 (after re-plan completed)
+	//
+	// Without UpdatedAt: cutoff = 10:00 (stale CreatedAt) → feedback at 10:05 re-triggers (BUG)
+	// With UpdatedAt:    cutoff = 10:10 (fresh UpdatedAt) → feedback at 10:05 is filtered (FIXED)
+	commentsJSON := []byte(`{"comments":[
+		{"author":{"login":"erg-bot"},"body":"Revised plan.\n<!-- erg:plan -->","createdAt":"2020-01-01T10:00:00Z","updatedAt":"2020-01-01T10:10:00Z"},
+		{"author":{"login":"alice"},"body":"Please also update docs/","createdAt":"2020-01-01T10:05:00Z","updatedAt":"2020-01-01T10:05:00Z"}
+	]}`)
+	mockExec.AddPrefixMatch("gh", []string{"issue", "view"}, exec.MockResponse{
+		Stdout: commentsJSON,
+	})
+
+	gitSvc := git.NewGitServiceWithExecutor(mockExec)
+	d := testDaemonWithExec(cfg, mockExec)
+	d.gitService = gitSvc
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	cfg.AddSession(*sess)
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "item-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42"},
+		SessionID:   "sess-1",
+		CurrentStep: "await_plan_feedback",
+	})
+
+	checker := newEventChecker(d)
+	params := workflow.NewParamHelper(map[string]any{
+		"approval_pattern": `(?i)(LGTM|looks good|approved?|proceed|go ahead|ship it)`,
+	})
+	itemTmp, _ := d.state.GetWorkItem("item-1")
+	view := d.workItemView(itemTmp)
+	view.StepEnteredAt = time.Date(2020, 1, 1, 10, 11, 0, 0, time.UTC)
+
+	fired, _, err := checker.checkPlanUserReplied(context.Background(), params, view)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fired {
+		t.Error("expected fired=false: GitHub updatedAt on upserted system comment must advance cutoff past consumed feedback")
+	}
+}
