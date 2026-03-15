@@ -1555,6 +1555,29 @@
           wait state. Use it for simple pipelines where you want both conditions
           satisfied before proceeding.
         </p>
+        <p>
+          Use <code>guidance</code> to control the message posted to the issue
+          tracker when a wait state is entered. Omit it to auto-generate a
+          message based on the event type; set it to <code>""</code> to suppress
+          the message entirely; or provide a custom string to use as-is.
+        </p>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-filename">wait with custom guidance</span>
+          </div>
+          <pre><span class="ck">await_review:</span>
+  <span class="ck">type:</span> <span class="cs">wait</span>
+  <span class="ck">event:</span> <span class="ca">pr.reviewed</span>
+  <span class="ck">guidance:</span> <span class="cs">"Please review the PR and approve or request changes."</span>
+  <span class="ck">display_name:</span> <span class="cv">Waiting for Review</span>
+  <span class="ck">next:</span> <span class="cv">merge</span></pre>
+        </div>
+        <p>
+          <code>display_name</code> sets a human-readable label for a state
+          that appears in the dashboard and <code>erg status</code> output.
+          If omitted, a label is derived from the state name. It is available
+          on all state types, not just <code>wait</code>.
+        </p>
 
         <h3 id="state-choice">choice</h3>
         <p>

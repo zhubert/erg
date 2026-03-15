@@ -104,3 +104,20 @@ model     → (leaf)
 1. Add flag variable and `Flags().XxxVar()` call in `cmd/agent.go`'s `init()`
 2. Map to `daemon.Option` in `runAgent()`
 3. Add corresponding `WithXxx()` option function in `internal/daemon/daemon.go`
+
+---
+
+## Documentation Maintenance
+
+When making changes that affect any of the following, update the corresponding docs file(s) in `docs/`:
+
+| What changed | Update |
+|---|---|
+| CLI flags or commands | `docs/cli.html` |
+| Actions (`internal/daemon/actions.go`) | `docs/actions.html` |
+| Workflow config fields (`internal/workflow/config.go`) | `docs/workflow.html` |
+| Wait events | `docs/events.html` |
+| Package structure or core flow | `CLAUDE.md` (this file) |
+| Multi-repo manifest | `docs/multi-repo.html` |
+
+This applies to additions, removals, and behavioral changes. Keep examples in the docs consistent with the real YAML schema.
