@@ -705,11 +705,11 @@ func (c *eventChecker) checkPlanUserReplied(ctx context.Context, params *workflo
 
 	// Multiple comments — combine with per-comment attribution.
 	var parts []string
-	for _, c := range newComments {
-		if c.author != "" {
-			parts = append(parts, fmt.Sprintf("From @%s:\n%s", c.author, c.body))
+	for _, uc := range newComments {
+		if uc.author != "" {
+			parts = append(parts, fmt.Sprintf("From @%s:\n%s", uc.author, uc.body))
 		} else {
-			parts = append(parts, c.body)
+			parts = append(parts, uc.body)
 		}
 	}
 
