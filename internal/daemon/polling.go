@@ -534,7 +534,7 @@ func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
 // and enqueues it, subject to the concurrency limit. If the daemon is at the
 // concurrency limit the tick is silently skipped — the next cron firing will retry.
 //
-// Synthetic issues use a stable ID of the form "scheduled-<action>-<unix-day>"
+// Synthetic issues use a stable ID of the form "scheduled-<state>-<unix-day>"
 // so the same trigger does not double-enqueue within a single calendar day.
 func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trigger workflow.TriggerConfig) {
 	log := d.logger.With("component", "scheduler", "repo", repoPath, "state", trigger.State)

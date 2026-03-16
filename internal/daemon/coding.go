@@ -166,13 +166,12 @@ func (d *Daemon) startPlanning(ctx context.Context, item daemonstate.WorkItem) e
 		claude.ToolSetReadOnly,
 		claude.ToolSetWeb,
 	)
-	// Set disallowed tools before createWorkerWithPrompt, which calls
-	// GetOrCreateRunner again (returning the same cached instance) and
-	// configures allowed tools. Disallowed tools are a separate concern
-	// not handled by configureRunner.
+	// Set disallowed tools after createWorkerWithPrompt (which calls
+	// configureRunner and resets disallowed tools to nil). The runner is
+	// the same cached instance, so SetDisallowedTools applies correctly.
+	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, planningPrompt, planningTools)
 	runner := d.sessionMgr.GetOrCreateRunner(sess)
 	runner.SetDisallowedTools(claude.ToolSetPlanningDeny)
-	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, planningPrompt, planningTools)
 	w.SetPlanningMode(true)
 	maxTurns := params.Int("max_turns", 0)
 	maxDuration := params.Duration("max_duration", 0)
@@ -751,6 +750,11 @@ func (d *Daemon) recreateWorktree(ctx context.Context, repoPath, branch, session
 // The daemon makes all policy decisions here rather than relying on SessionManager.
 // If toolOverride is non-nil, it replaces the default tool set.
 func (d *Daemon) configureRunner(runner claude.RunnerConfig, sess *config.Session, customPrompt string, toolOverride []string) {
+	// Clear any previously set disallowed tools so that a runner reused from a
+	// read-only session (e.g., ai.plan, ai.summarize) doesn't keep blocking
+	// mutation tools (Edit, Write, Bash) for subsequent coding actions.
+	runner.SetDisallowedTools(nil)
+
 	// Tools: use override if provided, otherwise compose the default container tool set
 	if toolOverride != nil {
 		runner.SetAllowedTools(toolOverride)
@@ -1443,10 +1447,7 @@ func (d *Daemon) startSummarize(ctx context.Context, item daemonstate.WorkItem) 
 	if diffErr != nil {
 		log.Warn("startSummarize: failed to get branch diff, proceeding without it", "error", diffErr)
 	} else {
-		diff = string(diffOutput)
-		if len(diff) > maxSummarizeDiffSize {
-			diff = diff[:maxSummarizeDiffSize] + "\n... (diff truncated)"
-		}
+		diff = truncateDiff(string(diffOutput), maxSummarizeDiffSize, "\n... (diff truncated)")
 	}
 
 	// Build initial message: include issue context and the PR diff.
@@ -1479,13 +1480,15 @@ func (d *Daemon) startSummarize(ctx context.Context, item daemonstate.WorkItem) 
 	}
 
 	// Configure a new runner with read-only tools and planning mode.
+	// Set disallowed tools after createWorkerWithPrompt (which calls
+	// configureRunner and resets disallowed tools to nil).
 	summarizeTools := claude.ComposeTools(
 		claude.ToolSetReadOnly,
 		claude.ToolSetWeb,
 	)
+	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, resolvedPrompt, summarizeTools)
 	runner := d.sessionMgr.GetOrCreateRunner(sess)
 	runner.SetDisallowedTools(claude.ToolSetPlanningDeny)
-	w := d.createWorkerWithPrompt(ctx, item, sess, initialMsg, resolvedPrompt, summarizeTools)
 	w.SetPlanningMode(true)
 	maxTurns := params.Int("max_turns", 0)
 	maxDuration := params.Duration("max_duration", 0)

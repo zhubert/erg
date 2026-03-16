@@ -1406,11 +1406,20 @@
         </p>
         <p>
           Triggers use standard 5-field cron syntax
-          (<code>minute hour day-of-month month day-of-week</code>). Schedules are
+          (<code>minute hour day-of-month month day-of-week</code>). All schedules
+          are evaluated in <strong>UTC</strong>. Schedules are
           ignored when the daemon runs in <code>--once</code> mode
           (<code>erg run</code>). If the concurrency limit is reached when a
           trigger fires, that tick is silently skipped and retried at the next
           scheduled time.
+        </p>
+        <p>
+          <strong>Note:</strong> Each trigger enqueues at most one work item per
+          UTC calendar day. If a cron expression fires multiple times per day
+          (e.g. <code>"*/15 * * * *"</code>), only the first firing of the day
+          creates a work item; subsequent firings are deduplicated. Design your
+          schedules accordingly — triggers are best suited for daily or less
+          frequent runs.
         </p>
         <table class="cli-table">
           <thead>
@@ -1437,8 +1446,11 @@
               <td>yes</td>
               <td>
                 Workflow state name to start from when the trigger fires, e.g.
-                <code>coding</code> or <code>summarize</code>. Must be a state
-                defined in the workflow's <code>states</code> map.
+                <code>coding</code>. Must be a state defined in the workflow's
+                <code>states</code> map. The state should be one that can
+                bootstrap a session (like <code>ai.code</code>); states that
+                require an existing session or branch (like
+                <code>ai.summarize</code>) will fail on synthetic work items.
               </td>
             </tr>
           </tbody>
@@ -1450,9 +1462,9 @@
   - <span class="ck">schedule:</span> <span class="cv">"0 2 * * *"</span>
     <span class="ck">state:</span>    <span class="cv">coding</span>
 
-  <span class="cc"># Weekly security review every Monday at 9 AM UTC</span>
+  <span class="cc"># Weekly documentation refresh every Monday at 9 AM UTC</span>
   - <span class="ck">schedule:</span> <span class="cv">"0 9 * * 1"</span>
-    <span class="ck">state:</span>    <span class="cv">summarize</span></pre>
+    <span class="ck">state:</span>    <span class="cv">coding</span></pre>
         </div>
 
         <h3 id="source-filter">source.filter keys</h3>
