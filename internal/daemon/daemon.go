@@ -519,10 +519,20 @@ func (d *Daemon) startScheduler(ctx context.Context) {
 	d.scheduler.Start()
 }
 
-// stopScheduler stops the cron scheduler if it was started.
+// stopScheduler stops the cron scheduler if it was started, waiting up to
+// 5 seconds for any in-flight job to finish.
 func (d *Daemon) stopScheduler() {
-	if d.scheduler != nil {
-		d.scheduler.Stop()
+	if d.scheduler == nil {
+		return
+	}
+	ctx := d.scheduler.Stop()
+	d.scheduler = nil
+
+	// Wait for running jobs to finish, with a timeout.
+	select {
+	case <-ctx.Done():
+	case <-time.After(5 * time.Second):
+		d.logger.Warn("timed out waiting for scheduled jobs to finish")
 	}
 }
 

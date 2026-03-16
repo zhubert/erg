@@ -557,13 +557,14 @@ func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trig
 	}
 
 	// Unique ID per firing so each cron tick enqueues a fresh work item.
-	ts := time.Now().UTC().Unix()
-	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.State, ts)
+	// Include repoPath to avoid collisions when multiple repos share the same state name.
+	ts := time.Now().UTC().UnixNano()
+	issueID := fmt.Sprintf("scheduled-%s-%s-%d", repoPath, trigger.State, ts)
 
 	// Don't enqueue if a previous firing of the same trigger is still
 	// active or queued. Once the previous item completes (terminal), the
 	// next firing is allowed through.
-	if d.hasActiveScheduledItem(trigger.State) {
+	if d.hasActiveScheduledItem(repoPath, trigger.State) {
 		log.Debug("previous scheduled item still active, skipping")
 		return
 	}
@@ -626,11 +627,12 @@ func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemon
 }
 
 // hasActiveScheduledItem returns true if a non-terminal synthetic work item
-// already exists for the given trigger state. This prevents enqueuing a new
-// firing while a previous one is still active or queued, without imposing an
-// artificial once-per-day limit.
-func (d *Daemon) hasActiveScheduledItem(triggerState string) bool {
-	prefix := fmt.Sprintf("scheduled-%s-", triggerState)
+// already exists for the given repo and trigger state. This prevents enqueuing
+// a new firing while a previous one is still active or queued, without imposing
+// an artificial once-per-day limit. Scoped by repoPath so triggers in different
+// repos don't block each other.
+func (d *Daemon) hasActiveScheduledItem(repoPath, triggerState string) bool {
+	prefix := fmt.Sprintf("scheduled-%s-%s-", repoPath, triggerState)
 	for _, item := range d.state.GetActiveWorkItems() {
 		if item.StepData["_synthetic"] == "true" && strings.HasPrefix(item.IssueRef.ID, prefix) {
 			return true
