@@ -19,6 +19,7 @@ type RunnerConfig interface {
 	SetOnContainerReady(callback func())
 	SetSystemPrompt(prompt string)
 	SetHostTools(hostTools bool)
+	SetModel(model string)
 }
 
 // RunnerSession is the interface for interacting with an active Claude session.

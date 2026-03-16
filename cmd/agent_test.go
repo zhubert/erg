@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/workflow"
 )
@@ -339,9 +340,12 @@ func TestWorkflowFlagIsVisible(t *testing.T) {
 
 // ---- validateWorkflowConfig ----
 
+// alwaysValidModel is a pass-through validator for tests that don't need model checking.
+func alwaysValidModel(_ string) bool { return true }
+
 func TestValidateWorkflowConfig_Valid(t *testing.T) {
 	cfg := workflow.DefaultWorkflowConfig()
-	if err := validateWorkflowConfig(cfg); err != nil {
+	if err := validateWorkflowConfig(cfg, alwaysValidModel); err != nil {
 		t.Errorf("expected no error for valid config, got: %v", err)
 	}
 }
@@ -352,7 +356,7 @@ func TestValidateWorkflowConfig_Invalid(t *testing.T) {
 			Provider: "jira", // unknown provider
 		},
 	}
-	err := validateWorkflowConfig(cfg)
+	err := validateWorkflowConfig(cfg, alwaysValidModel)
 	if err == nil {
 		t.Fatal("expected error for invalid config")
 	}
@@ -370,8 +374,109 @@ func TestValidateWorkflowConfig_WithContainerImage(t *testing.T) {
 		cfg.Settings = &workflow.SettingsConfig{}
 	}
 	cfg.Settings.ContainerImage = "erg:auto-detected"
-	if err := validateWorkflowConfig(cfg); err != nil {
+	if err := validateWorkflowConfig(cfg, alwaysValidModel); err != nil {
 		t.Errorf("expected no error for config with auto-detected image, got: %v", err)
+	}
+}
+
+func TestValidateWorkflowConfig_ModelValidation(t *testing.T) {
+	isValid := claude.IsValidModel
+
+	tests := []struct {
+		name        string
+		cfg         *workflow.Config
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid alias in settings",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "sonnet"}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "valid alias in state",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				// Use an existing state from the default config and add model
+				for _, s := range c.States {
+					s.Model = "haiku"
+					break
+				}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "canonical ID in settings accepted",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "claude-sonnet-4-6"}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "arbitrary claude- ID accepted",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "claude-some-future-model"}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "non-claude model in settings rejected",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "gpt-4o"}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "settings.model",
+		},
+		{
+			name: "non-claude model in state rejected",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				// Set an invalid model on the first existing state
+				for name, s := range c.States {
+					s.Model = "gemini-pro"
+					_ = name
+					break
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: ".model",
+		},
+		{
+			name: "empty model passes",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: ""}
+				return c
+			}(),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateWorkflowConfig(tt.cfg, isValid)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			if tt.wantErr && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("error %q should contain %q", err.Error(), tt.errContains)
+			}
+		})
 	}
 }
 

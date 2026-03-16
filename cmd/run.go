@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zhubert/erg/internal/agentconfig"
+	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/cli"
 	"github.com/zhubert/erg/internal/container"
 	"github.com/zhubert/erg/internal/daemon"
@@ -115,7 +116,7 @@ func runIssue(cmd *cobra.Command, args []string) error {
 		wfCfg.Settings.ContainerImage = image
 	}
 
-	if err := validateWorkflowConfig(wfCfg); err != nil {
+	if err := validateWorkflowConfig(wfCfg, claude.IsValidModel); err != nil {
 		return err
 	}
 

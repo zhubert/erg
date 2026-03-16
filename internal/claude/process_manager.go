@@ -76,6 +76,7 @@ type ProcessConfig struct {
 	ContainerMCPPort        int           // Port the MCP subprocess listens on inside the container (published via -p 0:port)
 	SystemPrompt            string        // When set, passed to Claude CLI via --append-system-prompt
 	ContainerStartupTimeout time.Duration // Override container startup watchdog timeout (0 = use default)
+	Model                   string        // When set, passed to Claude CLI via --model (canonical model ID)
 }
 
 // ProcessCallbacks defines callbacks that the ProcessManager invokes during operation.
@@ -298,6 +299,10 @@ func BuildCommandArgs(config ProcessConfig) []string {
 	// completely unavailable — Claude cannot use them even through meta-tools.
 	for _, tool := range config.DisallowedTools {
 		args = append(args, "--disallowedTools", tool)
+	}
+
+	if config.Model != "" {
+		args = append(args, "--model", config.Model)
 	}
 
 	return args
