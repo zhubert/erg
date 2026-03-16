@@ -10398,6 +10398,70 @@ func TestStartSummarize_CreatesWorker(t *testing.T) {
 	}
 }
 
+func TestStartSummarize_SetsModel(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+	mockExec.AddPrefixMatch("git", []string{"diff"}, exec.MockResponse{
+		Stdout: []byte("diff --git a/foo.go b/foo.go\n+added line\n"),
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	// Configure workflow with per-state model.
+	wfCfg := &workflow.Config{
+		States: map[string]*workflow.State{
+			"summarize": {
+				Type:   workflow.StateTypeTask,
+				Action: "ai.summarize",
+				Model:  "haiku",
+			},
+		},
+	}
+	d.workflowConfigs = map[string]*workflow.Config{"/test/repo": wfCfg}
+
+	var capturedRunner *claude.MockRunner
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		r := claude.NewMockRunner(sessionID, false, nil)
+		capturedRunner = r
+		return r
+	})
+
+	sess := testSession("sess-1")
+	sess.RepoPath = "/test/repo"
+	sess.WorkTree = "/test/worktree-sess-1"
+	sess.BaseBranch = "main"
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "work-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42", Title: "Fix bug"},
+		SessionID:   "sess-1",
+		Branch:      "feature-42",
+		CurrentStep: "summarize",
+		StepData:    map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	item, _ := d.state.GetWorkItem("work-1")
+
+	err := d.startSummarize(t.Context(), item)
+	if err != nil {
+		t.Fatalf("startSummarize failed: %v", err)
+	}
+
+	if capturedRunner == nil {
+		t.Fatal("expected runner factory to be called")
+	}
+	if got := capturedRunner.GetModel(); got != "claude-haiku-4-5-20251001" {
+		t.Errorf("expected model %q, got %q", "claude-haiku-4-5-20251001", got)
+	}
+}
+
 // --- injectScheduledIssue tests ---
 
 func TestInjectScheduledIssue_EnqueuesWorkItem(t *testing.T) {
