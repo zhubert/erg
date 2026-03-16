@@ -246,8 +246,12 @@ func (d *Daemon) startQueuedItems(ctx context.Context) {
 			it.State = daemonstate.WorkItemActive
 		})
 
-		// Initialize to the engine's start state
-		startState := engine.GetStartState()
+		// Use the item's existing CurrentStep (e.g., from a scheduled trigger)
+		// or fall back to the engine's start state for normal queued items.
+		startState := item.CurrentStep
+		if startState == "" {
+			startState = engine.GetStartState()
+		}
 		d.state.AdvanceWorkItem(item.ID, startState, "idle")
 
 		// Process through the engine — this will invoke codingAction.Execute

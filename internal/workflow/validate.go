@@ -763,10 +763,15 @@ func optionalBoolParam(prefix string, params map[string]any, key string) []Valid
 	return nil
 }
 
+// CronParserSpec is the cron field specification used for both validation and
+// runtime scheduling. Keeping it in one place prevents parser mismatches where
+// a schedule passes validation but fires differently (or vice versa).
+var CronParserSpec = cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow
+
 // validateTriggers validates cron-based trigger configurations.
 func validateTriggers(triggers []TriggerConfig, states map[string]*State) []ValidationError {
 	var errs []ValidationError
-	p := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	p := cron.NewParser(CronParserSpec)
 	for i, t := range triggers {
 		prefix := fmt.Sprintf("triggers[%d]", i)
 		if t.Schedule == "" {

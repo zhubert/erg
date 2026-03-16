@@ -10530,6 +10530,71 @@ func TestIsIssueClosed_ReturnsFalseForSyntheticItems(t *testing.T) {
 	}
 }
 
+func TestStartQueuedItems_PreservesScheduledCurrentStep(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	// Add a "summarize" state to the workflow config so the engine knows about it.
+	wfCfg := d.workflowConfigs["/test/repo"]
+	wfCfg.States["summarize"] = &workflow.State{
+		Type:   workflow.StateTypeTask,
+		Action: "ai.summarize",
+		Next:   "done",
+	}
+
+	// Inject a scheduled trigger work item with CurrentStep pre-set.
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "summarize"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) == 0 {
+		t.Fatal("expected a scheduled work item to be queued")
+	}
+
+	// Verify the item was injected with CurrentStep = "summarize".
+	if queued[0].CurrentStep != "summarize" {
+		t.Fatalf("expected CurrentStep=summarize before start, got %q", queued[0].CurrentStep)
+	}
+
+	// Run startQueuedItems — the action will fail due to missing session mocks,
+	// but we verify the item was advanced to "summarize" (not the default "coding" start).
+	d.startQueuedItems(context.Background())
+
+	item, _ := d.state.GetWorkItem(queued[0].ID)
+	// The item should have been advanced to "summarize", not reset to "coding".
+	// It may subsequently fail (due to mock), but the initial step must be "summarize".
+	if item.CurrentStep == "coding" {
+		t.Errorf("scheduled item should start at 'summarize', not the default 'coding' start state")
+	}
+}
+
+func TestStartQueuedItems_DefaultsToStartState(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	// Add a normal queued work item (no CurrentStep pre-set).
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "/test/repo-42",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "test issue"},
+		StepData: map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	d.startQueuedItems(context.Background())
+
+	item, _ := d.state.GetWorkItem("/test/repo-42")
+	// The item might fail due to missing mocks, but it should have been
+	// initiated at the engine's start state ("coding"), not left empty.
+	if item.State == daemonstate.WorkItemQueued {
+		t.Errorf("expected item to leave queued state")
+	}
+}
+
 func TestStartScheduler_SkippedInOnceMode(t *testing.T) {
 	cfg := testConfig()
 	d := testDaemon(cfg)

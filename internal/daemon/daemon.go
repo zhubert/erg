@@ -494,7 +494,10 @@ func (d *Daemon) startScheduler(ctx context.Context) {
 		return
 	}
 
-	d.scheduler = cron.New(cron.WithLocation(time.UTC))
+	d.scheduler = cron.New(
+		cron.WithLocation(time.UTC),
+		cron.WithParser(cron.NewParser(workflow.CronParserSpec)),
+	)
 
 	for repoPath, wfCfg := range d.workflowConfigs {
 		for _, trigger := range wfCfg.Triggers {
