@@ -1396,6 +1396,70 @@
   <span class="ck">merge_method:</span> <span class="cv">squash</span>       <span class="cc"># rebase | squash | merge</span></pre>
         </div>
 
+        <h3 id="triggers">triggers block</h3>
+        <p>
+          The optional top-level <code>triggers</code> list registers cron-based
+          schedules that fire workflows automatically without a human-filed issue.
+          Each entry creates a synthetic work item that flows through the normal
+          workflow state machine, so scheduled runs appear in the dashboard and
+          <code>erg stats</code> like any other session.
+        </p>
+        <p>
+          Triggers use standard 5-field cron syntax
+          (<code>minute hour day-of-month month day-of-week</code>). All schedules
+          are evaluated in <strong>UTC</strong>. Schedules are
+          ignored when the daemon runs in <code>--once</code> mode
+          (<code>erg run</code>). If the concurrency limit is reached when a
+          trigger fires, that tick is silently skipped and retried at the next
+          scheduled time. A new firing is also skipped while a previous work item
+          from the same trigger is still active or queued.
+        </p>
+        <table class="cli-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>schedule</code></td>
+              <td>string</td>
+              <td>yes</td>
+              <td>
+                Standard 5-field cron expression, e.g.
+                <code>"0 2 * * *"</code> (nightly at 2 AM UTC).
+              </td>
+            </tr>
+            <tr>
+              <td><code>state</code></td>
+              <td>string</td>
+              <td>yes</td>
+              <td>
+                Workflow state name to start from when the trigger fires, e.g.
+                <code>coding</code>. Must be a state defined in the workflow's
+                <code>states</code> map. The state should be one that can
+                bootstrap a session (like <code>ai.code</code>); states that
+                require an existing session or branch (like
+                <code>ai.summarize</code>) will fail on synthetic work items.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="code-block">
+          <span class="code-filename">triggers example</span>
+          <pre><span class="ck">triggers:</span>
+  <span class="cc"># Nightly dependency update</span>
+  - <span class="ck">schedule:</span> <span class="cv">"0 2 * * *"</span>
+    <span class="ck">state:</span>    <span class="cv">coding</span>
+
+  <span class="cc"># Weekly documentation refresh every Monday at 9 AM UTC</span>
+  - <span class="ck">schedule:</span> <span class="cv">"0 9 * * 1"</span>
+    <span class="ck">state:</span>    <span class="cv">coding</span></pre>
+        </div>
+
         <h3 id="source-filter">source.filter keys</h3>
         <p>
           The <code>filter</code> block under <code>source</code> controls which

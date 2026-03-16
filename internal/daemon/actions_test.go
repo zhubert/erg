@@ -10397,3 +10397,275 @@ func TestStartSummarize_CreatesWorker(t *testing.T) {
 		t.Error("expected a worker to be registered for the work item")
 	}
 }
+
+// --- injectScheduledIssue tests ---
+
+func TestInjectScheduledIssue_EnqueuesWorkItem(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) == 0 {
+		t.Fatal("expected a work item to be queued")
+	}
+	item := queued[0]
+	if item.IssueRef.Source != "github" {
+		t.Errorf("expected source=github, got %q", item.IssueRef.Source)
+	}
+	if item.CurrentStep != "coding" {
+		t.Errorf("expected CurrentStep=coding, got %q", item.CurrentStep)
+	}
+	if item.StepData["_synthetic"] != "true" {
+		t.Errorf("expected _synthetic=true, got %v", item.StepData["_synthetic"])
+	}
+}
+
+func TestInjectScheduledIssue_RespectsMaxConcurrent(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 1
+
+	// Fill the concurrency slot with a queued item (queuedCount >= maxConcurrent).
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "existing-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "1"},
+		State:    daemonstate.WorkItemQueued,
+		StepData: map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	// The existing queued item should still be there, but no new item should have been injected.
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected exactly 1 queued item (the existing one), got %d", len(queued))
+	}
+	if queued[0].ID != "existing-1" {
+		t.Errorf("expected existing-1 to be the queued item, got %q", queued[0].ID)
+	}
+}
+
+func TestInjectScheduledIssue_SkipsWhilePreviousActive(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+
+	// First injection creates a queued item.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Fatalf("expected 1 queued item, got %d", len(queued))
+	}
+
+	// Second injection while the first is still queued — should be skipped.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued = d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected still 1 queued item (second should be skipped), got %d", len(queued))
+	}
+}
+
+func TestInjectScheduledIssue_AllowedAfterPreviousCompletes(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+
+	// First injection.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Fatalf("expected 1 queued item, got %d", len(queued))
+	}
+
+	// Mark the first item as terminal (completed).
+	firstID := queued[0].ID
+	d.state.UpdateWorkItem(firstID, func(it *daemonstate.WorkItem) {
+		it.State = daemonstate.WorkItemActive
+	})
+	if err := d.state.MarkWorkItemTerminal(firstID, true); err != nil {
+		t.Fatalf("failed to mark terminal: %v", err)
+	}
+
+	// Second injection should now be allowed since the first is terminal.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued = d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected 1 new queued item after previous completed, got %d", len(queued))
+	}
+}
+
+func TestInjectScheduledIssue_SkippedWhenConfigSavePaused(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+	d.configSavePaused = true
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 0 {
+		t.Errorf("expected 0 queued items when configSavePaused, got %d", len(queued))
+	}
+}
+
+func TestFetchIssueComments_SkipsSyntheticItems(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+
+	item := daemonstate.WorkItem{
+		ID:       "synthetic-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "scheduled-coding-12345"},
+		StepData: map[string]any{"_synthetic": "true"},
+	}
+
+	comments, err := d.fetchIssueComments(context.Background(), "/test/repo", item)
+	if err != nil {
+		t.Fatalf("expected nil error for synthetic item, got: %v", err)
+	}
+	if comments != nil {
+		t.Errorf("expected nil comments for synthetic item, got %d", len(comments))
+	}
+}
+
+func TestIsIssueClosed_ReturnsFalseForSyntheticItems(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+
+	item := daemonstate.WorkItem{
+		ID:       "synthetic-1",
+		IssueRef: config.IssueRef{Source: "github", ID: "scheduled-coding-12345"},
+		StepData: map[string]any{"_synthetic": "true"},
+	}
+
+	closed, err := d.isIssueClosed(context.Background(), "/test/repo", item)
+	if err != nil {
+		t.Fatalf("expected nil error for synthetic item, got: %v", err)
+	}
+	if closed {
+		t.Error("expected false for synthetic item, got true")
+	}
+}
+
+func TestStartQueuedItems_PreservesScheduledCurrentStep(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	// Add a "summarize" state to the workflow config so the engine knows about it.
+	wfCfg := d.workflowConfigs["/test/repo"]
+	wfCfg.States["summarize"] = &workflow.State{
+		Type:   workflow.StateTypeTask,
+		Action: "ai.summarize",
+		Next:   "done",
+	}
+
+	// Inject a scheduled trigger work item with CurrentStep pre-set.
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "summarize"}
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) == 0 {
+		t.Fatal("expected a scheduled work item to be queued")
+	}
+
+	// Verify the item was injected with CurrentStep = "summarize".
+	if queued[0].CurrentStep != "summarize" {
+		t.Fatalf("expected CurrentStep=summarize before start, got %q", queued[0].CurrentStep)
+	}
+
+	// Run startQueuedItems — the action will fail due to missing session mocks,
+	// but we verify the item was advanced to "summarize" (not the default "coding" start).
+	d.startQueuedItems(context.Background())
+
+	item, _ := d.state.GetWorkItem(queued[0].ID)
+	// The item should have been advanced to "summarize", not reset to "coding".
+	// It may subsequently fail (due to mock), but the initial step must be "summarize".
+	if item.CurrentStep == "coding" {
+		t.Errorf("scheduled item should start at 'summarize', not the default 'coding' start state")
+	}
+}
+
+func TestStartQueuedItems_DefaultsToStartState(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	// Add a normal queued work item (no CurrentStep pre-set).
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "/test/repo-42",
+		IssueRef: config.IssueRef{Source: "github", ID: "42", Title: "test issue"},
+		StepData: map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	d.startQueuedItems(context.Background())
+
+	item, _ := d.state.GetWorkItem("/test/repo-42")
+	// The item might fail due to missing mocks, but it should have been
+	// initiated at the engine's start state ("coding"), not left empty.
+	if item.State == daemonstate.WorkItemQueued {
+		t.Errorf("expected item to leave queued state")
+	}
+}
+
+func TestStartScheduler_SkippedInOnceMode(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	d.once = true
+
+	d.startScheduler(context.Background())
+
+	if d.scheduler != nil {
+		t.Error("expected scheduler to be nil in --once mode")
+	}
+}
+
+func TestStartScheduler_RegistersTriggers(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+
+	// Add triggers to the workflow config.
+	wfCfg := d.workflowConfigs["/test/repo"]
+	wfCfg.Triggers = []workflow.TriggerConfig{
+		{Schedule: "0 2 * * *", State: "coding"},
+	}
+
+	d.startScheduler(context.Background())
+	defer d.stopScheduler()
+
+	if d.scheduler == nil {
+		t.Fatal("expected scheduler to be non-nil")
+	}
+	// Verify entries were registered (cron.Cron.Entries() returns them).
+	entries := d.scheduler.Entries()
+	if len(entries) == 0 {
+		t.Error("expected at least one cron entry to be registered")
+	}
+}
