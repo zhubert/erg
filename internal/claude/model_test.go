@@ -43,33 +43,34 @@ func TestResolveModel_UnknownPassthrough(t *testing.T) {
 	}
 }
 
-func TestKnownModels_ContainsAliases(t *testing.T) {
-	aliases := []string{"opus", "sonnet", "haiku"}
-	for _, alias := range aliases {
-		if !KnownModels[alias] {
-			t.Errorf("KnownModels[%q] should be true", alias)
+func TestIsValidModel_Aliases(t *testing.T) {
+	for _, alias := range []string{"opus", "sonnet", "haiku"} {
+		if !IsValidModel(alias) {
+			t.Errorf("IsValidModel(%q) should be true", alias)
 		}
 	}
 }
 
-func TestKnownModels_ContainsCanonicalIDs(t *testing.T) {
+func TestIsValidModel_CanonicalIDs(t *testing.T) {
 	ids := []string{
 		"claude-opus-4-6",
 		"claude-sonnet-4-6",
 		"claude-haiku-4-5-20251001",
+		"claude-sonnet-4-20250514",   // future model not in aliases
+		"claude-some-new-model-2026", // arbitrary claude-* ID
 	}
 	for _, id := range ids {
-		if !KnownModels[id] {
-			t.Errorf("KnownModels[%q] should be true", id)
+		if !IsValidModel(id) {
+			t.Errorf("IsValidModel(%q) should be true for canonical ID", id)
 		}
 	}
 }
 
-func TestKnownModels_UnknownIsFalse(t *testing.T) {
-	unknowns := []string{"gpt-4o", "gemini-pro", "llama-3", ""}
-	for _, u := range unknowns {
-		if KnownModels[u] {
-			t.Errorf("KnownModels[%q] should be false", u)
+func TestIsValidModel_Invalid(t *testing.T) {
+	invalids := []string{"gpt-4o", "gemini-pro", "llama-3", "", "claudesonnet"}
+	for _, m := range invalids {
+		if IsValidModel(m) {
+			t.Errorf("IsValidModel(%q) should be false", m)
 		}
 	}
 }

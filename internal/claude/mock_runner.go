@@ -56,7 +56,7 @@ type MockRunner struct {
 
 	stopped      bool
 	systemPrompt string
-	Model        string // exported so tests can assert the value
+	model        string
 }
 
 // NewMockRunner creates a mock runner for testing.
@@ -495,7 +495,14 @@ func (m *MockRunner) SendPlanApprovalResponse(resp mcp.PlanApprovalResponse) {
 func (m *MockRunner) SetModel(model string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.Model = model
+	m.model = model
+}
+
+// GetModel returns the current model (for test assertions).
+func (m *MockRunner) GetModel() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.model
 }
 
 // SetHostTools implements RunnerConfig.

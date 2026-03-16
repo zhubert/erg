@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/workflow"
 )
@@ -379,12 +380,7 @@ func TestValidateWorkflowConfig_WithContainerImage(t *testing.T) {
 }
 
 func TestValidateWorkflowConfig_ModelValidation(t *testing.T) {
-	knownModels := map[string]bool{
-		"sonnet": true,
-		"haiku":  true,
-		"opus":   true,
-	}
-	isValid := func(m string) bool { return knownModels[m] }
+	isValid := claude.IsValidModel
 
 	tests := []struct {
 		name        string
@@ -415,7 +411,25 @@ func TestValidateWorkflowConfig_ModelValidation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "unknown model in settings",
+			name: "canonical ID in settings accepted",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "claude-sonnet-4-6"}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "arbitrary claude- ID accepted",
+			cfg: func() *workflow.Config {
+				c := workflow.DefaultWorkflowConfig()
+				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "claude-some-future-model"}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "non-claude model in settings rejected",
 			cfg: func() *workflow.Config {
 				c := workflow.DefaultWorkflowConfig()
 				c.Settings = &workflow.SettingsConfig{ContainerImage: "img", Model: "gpt-4o"}
@@ -425,7 +439,7 @@ func TestValidateWorkflowConfig_ModelValidation(t *testing.T) {
 			errContains: "settings.model",
 		},
 		{
-			name: "unknown model in state",
+			name: "non-claude model in state rejected",
 			cfg: func() *workflow.Config {
 				c := workflow.DefaultWorkflowConfig()
 				// Set an invalid model on the first existing state

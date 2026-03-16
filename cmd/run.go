@@ -116,7 +116,7 @@ func runIssue(cmd *cobra.Command, args []string) error {
 		wfCfg.Settings.ContainerImage = image
 	}
 
-	if err := validateWorkflowConfig(wfCfg, func(m string) bool { return claude.KnownModels[m] }); err != nil {
+	if err := validateWorkflowConfig(wfCfg, claude.IsValidModel); err != nil {
 		return err
 	}
 

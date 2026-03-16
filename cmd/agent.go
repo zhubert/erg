@@ -568,7 +568,7 @@ func ensureRepoImage(ctx context.Context, repoPath, workflowFile string, buildLo
 		}
 		wfCfg.Settings.ContainerImage = image
 	}
-	if err := validateWorkflowConfig(wfCfg, func(m string) bool { return claude.KnownModels[m] }); err != nil {
+	if err := validateWorkflowConfig(wfCfg, claude.IsValidModel); err != nil {
 		return nil, fmt.Errorf("repo %s: %w", repoPath, err)
 	}
 	return wfCfg, nil
@@ -585,7 +585,7 @@ func validateWorkflowConfig(cfg *workflow.Config, isValidModel func(string) bool
 		if !isValidModel(cfg.Settings.Model) {
 			errs = append(errs, workflow.ValidationError{
 				Field:   "settings.model",
-				Message: fmt.Sprintf("unknown model %q (use an alias like \"sonnet\" or a full model ID)", cfg.Settings.Model),
+				Message: fmt.Sprintf("unknown model %q; use an alias (opus, sonnet, haiku) or a canonical model ID like \"claude-sonnet-4-6\"", cfg.Settings.Model),
 			})
 		}
 	}
@@ -595,7 +595,7 @@ func validateWorkflowConfig(cfg *workflow.Config, isValidModel func(string) bool
 		if state.Model != "" && !isValidModel(state.Model) {
 			errs = append(errs, workflow.ValidationError{
 				Field:   fmt.Sprintf("states.%s.model", name),
-				Message: fmt.Sprintf("unknown model %q (use an alias like \"sonnet\" or a full model ID)", state.Model),
+				Message: fmt.Sprintf("unknown model %q; use an alias (opus, sonnet, haiku) or a canonical model ID like \"claude-sonnet-4-6\"", state.Model),
 			})
 		}
 	}

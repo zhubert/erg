@@ -1,23 +1,22 @@
 package claude
 
-// KnownModels is the set of all valid model identifiers — both shorthand
-// aliases and canonical Anthropic model IDs. Used for config validation.
-var KnownModels = map[string]bool{
-	// Shorthand aliases
-	"opus":   true,
-	"sonnet": true,
-	"haiku":  true,
-	// Canonical model IDs
-	"claude-opus-4-6":           true,
-	"claude-sonnet-4-6":         true,
-	"claude-haiku-4-5-20251001": true,
-}
+import "strings"
 
 // modelAliases maps shorthand names to canonical Anthropic model IDs.
 var modelAliases = map[string]string{
 	"opus":   "claude-opus-4-6",
 	"sonnet": "claude-sonnet-4-6",
 	"haiku":  "claude-haiku-4-5-20251001",
+}
+
+// IsValidModel reports whether model is a recognized alias or looks like a
+// canonical Claude model ID (any string starting with "claude-"). This avoids
+// hard-coding every canonical ID while still catching obvious typos.
+func IsValidModel(model string) bool {
+	if _, ok := modelAliases[model]; ok {
+		return true
+	}
+	return strings.HasPrefix(model, "claude-")
 }
 
 // ResolveModel translates a shorthand alias to its canonical model ID.
