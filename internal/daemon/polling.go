@@ -534,8 +534,10 @@ func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
 // and enqueues it, subject to the concurrency limit. If the daemon is at the
 // concurrency limit the tick is silently skipped — the next cron firing will retry.
 //
-// Synthetic issues use a stable ID of the form "scheduled-<state>-<unix-day>"
-// so the same trigger does not double-enqueue within a single calendar day.
+// Each firing gets a unique ID based on the unix timestamp so cron expressions
+// like "*/15 * * * *" enqueue a new item every 15 minutes as expected.
+// HasWorkItemForIssue prevents double-enqueue only while a previous item from
+// the same trigger is still active or queued.
 func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trigger workflow.TriggerConfig) {
 	log := d.logger.With("component", "scheduler", "repo", repoPath, "state", trigger.State)
 
@@ -554,17 +556,20 @@ func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trig
 		return
 	}
 
-	// Stable ID: one-per-day per state so the same schedule doesn't double-enqueue.
-	day := time.Now().UTC().Unix() / 86400
-	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.State, day)
+	// Unique ID per firing so each cron tick enqueues a fresh work item.
+	ts := time.Now().UTC().Unix()
+	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.State, ts)
+
+	// Don't enqueue if a previous firing of the same trigger is still
+	// active or queued. Once the previous item completes (terminal), the
+	// next firing is allowed through.
+	if d.hasActiveScheduledItem(trigger.State) {
+		log.Debug("previous scheduled item still active, skipping")
+		return
+	}
 
 	wfCfg := d.getWorkflowConfig(repoPath)
 	provider := issues.Source(wfCfg.Source.Provider)
-
-	if d.state.HasWorkItemForIssue(string(provider), issueID) {
-		log.Debug("scheduled issue already enqueued for today, skipping", "issueID", issueID)
-		return
-	}
 
 	title := fmt.Sprintf("Scheduled: %s", trigger.State)
 	item := &daemonstate.WorkItem{
@@ -619,6 +624,25 @@ func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemon
 	}
 
 	return false, nil
+}
+
+// hasActiveScheduledItem returns true if a non-terminal synthetic work item
+// already exists for the given trigger state. This prevents enqueuing a new
+// firing while a previous one is still active or queued, without imposing an
+// artificial once-per-day limit.
+func (d *Daemon) hasActiveScheduledItem(triggerState string) bool {
+	prefix := fmt.Sprintf("scheduled-%s-", triggerState)
+	for _, item := range d.state.GetActiveWorkItems() {
+		if item.StepData["_synthetic"] == "true" && strings.HasPrefix(item.IssueRef.ID, prefix) {
+			return true
+		}
+	}
+	for _, item := range d.state.GetWorkItemsByState(daemonstate.WorkItemQueued) {
+		if item.StepData["_synthetic"] == "true" && strings.HasPrefix(item.IssueRef.ID, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasExistingSession checks if a session already exists for the given issue.

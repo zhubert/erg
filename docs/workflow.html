@@ -1411,15 +1411,8 @@
           ignored when the daemon runs in <code>--once</code> mode
           (<code>erg run</code>). If the concurrency limit is reached when a
           trigger fires, that tick is silently skipped and retried at the next
-          scheduled time.
-        </p>
-        <p>
-          <strong>Note:</strong> Each trigger enqueues at most one work item per
-          UTC calendar day. If a cron expression fires multiple times per day
-          (e.g. <code>"*/15 * * * *"</code>), only the first firing of the day
-          creates a work item; subsequent firings are deduplicated. Design your
-          schedules accordingly — triggers are best suited for daily or less
-          frequent runs.
+          scheduled time. A new firing is also skipped while a previous work item
+          from the same trigger is still active or queued.
         </p>
         <table class="cli-table">
           <thead>

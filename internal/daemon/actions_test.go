@@ -10454,7 +10454,7 @@ func TestInjectScheduledIssue_RespectsMaxConcurrent(t *testing.T) {
 	}
 }
 
-func TestInjectScheduledIssue_IdempotentWithinDay(t *testing.T) {
+func TestInjectScheduledIssue_SkipsWhilePreviousActive(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{"/test/repo"}
 	d := testDaemon(cfg)
@@ -10463,13 +10463,51 @@ func TestInjectScheduledIssue_IdempotentWithinDay(t *testing.T) {
 
 	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
 
-	// Inject twice — should only create one work item.
+	// First injection creates a queued item.
 	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
-	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
-
 	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
 	if len(queued) != 1 {
-		t.Errorf("expected exactly 1 queued item after 2 injections, got %d", len(queued))
+		t.Fatalf("expected 1 queued item, got %d", len(queued))
+	}
+
+	// Second injection while the first is still queued — should be skipped.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued = d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected still 1 queued item (second should be skipped), got %d", len(queued))
+	}
+}
+
+func TestInjectScheduledIssue_AllowedAfterPreviousCompletes(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+	d := testDaemon(cfg)
+	d.repoFilter = "/test/repo"
+	d.maxConcurrent = 5
+
+	trigger := workflow.TriggerConfig{Schedule: "0 2 * * *", State: "coding"}
+
+	// First injection.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued := d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Fatalf("expected 1 queued item, got %d", len(queued))
+	}
+
+	// Mark the first item as terminal (completed).
+	firstID := queued[0].ID
+	d.state.UpdateWorkItem(firstID, func(it *daemonstate.WorkItem) {
+		it.State = daemonstate.WorkItemActive
+	})
+	if err := d.state.MarkWorkItemTerminal(firstID, true); err != nil {
+		t.Fatalf("failed to mark terminal: %v", err)
+	}
+
+	// Second injection should now be allowed since the first is terminal.
+	d.injectScheduledIssue(context.Background(), "/test/repo", trigger)
+	queued = d.state.GetWorkItemsByState(daemonstate.WorkItemQueued)
+	if len(queued) != 1 {
+		t.Errorf("expected 1 new queued item after previous completed, got %d", len(queued))
 	}
 }
 
