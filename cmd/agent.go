@@ -575,7 +575,7 @@ func ensureRepoImage(ctx context.Context, repoPath, workflowFile string, buildLo
 }
 
 // validateWorkflowConfig returns an error if the workflow config has validation problems.
-// isValidModel is called for each non-empty model string; pass claude.KnownModels lookup
+// isValidModel is called for each non-empty model string; pass claude.IsValidModel
 // in production and a custom func in tests.
 func validateWorkflowConfig(cfg *workflow.Config, isValidModel func(string) bool) error {
 	errs := workflow.Validate(cfg)
