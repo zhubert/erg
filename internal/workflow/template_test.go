@@ -1777,6 +1777,75 @@ func TestExpandTemplates_BuiltinLinearAwaitState(t *testing.T) {
 	}
 }
 
+func TestExpandTemplates_BuiltinModelParam(t *testing.T) {
+	tests := []struct {
+		name     string
+		builtin  string
+		aiStates []string
+	}{
+		{"plan", "builtin:plan", []string{"_t_start_planning"}},
+		{"code", "builtin:code", []string{"_t_start_coding"}},
+		{"document", "builtin:document", []string{"_t_start_documenting"}},
+		{"ci", "builtin:ci", []string{"_t_start_fix_ci", "_t_start_resolve_conflicts"}},
+		{"review", "builtin:review", []string{"_t_start_address_review"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+"_default_empty", func(t *testing.T) {
+			cfg := minimalCfg(map[string]*State{
+				"start": {
+					Type:  StateTypeTemplate,
+					Use:   tt.builtin,
+					Exits: map[string]string{"success": "done", "failure": "failed"},
+				},
+			})
+			if tt.builtin == "builtin:review" {
+				cfg.States["start"].Exits["ci_regression"] = "failed"
+			}
+			cfg.Start = "start"
+			result, err := ExpandTemplates(cfg, t.TempDir())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, stateName := range tt.aiStates {
+				s := result.States[stateName]
+				if s == nil {
+					t.Fatalf("state %q missing", stateName)
+				}
+				if s.Model != "" {
+					t.Errorf("%s: model should be empty by default, got %q", stateName, s.Model)
+				}
+			}
+		})
+		t.Run(tt.name+"_model_override", func(t *testing.T) {
+			cfg := minimalCfg(map[string]*State{
+				"start": {
+					Type:   StateTypeTemplate,
+					Use:    tt.builtin,
+					Params: map[string]any{"model": "haiku"},
+					Exits:  map[string]string{"success": "done", "failure": "failed"},
+				},
+			})
+			if tt.builtin == "builtin:review" {
+				cfg.States["start"].Exits["ci_regression"] = "failed"
+			}
+			cfg.Start = "start"
+			result, err := ExpandTemplates(cfg, t.TempDir())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, stateName := range tt.aiStates {
+				s := result.States[stateName]
+				if s == nil {
+					t.Fatalf("state %q missing", stateName)
+				}
+				if s.Model != "haiku" {
+					t.Errorf("%s: model = %q, want %q", stateName, s.Model, "haiku")
+				}
+			}
+		})
+	}
+}
+
 // TestExpandTemplates_ModularComposition verifies that multiple modular templates
 // can be composed into a complete workflow (the primary use case).
 func TestExpandTemplates_ModularComposition(t *testing.T) {

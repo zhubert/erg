@@ -259,12 +259,14 @@ func PlanTemplateConfig() *TemplateConfig {
 		},
 		Params: []TemplateParam{
 			{Name: "containerized", Default: true},
+			{Name: "model", Default: ""},
 		},
 		States: map[string]*State{
 			"planning": {
 				Type:        StateTypeTask,
 				Action:      "ai.plan",
 				DisplayName: "Planning",
+				Model:       "{{model}}",
 				Params: map[string]any{
 					"max_turns":     30,
 					"max_duration":  "15m",
@@ -328,12 +330,14 @@ func CodeTemplateConfig() *TemplateConfig {
 		Params: []TemplateParam{
 			{Name: "simplify", Default: false},
 			{Name: "containerized", Default: true},
+			{Name: "model", Default: ""},
 		},
 		States: map[string]*State{
 			"coding": {
 				Type:        StateTypeTask,
 				Action:      "ai.code",
 				DisplayName: "Coding",
+				Model:       "{{model}}",
 				Params: map[string]any{
 					"max_turns":     50,
 					"max_duration":  "30m",
@@ -366,12 +370,14 @@ func DocumentTemplateConfig() *TemplateConfig {
 		},
 		Params: []TemplateParam{
 			{Name: "containerized", Default: true},
+			{Name: "model", Default: ""},
 		},
 		States: map[string]*State{
 			"documenting": {
 				Type:        StateTypeTask,
 				Action:      "ai.document",
 				DisplayName: "Documenting",
+				Model:       "{{model}}",
 				Params: map[string]any{
 					"max_turns":     50,
 					"max_duration":  "30m",
@@ -441,6 +447,7 @@ func CITemplateConfig() *TemplateConfig {
 		},
 		Params: []TemplateParam{
 			{Name: "simplify", Default: false},
+			{Name: "model", Default: ""},
 		},
 		States: map[string]*State{
 			"await_ci": {
@@ -480,6 +487,7 @@ func CITemplateConfig() *TemplateConfig {
 				Type:        StateTypeTask,
 				Action:      "ai.resolve_conflicts",
 				DisplayName: "Resolving Conflicts",
+				Model:       "{{model}}",
 				Params: map[string]any{
 					"max_conflict_rounds": 3,
 					"simplify":            "{{simplify}}",
@@ -499,6 +507,7 @@ func CITemplateConfig() *TemplateConfig {
 				Type:        StateTypeTask,
 				Action:      "ai.fix_ci",
 				DisplayName: "Fixing CI",
+				Model:       "{{model}}",
 				Params: map[string]any{
 					"max_ci_fix_rounds": 3,
 					"simplify":          "{{simplify}}",
@@ -559,6 +568,7 @@ func ReviewTemplateConfig() *TemplateConfig {
 		},
 		Params: []TemplateParam{
 			{Name: "simplify", Default: false},
+			{Name: "model", Default: ""},
 		},
 		States: map[string]*State{
 			"await_review": {
@@ -589,6 +599,7 @@ func ReviewTemplateConfig() *TemplateConfig {
 				Type:        StateTypeTask,
 				Action:      "ai.address_review",
 				DisplayName: "Addressing Review",
+				Model:       "{{model}}",
 				Params: map[string]any{
 					"max_review_rounds": 3,
 					"simplify":          "{{simplify}}",

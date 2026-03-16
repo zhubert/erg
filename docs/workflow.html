@@ -1283,6 +1283,7 @@
   <span class="ck">coding:</span>
     <span class="ck">type:</span> <span class="cs">task</span>
     <span class="ck">action:</span> <span class="ca">ai.code</span>
+    <span class="ck">model:</span> <span class="cv">opus</span>                  <span class="cc"># override the settings-level model for this state</span>
     <span class="ck">params:</span>
       <span class="ck">max_turns:</span> <span class="cv">50</span>
       <span class="ck">max_duration:</span> <span class="cv">30m</span>
@@ -1379,6 +1380,18 @@
               <td><em>built-in</em></td>
               <td>Custom Docker image to use for containerized Claude sessions.</td>
             </tr>
+            <tr>
+              <td><code>model</code></td>
+              <td>string</td>
+              <td><em>CLI default</em></td>
+              <td>
+                Default Claude model for all AI states. Accepts aliases
+                (<code>opus</code>, <code>sonnet</code>, <code>haiku</code>) or
+                full canonical IDs (e.g. <code>claude-haiku-4-5-20251001</code>).
+                Can be overridden per-state with the state-level
+                <code>model</code> field.
+              </td>
+            </tr>
           </tbody>
         </table>
 
@@ -1393,7 +1406,8 @@
   <span class="ck">max_turns:</span> <span class="cv">50</span>              <span class="cc"># stop session after 50 turns</span>
   <span class="ck">max_duration:</span> <span class="cv">30</span>           <span class="cc"># stop session after 30 minutes</span>
   <span class="ck">auto_merge:</span> <span class="cv">true</span>           <span class="cc"># merge automatically when CI passes</span>
-  <span class="ck">merge_method:</span> <span class="cv">squash</span>       <span class="cc"># rebase | squash | merge</span></pre>
+  <span class="ck">merge_method:</span> <span class="cv">squash</span>       <span class="cc"># rebase | squash | merge</span>
+  <span class="ck">model:</span> <span class="cv">sonnet</span>             <span class="cc"># default model for all AI states</span></pre>
         </div>
 
         <h3 id="triggers">triggers block</h3>
@@ -1643,6 +1657,53 @@
           <code>wait</code>.
         </p>
 
+        <h4 id="state-model">model</h4>
+        <p>
+          Any AI state (<code>ai.code</code>, <code>ai.plan</code>,
+          <code>ai.document</code>, <code>ai.fix_ci</code>,
+          <code>ai.resolve_conflicts</code>, <code>ai.address_review</code>,
+          <code>ai.review</code>, <code>ai.summarize</code>) can set a
+          <code>model</code> field to override the Claude model used for that
+          state. Accepts aliases (<code>opus</code>, <code>sonnet</code>,
+          <code>haiku</code>) or full canonical IDs. Overrides the
+          <code>settings.model</code> default. If neither is set, the CLI
+          default model is used.
+        </p>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-filename">per-state model override</span>
+          </div>
+          <pre><span class="ck">coding:</span>
+  <span class="ck">type:</span> <span class="cs">task</span>
+  <span class="ck">action:</span> <span class="ca">ai.code</span>
+  <span class="ck">model:</span> <span class="cv">opus</span>            <span class="cc"># use opus for this state only</span>
+  <span class="ck">next:</span> <span class="cv">open_pr</span>
+
+<span class="ck">fix_ci:</span>
+  <span class="ck">type:</span> <span class="cs">task</span>
+  <span class="ck">action:</span> <span class="ca">ai.fix_ci</span>
+  <span class="ck">model:</span> <span class="cv">haiku</span>           <span class="cc"># use a faster model for CI fixes</span>
+  <span class="ck">next:</span> <span class="cv">push_ci_fix</span></pre>
+        </div>
+        <p>
+          Builtin templates that contain AI actions also accept a
+          <code>model</code> parameter, which is passed through to the
+          template's AI states:
+        </p>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-filename">model via template param</span>
+          </div>
+          <pre><span class="ck">coding:</span>
+  <span class="ck">type:</span> <span class="cs">template</span>
+  <span class="ck">use:</span> <span class="cv">builtin:code</span>
+  <span class="ck">params:</span>
+    <span class="ck">model:</span> <span class="cv">haiku</span>
+  <span class="ck">exits:</span>
+    <span class="ck">success:</span> <span class="cv">open_pr</span>
+    <span class="ck">failure:</span> <span class="cv">failed</span></pre>
+        </div>
+
         <h3 id="state-choice">choice</h3>
         <p>
           A <code>choice</code> state reads values from the accumulated step
@@ -1809,6 +1870,7 @@
               </thead>
               <tbody>
                 <tr><td>containerized</td><td>bool</td><td>true</td><td>Run the planning session inside a container.</td></tr>
+                <tr><td>model</td><td>string</td><td><em>none</em></td><td>Claude model for the planning session (e.g. <code>haiku</code>, <code>sonnet</code>, <code>opus</code>).</td></tr>
               </tbody>
             </table>
           </div>
@@ -1843,6 +1905,7 @@
               <tbody>
                 <tr><td>containerized</td><td>bool</td><td>true</td><td>Run the coding session inside a container.</td></tr>
                 <tr><td>simplify</td><td>bool</td><td>false</td><td>Run the simplify pass after coding to clean up the implementation.</td></tr>
+                <tr><td>model</td><td>string</td><td><em>none</em></td><td>Claude model for the coding session (e.g. <code>haiku</code>, <code>sonnet</code>, <code>opus</code>).</td></tr>
               </tbody>
             </table>
           </div>
@@ -1877,6 +1940,7 @@
               </thead>
               <tbody>
                 <tr><td>containerized</td><td>bool</td><td>true</td><td>Run the documentation session inside a container.</td></tr>
+                <tr><td>model</td><td>string</td><td><em>none</em></td><td>Claude model for the documentation session (e.g. <code>haiku</code>, <code>sonnet</code>, <code>opus</code>).</td></tr>
               </tbody>
             </table>
           </div>
@@ -1944,6 +2008,7 @@
               </thead>
               <tbody>
                 <tr><td>simplify</td><td>bool</td><td>false</td><td>Run the simplify pass when resolving conflicts or fixing CI.</td></tr>
+                <tr><td>model</td><td>string</td><td><em>none</em></td><td>Claude model for the AI states (fix CI, resolve conflicts) in this template.</td></tr>
               </tbody>
             </table>
           </div>
@@ -1978,6 +2043,7 @@
               </thead>
               <tbody>
                 <tr><td>simplify</td><td>bool</td><td>false</td><td>Run the simplify pass when addressing review feedback.</td></tr>
+                <tr><td>model</td><td>string</td><td><em>none</em></td><td>Claude model for the address-review AI state in this template.</td></tr>
               </tbody>
             </table>
           </div>

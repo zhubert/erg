@@ -261,11 +261,14 @@ func resolveParams(defs []TemplateParam, overrides map[string]any) map[string]an
 var paramPlaceholder = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 // applyParamSubstitution replaces {{param_name}} placeholders in the string
-// values of state.Params with the corresponding value from params.
-// Only string values within state.Params are substituted.
+// values of state.Params and state.Model with the corresponding value from params.
 func applyParamSubstitution(state *State, params map[string]any) {
-	if len(state.Params) == 0 || len(params) == 0 {
+	if len(params) == 0 {
 		return
+	}
+	// Substitute in state.Model (e.g. "{{model}}" → "haiku").
+	if state.Model != "" {
+		state.Model = substituteParams(state.Model, params)
 	}
 	for k, v := range state.Params {
 		if s, ok := v.(string); ok {
