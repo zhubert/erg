@@ -9960,6 +9960,64 @@ func TestDocumentingAction_Execute_WorkItemNotFound(t *testing.T) {
 	}
 }
 
+// --- summarizeAction tests ---
+
+func TestSummarizeAction_Execute_WorkItemNotFound(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	action := &summarizeAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "nonexistent",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing work item")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing work item")
+	}
+}
+
+func TestSummarizeAction_Execute_MissingSession(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:        "item-1",
+		IssueRef:  config.IssueRef{Source: "github", ID: "42"},
+		SessionID: "nonexistent-session",
+		StepData:  map[string]any{},
+	})
+
+	action := &summarizeAction{daemon: d}
+	ac := &workflow.ActionContext{
+		WorkItemID: "item-1",
+		Params:     workflow.NewParamHelper(nil),
+	}
+
+	result := action.Execute(context.Background(), ac)
+
+	if result.Success {
+		t.Error("expected failure for missing session")
+	}
+	if result.Error == nil {
+		t.Error("expected error for missing session")
+	}
+}
+
+func TestSummarizeAction_RegisteredInRegistry(t *testing.T) {
+	cfg := testConfig()
+	d := testDaemon(cfg)
+	registry := d.buildActionRegistry()
+	if registry.Get("ai.summarize") == nil {
+		t.Error("ai.summarize not registered in action registry")
+	}
+}
+
 func TestDocumentingAction_Execute_NoRepo(t *testing.T) {
 	cfg := testConfig()
 	cfg.Repos = []string{}
@@ -10290,5 +10348,52 @@ func TestStartDocumenting_UsesCustomSystemPrompt(t *testing.T) {
 	}
 	if capturedRunner.systemPrompt != customPrompt {
 		t.Errorf("expected custom prompt %q, got %q", customPrompt, capturedRunner.systemPrompt)
+	}
+}
+
+func TestStartSummarize_CreatesWorker(t *testing.T) {
+	cfg := testConfig()
+	cfg.Repos = []string{"/test/repo"}
+
+	mockExec := exec.NewMockExecutor(nil)
+	mockExec.AddPrefixMatch("git", []string{"symbolic-ref"}, exec.MockResponse{
+		Stdout: []byte("refs/remotes/origin/main\n"),
+	})
+	// Mock the git diff call that startSummarize makes.
+	mockExec.AddPrefixMatch("git", []string{"diff"}, exec.MockResponse{
+		Stdout: []byte("diff --git a/foo.go b/foo.go\n+added line\n"),
+	})
+
+	d := testDaemonWithExec(cfg, mockExec)
+	d.repoFilter = "/test/repo"
+
+	sess := testSession("sess-1")
+	sess.RepoPath = "/test/repo"
+	sess.WorkTree = "/test/worktree-sess-1"
+	sess.BaseBranch = "main"
+	cfg.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:          "work-1",
+		IssueRef:    config.IssueRef{Source: "github", ID: "42", Title: "Fix bug"},
+		SessionID:   "sess-1",
+		Branch:      "feature-42",
+		CurrentStep: "summarize",
+		StepData:    map[string]any{"_repo_path": "/test/repo"},
+	})
+
+	item, _ := d.state.GetWorkItem("work-1")
+
+	err := d.startSummarize(t.Context(), item)
+	if err != nil {
+		t.Fatalf("startSummarize failed unexpectedly: %v", err)
+	}
+
+	// A worker should have been registered.
+	d.mu.Lock()
+	_, workerExists := d.workers["work-1"]
+	d.mu.Unlock()
+	if !workerExists {
+		t.Error("expected a worker to be registered for the work item")
 	}
 }
