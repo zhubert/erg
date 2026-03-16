@@ -31,6 +31,11 @@ func (d *Daemon) StopSession(itemID string) error {
 		return nil
 	}
 	w.Cancel()
+	repo := ""
+	if sess := d.config.GetSession(item.SessionID); sess != nil {
+		repo = sess.RepoPath
+	}
+	d.logger.Info("session stopped by human", "event", "human.stop", "workItem", itemID, "repo", repo)
 	return nil
 }
 
@@ -71,6 +76,18 @@ func (d *Daemon) RetryWorkItem(itemID string) error {
 		it.OutputTokens = 0
 	})
 	d.saveState()
+	repo := ""
+	if item.SessionID != "" {
+		if sess := d.config.GetSession(item.SessionID); sess != nil {
+			repo = sess.RepoPath
+		}
+	}
+	if repo == "" {
+		if rp, ok := item.StepData["_repo_path"].(string); ok {
+			repo = rp
+		}
+	}
+	d.logger.Info("work item retried by human", "event", "human.retry", "workItem", itemID, "repo", repo)
 	return nil
 }
 
@@ -94,5 +111,10 @@ func (d *Daemon) SendMessage(itemID, message string) error {
 	}
 
 	d.SetPendingMessage(item.SessionID, message)
+	repo := ""
+	if sess := d.config.GetSession(item.SessionID); sess != nil {
+		repo = sess.RepoPath
+	}
+	d.logger.Info("message sent to session", "event", "human.message", "workItem", itemID, "repo", repo)
 	return nil
 }

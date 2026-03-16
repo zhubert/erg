@@ -46,10 +46,20 @@ func (d *Daemon) collectCompletedWorkers(ctx context.Context) {
 			continue
 		}
 
+		repo := ""
+		if rp, ok := item.StepData["_repo_path"].(string); ok {
+			repo = rp
+		}
+		if repo == "" {
+			if sess := d.config.GetSession(item.SessionID); sess != nil {
+				repo = sess.RepoPath
+			}
+		}
+
 		if cw.exitErr != nil {
-			d.logger.Warn("worker completed with error", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase, "error", cw.exitErr)
+			d.logger.Warn("worker completed with error", "event", "session.failed", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase, "error", cw.exitErr, "repo", repo)
 		} else {
-			d.logger.Info("worker completed", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase)
+			d.logger.Info("worker completed", "event", "session.completed", "workItem", cw.workItemID, "step", item.CurrentStep, "phase", item.Phase, "repo", repo)
 		}
 
 		switch item.Phase {

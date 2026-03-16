@@ -71,6 +71,7 @@ func (d *Daemon) createPR(ctx context.Context, item daemonstate.WorkItem, draft 
 		return "", lastErr
 	}
 
+	log.Info("PR created", "event", "pr.created", "url", prURL, "repo", sess.RepoPath)
 	return prURL, nil
 }
 
@@ -214,6 +215,7 @@ func (d *Daemon) mergePR(ctx context.Context, item daemonstate.WorkItem) error {
 	// Mark session as merged
 	d.config.MarkSessionPRMerged(item.SessionID)
 	d.saveConfig("mergePR")
+	d.logger.Info("PR merged", "event", "pr.merged", "workItem", item.ID, "branch", item.Branch, "repo", sess.RepoPath)
 
 	// Persist the repo path before cleanup so workItemView can find it
 	// after the session is removed from config.
