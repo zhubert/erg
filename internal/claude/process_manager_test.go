@@ -3215,6 +3215,88 @@ func TestContainerStartupWatchdog_HeartbeatLogs(t *testing.T) {
 	}
 }
 
+func TestContainerStartupWatchdog_TimeoutLogsRedactedAndNotInFatalError(t *testing.T) {
+	// Verify that on container startup timeout:
+	// 1. Container logs are emitted via pm.log (not in the fatal error message)
+	// 2. Secret values in container logs are redacted before logging
+	// 3. The fatal error message does NOT contain container log content
+
+	fakeSecret := "sk-ant-super-secret-key-12345"
+	t.Setenv("ANTHROPIC_API_KEY", fakeSecret)
+
+	var logBuf strings.Builder
+	logger := pmCaptureLogger(&logBuf)
+
+	var fatalErr error
+	fatalCh := make(chan struct{})
+
+	pm := NewProcessManager(ProcessConfig{
+		SessionID:               "test-watchdog-redact",
+		WorkingDir:              t.TempDir(),
+		Containerized:           true,
+		ContainerStartupTimeout: 1 * time.Second,
+	}, ProcessCallbacks{
+		OnFatalError: func(err error) {
+			fatalErr = err
+			close(fatalCh)
+		},
+	}, logger)
+
+	// Set up minimal state so handleExit reaches the containerTimeout branch:
+	// - running = true (so it doesn't bail out early)
+	// - ctx not cancelled (so it doesn't take the interrupt path)
+	// - containerTimeout = true with container logs containing a secret
+	pm.mu.Lock()
+	pm.running = true
+	pm.ctx, pm.cancel = context.WithCancel(context.Background())
+	pm.containerTimeout = true
+	pm.containerLogs = "Error: failed to authenticate with key " + fakeSecret + " to API"
+	pm.containerReady = make(chan struct{})
+	pm.mu.Unlock()
+
+	// Call handleExit directly — it will see containerTimeout=true and go
+	// through the timeout branch without needing a real subprocess.
+	pm.handleExit(fmt.Errorf("signal: killed"))
+
+	// Wait for fatal error callback
+	select {
+	case <-fatalCh:
+		// Good
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for OnFatalError callback")
+	}
+
+	// 1. Fatal error should NOT contain container logs
+	if fatalErr == nil {
+		t.Fatal("expected non-nil fatal error")
+	}
+	if strings.Contains(fatalErr.Error(), "container logs") {
+		t.Error("fatal error should not contain container log content")
+	}
+	if strings.Contains(fatalErr.Error(), fakeSecret) {
+		t.Error("fatal error should not contain the secret value")
+	}
+	if !strings.Contains(fatalErr.Error(), "container failed to start") {
+		t.Error("fatal error should contain the standard timeout message")
+	}
+
+	// 2. Container logs should appear in the structured logger output
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "container logs on startup timeout") {
+		t.Error("expected container logs to be emitted via pm.log")
+	}
+
+	// 3. The secret should be redacted in the log output
+	if strings.Contains(logOutput, fakeSecret) {
+		t.Error("secret value should be redacted in log output")
+	}
+	if !strings.Contains(logOutput, "[REDACTED]") {
+		t.Error("expected [REDACTED] placeholder in log output")
+	}
+
+	pm.cancel()
+}
+
 func TestIsChannelClosed(t *testing.T) {
 	ch := make(chan struct{})
 

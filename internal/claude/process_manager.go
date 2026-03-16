@@ -189,6 +189,9 @@ type ProcessManager struct {
 	containerReady   chan struct{} // closed when MarkSessionStarted is called
 	containerTimeout bool          // set by watchdog before killing
 	containerLogs    string        // captured docker logs on timeout
+
+	// Redactor scrubs known secret values from container logs before writing to erg.log
+	redactor *Redactor
 }
 
 // NewProcessManager creates a new ProcessManager with the given configuration and callbacks.
@@ -197,6 +200,7 @@ func NewProcessManager(config ProcessConfig, callbacks ProcessCallbacks, log *sl
 		config:    config,
 		callbacks: callbacks,
 		log:       log,
+		redactor:  NewRedactor(),
 	}
 }
 
@@ -908,11 +912,10 @@ func (pm *ProcessManager) handleExit(err error) {
 			}
 		}
 
-		errMsg := fmt.Sprintf("container failed to start within %s — Claude CLI produced no output", startupTimeout)
 		if containerLogs != "" {
-			errMsg += fmt.Sprintf("\n\nContainer logs:\n%s", containerLogs)
+			pm.log.Error("container logs on startup timeout", "logs", pm.redactor.Redact(containerLogs))
 		}
-		errMsg += "\n\nCheck the container logs above for update failures. If auto-update failed, try setting ERG_SKIP_UPDATE=1 and pulling the latest image manually."
+		errMsg := fmt.Sprintf("container failed to start within %s — Claude CLI produced no output. Check erg logs for diagnostics. If auto-update failed, try setting ERG_SKIP_UPDATE=1 and pulling the latest image manually.", startupTimeout)
 
 		if pm.callbacks.OnFatalError != nil {
 			pm.callbacks.OnFatalError(fmt.Errorf("%s", errMsg))
