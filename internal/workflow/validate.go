@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/robfig/cron/v3"
 )
 
 // ValidationError describes a single validation problem.
@@ -53,6 +55,9 @@ func Validate(cfg *Config) []ValidationError {
 
 	// Settings validation
 	errs = append(errs, validateSettings(cfg.Settings)...)
+
+	// Trigger validation
+	errs = append(errs, validateTriggers(cfg.Triggers, cfg.States)...)
 
 	return errs
 }
@@ -756,6 +761,43 @@ func optionalBoolParam(prefix string, params map[string]any, key string) []Valid
 		}}
 	}
 	return nil
+}
+
+// CronParserSpec is the cron field specification used for both validation and
+// runtime scheduling. Keeping it in one place prevents parser mismatches where
+// a schedule passes validation but fires differently (or vice versa).
+var CronParserSpec = cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow
+
+// validateTriggers validates cron-based trigger configurations.
+func validateTriggers(triggers []TriggerConfig, states map[string]*State) []ValidationError {
+	var errs []ValidationError
+	p := cron.NewParser(CronParserSpec)
+	for i, t := range triggers {
+		prefix := fmt.Sprintf("triggers[%d]", i)
+		if t.Schedule == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".schedule",
+				Message: "schedule is required",
+			})
+		} else if _, err := p.Parse(t.Schedule); err != nil {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".schedule",
+				Message: fmt.Sprintf("invalid cron expression %q: %v", t.Schedule, err),
+			})
+		}
+		if t.State == "" {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".state",
+				Message: "state is required",
+			})
+		} else if states[t.State] == nil {
+			errs = append(errs, ValidationError{
+				Field:   prefix + ".state",
+				Message: fmt.Sprintf("unknown state %q", t.State),
+			})
+		}
+	}
+	return errs
 }
 
 // validatePromptPath checks that a file: path doesn't escape the repo root.

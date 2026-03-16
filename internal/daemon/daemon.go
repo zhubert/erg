@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/zhubert/erg/internal/agentconfig"
 	"github.com/zhubert/erg/internal/claude"
 	"github.com/zhubert/erg/internal/daemonstate"
@@ -72,6 +73,9 @@ type Daemon struct {
 	dockerDown        bool
 	dockerDownLogged  bool
 	dockerHealthCheck func(context.Context) error // injectable for testing; nil means use default
+
+	// Cron scheduler for schedule triggers
+	scheduler *cron.Cron
 
 	// Workflow
 	workflowFile        string            // optional explicit workflow config file path
@@ -258,6 +262,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Load workflow configs for all repos
 	d.loadWorkflowConfigs()
+
+	// Start cron scheduler for schedule triggers (no-op in --once mode).
+	d.startScheduler(ctx)
+	defer d.stopScheduler()
 
 	// Rebuild state from the issue tracker. This scans for active issues,
 	// queries the tracker for their actual progress (PR state, CI, review),
@@ -476,6 +484,46 @@ func (d *Daemon) buildActionRegistry() *workflow.ActionRegistry {
 	registry.Register("workflow.retry", workflow.NewRetryAction(registry))
 	registry.Register("workflow.wait", &waitAction{daemon: d})
 	return registry
+}
+
+// startScheduler registers cron triggers from workflow configs and starts the
+// scheduler. It is a no-op when d.once is true (single-shot mode).
+func (d *Daemon) startScheduler(ctx context.Context) {
+	if d.once {
+		d.logger.Debug("skipping scheduler in --once mode")
+		return
+	}
+
+	d.scheduler = cron.New(
+		cron.WithLocation(time.UTC),
+		cron.WithParser(cron.NewParser(workflow.CronParserSpec)),
+	)
+
+	for repoPath, wfCfg := range d.workflowConfigs {
+		for _, trigger := range wfCfg.Triggers {
+			repoPath := repoPath // capture loop variable
+			trigger := trigger   // capture loop variable
+			_, err := d.scheduler.AddFunc(trigger.Schedule, func() {
+				d.injectScheduledIssue(ctx, repoPath, trigger)
+			})
+			if err != nil {
+				d.logger.Warn("failed to register schedule trigger",
+					"repo", repoPath, "schedule", trigger.Schedule, "state", trigger.State, "error", err)
+				continue
+			}
+			d.logger.Info("registered schedule trigger",
+				"repo", repoPath, "schedule", trigger.Schedule, "state", trigger.State)
+		}
+	}
+
+	d.scheduler.Start()
+}
+
+// stopScheduler stops the cron scheduler if it was started.
+func (d *Daemon) stopScheduler() {
+	if d.scheduler != nil {
+		d.scheduler.Stop()
+	}
 }
 
 // getWorkflowFileForRepo returns the workflow file path for a specific repo.

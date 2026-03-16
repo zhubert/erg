@@ -27,6 +27,7 @@ type Config struct {
 	Source   SourceConfig      `yaml:"source"`
 	States   map[string]*State `yaml:"states"`
 	Settings *SettingsConfig   `yaml:"settings,omitempty"`
+	Triggers []TriggerConfig   `yaml:"triggers,omitempty"`
 }
 
 // SettingsConfig holds agent-level settings that can be specified in the workflow YAML.
@@ -203,6 +204,12 @@ func (d *Duration) UnmarshalYAML(unmarshal func(any) error) error {
 // MarshalYAML implements yaml.Marshaler for Duration.
 func (d Duration) MarshalYAML() (any, error) {
 	return d.Duration.String(), nil
+}
+
+// TriggerConfig defines a cron-based trigger that fires workflows on a schedule.
+type TriggerConfig struct {
+	Schedule string `yaml:"schedule"` // cron expression (standard 5-field format)
+	State    string `yaml:"state"`    // workflow state name to start from
 }
 
 // ValidActions is the set of recognized action names for task states.

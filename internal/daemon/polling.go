@@ -246,8 +246,12 @@ func (d *Daemon) startQueuedItems(ctx context.Context) {
 			it.State = daemonstate.WorkItemActive
 		})
 
-		// Initialize to the engine's start state
-		startState := engine.GetStartState()
+		// Use the item's existing CurrentStep (e.g., from a scheduled trigger)
+		// or fall back to the engine's start state for normal queued items.
+		startState := item.CurrentStep
+		if startState == "" {
+			startState = engine.GetStartState()
+		}
 		d.state.AdvanceWorkItem(item.ID, startState, "idle")
 
 		// Process through the engine — this will invoke codingAction.Execute
@@ -526,10 +530,75 @@ func (d *Daemon) reconcileClosedIssues(ctx context.Context) {
 	}
 }
 
+// injectScheduledIssue creates a synthetic work item for a cron-triggered action
+// and enqueues it, subject to the concurrency limit. If the daemon is at the
+// concurrency limit the tick is silently skipped — the next cron firing will retry.
+//
+// Each firing gets a unique ID based on the unix timestamp so cron expressions
+// like "*/15 * * * *" enqueue a new item every 15 minutes as expected.
+// HasWorkItemForIssue prevents double-enqueue only while a previous item from
+// the same trigger is still active or queued.
+func (d *Daemon) injectScheduledIssue(ctx context.Context, repoPath string, trigger workflow.TriggerConfig) {
+	log := d.logger.With("component", "scheduler", "repo", repoPath, "state", trigger.State)
+
+	if d.configSavePaused {
+		log.Warn("config save failures exceed threshold, skipping scheduled trigger")
+		return
+	}
+
+	maxConcurrent := d.getMaxConcurrent()
+	activeSlots := d.activeSlotCount()
+	queuedCount := len(d.state.GetWorkItemsByState(daemonstate.WorkItemQueued))
+
+	if activeSlots+queuedCount >= maxConcurrent {
+		log.Debug("at concurrency limit, skipping scheduled trigger",
+			"active", activeSlots, "queued", queuedCount, "max", maxConcurrent)
+		return
+	}
+
+	// Unique ID per firing so each cron tick enqueues a fresh work item.
+	ts := time.Now().UTC().Unix()
+	issueID := fmt.Sprintf("scheduled-%s-%d", trigger.State, ts)
+
+	// Don't enqueue if a previous firing of the same trigger is still
+	// active or queued. Once the previous item completes (terminal), the
+	// next firing is allowed through.
+	if d.hasActiveScheduledItem(trigger.State) {
+		log.Debug("previous scheduled item still active, skipping")
+		return
+	}
+
+	wfCfg := d.getWorkflowConfig(repoPath)
+	provider := issues.Source(wfCfg.Source.Provider)
+
+	title := fmt.Sprintf("Scheduled: %s", trigger.State)
+	item := &daemonstate.WorkItem{
+		ID: fmt.Sprintf("%s-%s", repoPath, issueID),
+		IssueRef: config.IssueRef{
+			Source: string(provider),
+			ID:     issueID,
+			Title:  title,
+		},
+		CurrentStep: trigger.State,
+		StepData: map[string]any{
+			"_repo_path":         repoPath,
+			"_synthetic":         "true",
+			"_scheduled_trigger": trigger.Schedule,
+		},
+	}
+
+	d.state.AddWorkItem(item)
+	log.Info("enqueued scheduled work item", "issueID", issueID, "title", title, "workItemID", item.ID)
+}
+
 // isIssueClosed checks whether the issue backing a work item is closed.
 // Uses the IssueStateChecker interface when a provider is registered,
 // falling back to GitService.GetIssueState for GitHub if no provider is available.
+// Synthetic work items (scheduled triggers) are never considered closed.
 func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemonstate.WorkItem) (bool, error) {
+	if item.StepData["_synthetic"] == "true" {
+		return false, nil
+	}
 	checkCtx, cancel := context.WithTimeout(ctx, timeoutQuickAPI)
 	defer cancel()
 
@@ -554,6 +623,25 @@ func (d *Daemon) isIssueClosed(ctx context.Context, repoPath string, item daemon
 	}
 
 	return false, nil
+}
+
+// hasActiveScheduledItem returns true if a non-terminal synthetic work item
+// already exists for the given trigger state. This prevents enqueuing a new
+// firing while a previous one is still active or queued, without imposing an
+// artificial once-per-day limit.
+func (d *Daemon) hasActiveScheduledItem(triggerState string) bool {
+	prefix := fmt.Sprintf("scheduled-%s-", triggerState)
+	for _, item := range d.state.GetActiveWorkItems() {
+		if item.StepData["_synthetic"] == "true" && strings.HasPrefix(item.IssueRef.ID, prefix) {
+			return true
+		}
+	}
+	for _, item := range d.state.GetWorkItemsByState(daemonstate.WorkItemQueued) {
+		if item.StepData["_synthetic"] == "true" && strings.HasPrefix(item.IssueRef.ID, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // hasExistingSession checks if a session already exists for the given issue.

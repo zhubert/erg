@@ -37,7 +37,11 @@ func maybeAppendSimplify(msg string, simplify bool) string {
 }
 
 // fetchIssueComments retrieves comments for a work item's issue from the appropriate provider.
+// Synthetic work items (scheduled triggers) are skipped since they have no real issue.
 func (d *Daemon) fetchIssueComments(ctx context.Context, repoPath string, item daemonstate.WorkItem) ([]issues.IssueComment, error) {
+	if item.StepData["_synthetic"] == "true" {
+		return nil, nil
+	}
 	source := item.IssueRef.Source
 
 	if source == "github" {
