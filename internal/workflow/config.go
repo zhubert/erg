@@ -210,6 +210,7 @@ var ValidActions = map[string]bool{
 	"ai.code":               true,
 	"ai.review":             true,
 	"ai.plan":               true,
+	"ai.summarize":          true,
 	"github.create_pr":      true,
 	"github.push":           true,
 	"github.merge":          true,

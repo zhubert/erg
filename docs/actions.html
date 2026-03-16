@@ -1772,6 +1772,69 @@
 
         <div class="action-ref">
           <div class="action-header">
+            <span class="action-title">ai.summarize</span>
+            <span class="badge badge-async">async</span>
+          </div>
+          <p class="action-desc">
+            Starts a read-only session where Claude reads the PR diff and posts a
+            plain-English summary as an issue comment for non-technical
+            stakeholders. Runs in planning mode — no code changes are made.
+            Useful as a post-merge step to communicate what changed.
+            <strong>Requires an existing session with a branch</strong> — cannot
+            be used as a schedule trigger entrypoint.
+          </p>
+          <div class="param-section">
+            <div class="param-section-title">Params</div>
+            <table class="param-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>system_prompt</td>
+                  <td>string</td>
+                  <td><em>built-in</em></td>
+                  <td>
+                    Inline prompt or <code>file:.erg/summarize_prompt.md</code>
+                    to load from the repo. Overrides the default summarize prompt.
+                  </td>
+                </tr>
+                <tr>
+                  <td>max_turns</td>
+                  <td>int</td>
+                  <td><em>unlimited</em></td>
+                  <td>
+                    Maximum number of Claude turns for the summarization session.
+                  </td>
+                </tr>
+                <tr>
+                  <td>max_duration</td>
+                  <td>duration</td>
+                  <td><em>none</em></td>
+                  <td>
+                    Hard time limit for the session, e.g. <code>10m</code>.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="param-section">
+            <div class="param-section-title">Output data</div>
+            <p class="param-none">
+              None. The summary is posted as an issue comment by Claude during
+              the session using the <code>comment_issue</code> MCP tool. Diffs
+              larger than 100 KB are automatically truncated.
+            </p>
+          </div>
+        </div>
+
+        <div class="action-ref">
+          <div class="action-header">
             <span class="action-title">ai.review</span>
             <span class="badge badge-async">async</span>
           </div>

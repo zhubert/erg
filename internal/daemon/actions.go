@@ -548,6 +548,27 @@ func (a *documentingAction) Execute(ctx context.Context, ac *workflow.ActionCont
 	return workflow.ActionResult{Success: true, Async: true}
 }
 
+// summarizeAction implements the ai.summarize action.
+type summarizeAction struct {
+	daemon *Daemon
+}
+
+// Execute creates a read-only session that reads the PR diff and posts a
+// plain-English summary comment on the original issue.
+func (a *summarizeAction) Execute(ctx context.Context, ac *workflow.ActionContext) workflow.ActionResult {
+	d := a.daemon
+	item, ok := d.state.GetWorkItem(ac.WorkItemID)
+	if !ok {
+		return workflow.ActionResult{Error: fmt.Errorf("work item not found: %s", ac.WorkItemID)}
+	}
+
+	if err := d.startSummarize(ctx, item); err != nil {
+		return workflow.ActionResult{Error: err}
+	}
+
+	return workflow.ActionResult{Success: true, Async: true}
+}
+
 // fixCIAction implements the ai.fix_ci action.
 type fixCIAction struct {
 	daemon *Daemon
