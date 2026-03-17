@@ -299,6 +299,9 @@ func TestEngine_ProcessStep_TerminalStatePreservesStepName(t *testing.T) {
 		if result.NewStep != "done" {
 			t.Errorf("expected NewStep=done, got %q", result.NewStep)
 		}
+		if result.NewPhase != "idle" {
+			t.Errorf("expected NewPhase=idle, got %q", result.NewPhase)
+		}
 		if !result.Terminal || !result.TerminalOK {
 			t.Errorf("expected terminal OK, got terminal=%v ok=%v", result.Terminal, result.TerminalOK)
 		}
@@ -312,6 +315,9 @@ func TestEngine_ProcessStep_TerminalStatePreservesStepName(t *testing.T) {
 		}
 		if result.NewStep != "failed" {
 			t.Errorf("expected NewStep=failed, got %q", result.NewStep)
+		}
+		if result.NewPhase != "idle" {
+			t.Errorf("expected NewPhase=idle, got %q", result.NewPhase)
 		}
 		if !result.Terminal || result.TerminalOK {
 			t.Errorf("expected terminal not-OK, got terminal=%v ok=%v", result.Terminal, result.TerminalOK)
