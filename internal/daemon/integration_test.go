@@ -619,10 +619,12 @@ func TestIntegration_DockerError_TransitionsToDockerPending(t *testing.T) {
 	}
 	itemID := items[0].ID
 
-	// Simulate worker failure with Docker error
+	// Simulate worker failure with Docker error AND Docker is now DOWN
 	completeWorkerWithError(t, d, itemID, errors.New("Cannot connect to the Docker daemon"))
+	d.dockerHealthCheck = func(context.Context) error { return errors.New("docker down") }
 
 	// Tick 2: Worker collected → Docker error detected → docker_pending
+	// Docker health check fails → items stay docker_pending
 	d.tick(ctx)
 
 	item, ok := d.state.GetWorkItem(itemID)
@@ -657,40 +659,27 @@ func TestIntegration_DockerRecovery_ResumesDockerPendingItems(t *testing.T) {
 	items := d.state.GetActiveWorkItems()
 	itemID := items[0].ID
 
-	// Simulate Docker error
+	// Docker goes DOWN, then worker fails with Docker error
+	d.dockerHealthCheck = func(context.Context) error { return errors.New("docker unavailable") }
 	completeWorkerWithError(t, d, itemID, errors.New("Cannot connect to the Docker daemon"))
-	d.tick(ctx)
 
-	// Verify docker_pending
+	// Tick 2: Worker collected → docker_pending, health check fails
+	d.tick(ctx)
 	item, _ := d.state.GetWorkItem(itemID)
 	if item.Phase != "docker_pending" {
 		t.Fatalf("expected phase=docker_pending, got %s", item.Phase)
 	}
 
-	// Now simulate Docker going down (health check fails)
-	d.dockerHealthCheck = func(context.Context) error {
-		return errors.New("docker unavailable")
-	}
-
-	// Tick 3: Docker down — tick should skip all processing
-	d.tick(ctx)
-	item, _ = d.state.GetWorkItem(itemID)
-	if item.Phase != "docker_pending" {
-		t.Errorf("tick 3: expected phase=docker_pending (unchanged), got %s", item.Phase)
-	}
-
-	// Now simulate Docker recovery
+	// Docker recovers
 	d.dockerHealthCheck = func(context.Context) error { return nil }
 
-	// Tick 4: Docker recovered → resumeDockerPendingItems → idle
+	// Tick 3: Docker recovered → resumeDockerPendingItems → idle
 	d.tick(ctx)
 
 	item, _ = d.state.GetWorkItem(itemID)
 	if item.Phase == "docker_pending" {
-		t.Error("tick 4: item should no longer be docker_pending after Docker recovery")
+		t.Error("item should no longer be docker_pending after Docker recovery")
 	}
-	// The item should be back to idle (and processIdleSyncItems or startQueuedItems
-	// will re-execute it on a subsequent tick)
 }
 
 func TestIntegration_DockerDown_SkipsAllProcessing(t *testing.T) {
@@ -967,5 +956,100 @@ func TestIntegration_FeedbackWorkerFailure_ReturnsToIdle(t *testing.T) {
 	}
 	if item.CurrentStep != "await_review" {
 		t.Errorf("expected step=await_review (preserved), got %s", item.CurrentStep)
+	}
+}
+
+func TestIntegration_DockerRecovery_DoesNotRerunAsyncAction(t *testing.T) {
+	// Regression test for two bugs:
+	// 1. processIdleSyncItems re-executing async actions (ai.code) after Docker
+	//    recovery, spawning duplicate workers and sessions.
+	// 2. docker_pending items stuck forever when Docker blips transiently
+	//    (worker fails with Docker error but health check passes).
+
+	mockExec := exec.NewMockExecutor(nil)
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+
+	runnerCount := 0
+	d.sessionMgr.SetRunnerFactory(func(sessionID, workingDir, repoPath string, sessionStarted bool, initialMessages []claude.Message) claude.RunnerInterface {
+		runnerCount++
+		r := claude.NewMockRunner(sessionID, sessionStarted, initialMessages)
+		r.QueueResponse(claude.ResponseChunk{Content: "Done.", Done: true})
+		r.CompleteStreaming("Done.")
+		return r
+	})
+	ctx := context.Background()
+
+	// Tick 1: Poll + start coding
+	d.tick(ctx)
+
+	items := d.state.GetActiveWorkItems()
+	if len(items) != 1 {
+		t.Fatalf("tick 1: expected 1 active item, got %d", len(items))
+	}
+	itemID := items[0].ID
+	originalSessionID := items[0].SessionID
+
+	// Worker fails with Docker error
+	completeWorkerWithError(t, d, itemID, errors.New("Cannot connect to the Docker daemon"))
+
+	// Docker goes DOWN
+	d.dockerHealthCheck = func(context.Context) error { return errors.New("docker down") }
+	d.tick(ctx)
+
+	item, _ := d.state.GetWorkItem(itemID)
+	if item.Phase != "docker_pending" {
+		t.Fatalf("tick 2: expected phase=docker_pending, got %s", item.Phase)
+	}
+
+	// Docker comes BACK
+	d.dockerHealthCheck = func(context.Context) error { return nil }
+	d.tick(ctx)
+
+	item, _ = d.state.GetWorkItem(itemID)
+
+	// The item should NOT have spawned a second runner/session
+	if runnerCount > 1 {
+		t.Errorf("Docker recovery spawned %d runners (expected 1) — "+
+			"processIdleSyncItems re-executed async action", runnerCount)
+	}
+	if item.SessionID != originalSessionID {
+		t.Errorf("session changed from %s to %s — duplicate session created",
+			originalSessionID, item.SessionID)
+	}
+}
+
+func TestIntegration_DockerTransientBlip_ResumesDockerPendingItems(t *testing.T) {
+	// Regression test: worker fails with Docker error, but Docker health check
+	// passes (transient blip resolved before next tick). Items must not get
+	// stuck in docker_pending forever.
+
+	mockExec := exec.NewMockExecutor(nil)
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	installMockRunnerFactory(t, d)
+	ctx := context.Background()
+
+	// Tick 1: start coding
+	d.tick(ctx)
+	items := d.state.GetActiveWorkItems()
+	itemID := items[0].ID
+
+	// Worker fails with Docker error — but Docker is healthy (transient blip)
+	completeWorkerWithError(t, d, itemID, errors.New("Cannot connect to the Docker daemon"))
+
+	// Tick 2: collectCompletedWorkers → docker_pending, health check passes
+	d.tick(ctx)
+
+	item, _ := d.state.GetWorkItem(itemID)
+	// After the fix, the item should NOT be stuck in docker_pending
+	if item.Phase == "docker_pending" {
+		t.Error("item stuck in docker_pending — transient Docker blip not handled")
 	}
 }
