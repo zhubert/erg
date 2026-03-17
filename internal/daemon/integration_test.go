@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zhubert/erg/internal/claude"
+	"github.com/zhubert/erg/internal/config"
 	"github.com/zhubert/erg/internal/daemonstate"
 	"github.com/zhubert/erg/internal/exec"
 	"github.com/zhubert/erg/internal/git"
@@ -21,7 +22,7 @@ import (
 )
 
 // newIntegrationDaemon creates a daemon wired for integration testing with a real
-// tick() loop. It returns the daemon, mock executor, and fake provider.
+// tick() loop. It returns the daemon, fake provider, and concrete config.
 func newIntegrationDaemon(t *testing.T, mockExec *exec.MockExecutor) (*Daemon, *issues.FakeProvider) {
 	t.Helper()
 
@@ -593,5 +594,378 @@ func TestFakeProvider_IssueStateChecker(t *testing.T) {
 	}
 	if !closed {
 		t.Error("expected closed after SetIssueClosed")
+	}
+}
+
+// --- Resilience Integration Tests ---
+
+func TestIntegration_DockerError_TransitionsToDockerPending(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	installMockRunnerFactory(t, d)
+	ctx := context.Background()
+
+	// Tick 1: Poll + start coding
+	d.tick(ctx)
+
+	items := d.state.GetActiveWorkItems()
+	if len(items) != 1 {
+		t.Fatalf("tick 1: expected 1 active item, got %d", len(items))
+	}
+	itemID := items[0].ID
+
+	// Simulate worker failure with Docker error
+	completeWorkerWithError(t, d, itemID, errors.New("Cannot connect to the Docker daemon"))
+
+	// Tick 2: Worker collected → Docker error detected → docker_pending
+	d.tick(ctx)
+
+	item, ok := d.state.GetWorkItem(itemID)
+	if !ok {
+		t.Fatal("tick 2: work item not found")
+	}
+	if item.Phase != "docker_pending" {
+		t.Errorf("tick 2: expected phase=docker_pending, got %s", item.Phase)
+	}
+	if item.CurrentStep != "coding" {
+		t.Errorf("tick 2: expected step=coding (preserved), got %s", item.CurrentStep)
+	}
+	if item.State == daemonstate.WorkItemFailed {
+		t.Error("tick 2: item should NOT be terminal — Docker errors are transient")
+	}
+}
+
+func TestIntegration_DockerRecovery_ResumesDockerPendingItems(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	installMockRunnerFactory(t, d)
+	ctx := context.Background()
+
+	// Tick 1: Poll + start coding
+	d.tick(ctx)
+
+	items := d.state.GetActiveWorkItems()
+	itemID := items[0].ID
+
+	// Simulate Docker error
+	completeWorkerWithError(t, d, itemID, errors.New("Cannot connect to the Docker daemon"))
+	d.tick(ctx)
+
+	// Verify docker_pending
+	item, _ := d.state.GetWorkItem(itemID)
+	if item.Phase != "docker_pending" {
+		t.Fatalf("expected phase=docker_pending, got %s", item.Phase)
+	}
+
+	// Now simulate Docker going down (health check fails)
+	d.dockerHealthCheck = func(context.Context) error {
+		return errors.New("docker unavailable")
+	}
+
+	// Tick 3: Docker down — tick should skip all processing
+	d.tick(ctx)
+	item, _ = d.state.GetWorkItem(itemID)
+	if item.Phase != "docker_pending" {
+		t.Errorf("tick 3: expected phase=docker_pending (unchanged), got %s", item.Phase)
+	}
+
+	// Now simulate Docker recovery
+	d.dockerHealthCheck = func(context.Context) error { return nil }
+
+	// Tick 4: Docker recovered → resumeDockerPendingItems → idle
+	d.tick(ctx)
+
+	item, _ = d.state.GetWorkItem(itemID)
+	if item.Phase == "docker_pending" {
+		t.Error("tick 4: item should no longer be docker_pending after Docker recovery")
+	}
+	// The item should be back to idle (and processIdleSyncItems or startQueuedItems
+	// will re-execute it on a subsequent tick)
+}
+
+func TestIntegration_DockerDown_SkipsAllProcessing(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	installMockRunnerFactory(t, d)
+	ctx := context.Background()
+
+	// Docker is down from the start
+	d.dockerHealthCheck = func(context.Context) error {
+		return errors.New("docker unavailable")
+	}
+
+	// Tick 1: Docker down → no polling, no starting
+	d.tick(ctx)
+
+	all := d.state.GetAllWorkItems()
+	if len(all) != 0 {
+		t.Errorf("expected 0 work items when Docker is down, got %d", len(all))
+	}
+}
+
+func TestIntegration_ConfigSavePaused_BlocksNewWork(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	installMockRunnerFactory(t, d)
+	ctx := context.Background()
+
+	// Make config saves fail so retryConfigSave can't auto-recover.
+	// Point the config at a non-writable path.
+	cfg := d.config.(*config.Config)
+	cfg.SetFilePath("/nonexistent/dir/config.json")
+	d.configSaveFailures = configSaveFailureThreshold
+	d.configSavePaused = true
+
+	// Tick: Config save retry fails → paused stays true → polling skipped
+	d.tick(ctx)
+
+	all := d.state.GetAllWorkItems()
+	if len(all) != 0 {
+		t.Errorf("expected 0 work items when config save is paused, got %d", len(all))
+	}
+	if !d.configSavePaused {
+		t.Error("expected configSavePaused to remain true when save keeps failing")
+	}
+}
+
+func TestIntegration_ConfigSaveRecovery_ResumesWork(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{
+		{Number: 42, Title: "Fix bug", URL: "https://github.com/owner/repo/issues/42"},
+	})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	installMockRunnerFactory(t, d)
+	ctx := context.Background()
+
+	// Make config saves fail so pause stays active
+	cfg := d.config.(*config.Config)
+	cfg.SetFilePath("/nonexistent/dir/config.json")
+	d.configSaveFailures = configSaveFailureThreshold
+	d.configSavePaused = true
+
+	// Tick 1: paused (save retry fails), no work
+	d.tick(ctx)
+	if len(d.state.GetAllWorkItems()) != 0 {
+		t.Fatal("tick 1: expected 0 items while paused")
+	}
+
+	// Restore writable config path so retryConfigSave succeeds
+	tmpFile := filepath.Join(t.TempDir(), "recovered.json")
+	if err := os.WriteFile(tmpFile, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SetFilePath(tmpFile)
+
+	// Tick 2: retryConfigSave succeeds → paused cleared → poll and start
+	d.tick(ctx)
+
+	if d.configSavePaused {
+		t.Error("tick 2: expected configSavePaused=false after recovery")
+	}
+	all := d.state.GetAllWorkItems()
+	if len(all) != 1 {
+		t.Errorf("tick 2: expected 1 work item after recovery, got %d", len(all))
+	}
+}
+
+func TestIntegration_RetryPending_ReexecutesAfterDelay(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{})
+	addPRCreateMocks(t, mockExec, "https://github.com/owner/repo/pull/1")
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	ctx := context.Background()
+
+	// Manually create a work item at open_pr step with retry_pending phase
+	// (simulating a PR creation that failed and is waiting to retry)
+	sess := testSession("sess-retry")
+	sess.RepoPath = "/test/repo"
+	sess.Branch = "issue-42"
+	d.config.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-retry",
+		IssueRef: config.IssueRef{Source: "github", ID: "42"},
+		StepData: map[string]any{
+			"_repo_path":   "/test/repo",
+			"_retry_after": time.Now().Add(-1 * time.Second).Format(time.RFC3339), // already elapsed
+			"_retry_count": 1,
+		},
+	})
+	d.state.UpdateWorkItem("item-retry", func(it *daemonstate.WorkItem) {
+		it.SessionID = "sess-retry"
+		it.Branch = "issue-42"
+		it.CurrentStep = "open_pr"
+		it.Phase = "retry_pending"
+		it.State = daemonstate.WorkItemActive
+	})
+
+	// Tick: processRetryItems detects elapsed delay → re-executes sync chain
+	d.tick(ctx)
+
+	item, ok := d.state.GetWorkItem("item-retry")
+	if !ok {
+		t.Fatal("work item not found after tick")
+	}
+	// After retry, open_pr should execute and advance to await_ci
+	if item.Phase == "retry_pending" {
+		t.Errorf("expected item to have left retry_pending, got phase=%s step=%s", item.Phase, item.CurrentStep)
+	}
+}
+
+func TestIntegration_RetryPending_RespectsDelay(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	ctx := context.Background()
+
+	sess := testSession("sess-retry2")
+	sess.RepoPath = "/test/repo"
+	sess.Branch = "issue-99"
+	d.config.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-retry2",
+		IssueRef: config.IssueRef{Source: "github", ID: "99"},
+		StepData: map[string]any{
+			"_repo_path":   "/test/repo",
+			"_retry_after": time.Now().Add(1 * time.Hour).Format(time.RFC3339), // far in the future
+			"_retry_count": 1,
+		},
+	})
+	d.state.UpdateWorkItem("item-retry2", func(it *daemonstate.WorkItem) {
+		it.SessionID = "sess-retry2"
+		it.Branch = "issue-99"
+		it.CurrentStep = "open_pr"
+		it.Phase = "retry_pending"
+		it.State = daemonstate.WorkItemActive
+	})
+
+	// Tick: processRetryItems should NOT re-execute (delay hasn't elapsed)
+	d.tick(ctx)
+
+	item, ok := d.state.GetWorkItem("item-retry2")
+	if !ok {
+		t.Fatal("work item not found")
+	}
+	if item.Phase != "retry_pending" {
+		t.Errorf("expected item to remain in retry_pending (delay not elapsed), got phase=%s", item.Phase)
+	}
+}
+
+func TestIntegration_IdleSyncRecovery_ExecutesStaleSyncTask(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{})
+	addCIAndReviewMocks(t, mockExec)
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	ctx := context.Background()
+
+	// Simulate a recovered item stuck on a sync task (merge) in idle phase.
+	// This happens when a daemon restarts and the item was mid-sync-chain.
+	sess := testSession("sess-merge")
+	sess.RepoPath = "/test/repo"
+	sess.Branch = "issue-50"
+	d.config.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-merge",
+		IssueRef: config.IssueRef{Source: "github", ID: "50"},
+		StepData: map[string]any{"_repo_path": "/test/repo"},
+	})
+	d.state.UpdateWorkItem("item-merge", func(it *daemonstate.WorkItem) {
+		it.SessionID = "sess-merge"
+		it.Branch = "issue-50"
+		it.CurrentStep = "merge"
+		it.State = daemonstate.WorkItemActive
+	})
+
+	// Tick: processIdleSyncItems detects idle sync task → executeSyncChain
+	d.tick(ctx)
+
+	item, ok := d.state.GetWorkItem("item-merge")
+	if !ok {
+		t.Fatal("work item not found after tick")
+	}
+	// merge should execute and advance to done (terminal)
+	if item.State != daemonstate.WorkItemCompleted {
+		t.Errorf("expected state=completed after idle sync recovery, got state=%s step=%s phase=%s",
+			item.State, item.CurrentStep, item.Phase)
+	}
+}
+
+func TestIntegration_FeedbackWorkerFailure_ReturnsToIdle(t *testing.T) {
+	mockExec := exec.NewMockExecutor(nil)
+
+	addBaseGitMocks(t, mockExec, []git.GitHubIssue{})
+
+	d, _ := newIntegrationDaemon(t, mockExec)
+	ctx := context.Background()
+
+	// Simulate a work item in addressing_feedback phase with a worker
+	sess := testSession("sess-fb")
+	sess.RepoPath = "/test/repo"
+	sess.Branch = "issue-77"
+	d.config.AddSession(*sess)
+
+	d.state.AddWorkItem(&daemonstate.WorkItem{
+		ID:       "item-fb",
+		IssueRef: config.IssueRef{Source: "github", ID: "77"},
+		StepData: map[string]any{"_repo_path": "/test/repo"},
+	})
+	d.state.UpdateWorkItem("item-fb", func(it *daemonstate.WorkItem) {
+		it.SessionID = "sess-fb"
+		it.Branch = "issue-77"
+		it.CurrentStep = "await_review"
+		it.Phase = "addressing_feedback"
+		it.State = daemonstate.WorkItemActive
+	})
+
+	// Simulate feedback worker completing with error
+	d.mu.Lock()
+	d.workers["item-fb"] = worker.NewDoneWorkerWithError(errors.New("Claude API timeout"))
+	d.mu.Unlock()
+
+	// Tick: collectCompletedWorkers → feedback phase error → back to idle (not terminal)
+	d.tick(ctx)
+
+	item, ok := d.state.GetWorkItem("item-fb")
+	if !ok {
+		t.Fatal("work item not found")
+	}
+	if item.Phase != "idle" {
+		t.Errorf("expected phase=idle after failed feedback, got %s", item.Phase)
+	}
+	if item.State == daemonstate.WorkItemFailed {
+		t.Error("feedback failure should NOT be terminal — item stays at await_review for next poll")
+	}
+	if item.CurrentStep != "await_review" {
+		t.Errorf("expected step=await_review (preserved), got %s", item.CurrentStep)
 	}
 }
