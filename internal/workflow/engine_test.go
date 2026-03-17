@@ -279,6 +279,52 @@ func TestEngine_IsTerminalState(t *testing.T) {
 	}
 }
 
+func TestEngine_ProcessStep_TerminalStatePreservesStepName(t *testing.T) {
+	cfg := &Config{
+		Start: "coding",
+		States: map[string]*State{
+			"coding": {Type: StateTypeTask, Action: "ai.code", Next: "done", Error: "failed"},
+			"done":   {Type: StateTypeSucceed},
+			"failed": {Type: StateTypeFail},
+		},
+	}
+	engine := NewEngine(cfg, NewActionRegistry(), nil, testutil.DiscardLogger())
+
+	t.Run("succeed state", func(t *testing.T) {
+		view := &WorkItemView{CurrentStep: "done", Phase: "idle"}
+		result, err := engine.ProcessStep(context.Background(), view)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.NewStep != "done" {
+			t.Errorf("expected NewStep=done, got %q", result.NewStep)
+		}
+		if result.NewPhase != "idle" {
+			t.Errorf("expected NewPhase=idle, got %q", result.NewPhase)
+		}
+		if !result.Terminal || !result.TerminalOK {
+			t.Errorf("expected terminal OK, got terminal=%v ok=%v", result.Terminal, result.TerminalOK)
+		}
+	})
+
+	t.Run("fail state", func(t *testing.T) {
+		view := &WorkItemView{CurrentStep: "failed", Phase: "idle"}
+		result, err := engine.ProcessStep(context.Background(), view)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.NewStep != "failed" {
+			t.Errorf("expected NewStep=failed, got %q", result.NewStep)
+		}
+		if result.NewPhase != "idle" {
+			t.Errorf("expected NewPhase=idle, got %q", result.NewPhase)
+		}
+		if !result.Terminal || result.TerminalOK {
+			t.Errorf("expected terminal not-OK, got terminal=%v ok=%v", result.Terminal, result.TerminalOK)
+		}
+	})
+}
+
 func TestEngine_ProcessStep_UnknownState(t *testing.T) {
 	cfg := &Config{
 		Start: "coding",

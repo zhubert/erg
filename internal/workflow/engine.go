@@ -84,6 +84,8 @@ func (e *Engine) ProcessStep(ctx context.Context, item *WorkItemView) (*StepResu
 	switch state.Type {
 	case StateTypeSucceed:
 		return &StepResult{
+			NewStep:    item.CurrentStep,
+			NewPhase:   item.Phase,
 			Terminal:   true,
 			TerminalOK: true,
 			Hooks:      state.After,
@@ -91,6 +93,8 @@ func (e *Engine) ProcessStep(ctx context.Context, item *WorkItemView) (*StepResu
 
 	case StateTypeFail:
 		return &StepResult{
+			NewStep:    item.CurrentStep,
+			NewPhase:   item.Phase,
 			Terminal:   true,
 			TerminalOK: false,
 			Hooks:      state.After,

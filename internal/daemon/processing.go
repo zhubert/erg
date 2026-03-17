@@ -572,6 +572,10 @@ func (d *Daemon) processCIItems(ctx context.Context) {
 // processIdleSyncItems finds items in idle phase sitting on synchronous task steps
 // (e.g. "merge") and executes them. This catches items that were advanced to a sync
 // task step during recovery but never had executeSyncChain called.
+//
+// Async actions (ai.code, ai.fix_ci, etc.) are explicitly skipped — they require
+// a worker restart, not a sync chain execution. Running them here would create
+// duplicate sessions and workers.
 func (d *Daemon) processIdleSyncItems(ctx context.Context) {
 	for _, item := range d.state.GetActiveWorkItems() {
 		if item.Phase != "idle" || item.IsTerminal() {
@@ -590,6 +594,14 @@ func (d *Daemon) processIdleSyncItems(ctx context.Context) {
 
 		state := engine.GetState(item.CurrentStep)
 		if state == nil || state.Type != workflow.StateTypeTask {
+			continue
+		}
+
+		// Skip async actions — they spawn workers and must not be re-executed
+		// as part of the idle sync recovery path. These items need a worker
+		// restart (e.g., via startQueuedItems after re-queuing) rather than
+		// synchronous chain execution.
+		if strings.HasPrefix(state.Action, "ai.") {
 			continue
 		}
 
@@ -697,8 +709,12 @@ func (d *Daemon) checkDockerHealth(ctx context.Context) bool {
 		d.logger.Info("docker recovered, resuming work dispatch")
 		d.dockerDown = false
 		d.dockerDownLogged = false
-		d.resumeDockerPendingItems()
 	}
+	// Always resume docker_pending items when Docker is healthy.
+	// This handles both the recovery case (dockerDown was true) and the
+	// transient blip case (worker failed with Docker error but health
+	// check passes — dockerDown was never set).
+	d.resumeDockerPendingItems()
 	return true
 }
 
