@@ -1708,10 +1708,35 @@
         <p>
           A <code>choice</code> state reads values from the accumulated step
           data and branches to different states based on rules. Each rule
-          specifies a <code>variable</code>, an <code>equals</code> value, and a
+          specifies a <code>variable</code>, a comparison operator, and a
           <code>next</code> state. The <code>default</code> route fires when no
           rule matches.
         </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Operator</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>equals</code></td>
+              <td>Matches when the variable exactly equals the given value</td>
+            </tr>
+            <tr>
+              <td><code>not_equals</code></td>
+              <td>Matches when the variable does not equal the given value</td>
+            </tr>
+            <tr>
+              <td><code>is_present</code></td>
+              <td>
+                Matches when the variable exists (<code>true</code>) or does
+                not exist (<code>false</code>) in the step data
+              </td>
+            </tr>
+          </tbody>
+        </table>
         <div class="code-block">
           <div class="code-header">
             <span class="code-filename">choice example</span>
@@ -1725,6 +1750,12 @@
     - <span class="ck">variable:</span> <span class="cv">ci_failed</span>
       <span class="ck">equals:</span> <span class="cv">true</span>
       <span class="ck">next:</span> <span class="cv">fix_ci</span>
+    - <span class="ck">variable:</span> <span class="cv">review_status</span>
+      <span class="ck">not_equals:</span> <span class="cv">approved</span>
+      <span class="ck">next:</span> <span class="cv">wait_review</span>
+    - <span class="ck">variable:</span> <span class="cv">skip_tests</span>
+      <span class="ck">is_present:</span> <span class="cv">true</span>
+      <span class="ck">next:</span> <span class="cv">deploy</span>
   <span class="ck">default:</span> <span class="cv">failed</span></pre>
         </div>
         <p>
